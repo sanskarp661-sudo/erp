@@ -1,0 +1,10 @@
+# Deny all direct web access to this folder. config.php is only ever
+# loaded via PHP's require/include from other scripts, never requested
+# directly by a browser, but this blocks that path defense-in-depth.
+<IfModule mod_authz_core.c>
+    Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+</IfModule>

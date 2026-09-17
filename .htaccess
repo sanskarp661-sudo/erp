@@ -1,0 +1,24 @@
+# Root .htaccess for the ERP application (Apache / Hostinger shared hosting)
+
+Options -Indexes
+
+# Block direct access to sensitive file types anywhere in the project
+<FilesMatch "\.(sql|log|md|sh|ini|bak|env)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# Sensible default charset
+AddDefaultCharset UTF-8
+
+# Basic security headers (safe to keep even without other modules)
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>

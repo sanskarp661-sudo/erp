@@ -1,0 +1,220 @@
+:root {
+  --sidebar-width: 250px;
+  --brand: #2f6fed;
+  --brand-dark: #1d4ed8;
+  --bg: #f4f6fb;
+  --sidebar-bg: #131b2e;
+  --sidebar-fg: #c7d0e0;
+  --sidebar-fg-active: #ffffff;
+  --card-border: #e5e9f2;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  background: var(--bg);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: #1f2937;
+}
+
+/* ---------- Auth pages ---------- */
+.auth-wrapper {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #131b2e 0%, #2f6fed 100%);
+  padding: 16px;
+}
+
+.auth-card {
+  background: #fff;
+  border-radius: 14px;
+  padding: 40px;
+  width: 100%;
+  max-width: 400px;
+  box-shadow: 0 20px 50px rgba(0,0,0,.25);
+}
+
+.auth-card h1 {
+  font-size: 1.4rem;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.auth-card .subtitle {
+  color: #6b7280;
+  margin-bottom: 24px;
+  font-size: .9rem;
+}
+
+/* ---------- App shell ---------- */
+.app-wrapper {
+  display: flex;
+  min-height: 100vh;
+}
+
+.sidebar {
+  width: var(--sidebar-width);
+  flex-shrink: 0;
+  background: var(--sidebar-bg);
+  color: var(--sidebar-fg);
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  top: 0; bottom: 0; left: 0;
+  overflow-y: auto;
+  transition: transform .2s ease;
+  z-index: 1030;
+}
+
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 20px 18px;
+  font-weight: 700;
+  color: #fff;
+  font-size: 1.05rem;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+}
+
+.sidebar-nav { padding: 10px 10px 30px; }
+
+.sidebar-nav a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--sidebar-fg);
+  text-decoration: none;
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: .88rem;
+  margin-bottom: 2px;
+}
+
+.sidebar-nav a i { width: 18px; text-align: center; opacity: .85; }
+
+.sidebar-nav a:hover { background: rgba(255,255,255,.06); color: #fff; }
+
+.sidebar-nav a.active {
+  background: var(--brand);
+  color: #fff;
+}
+
+.nav-section {
+  text-transform: uppercase;
+  font-size: .68rem;
+  letter-spacing: .06em;
+  color: #6b7ba1;
+  margin: 16px 12px 6px;
+  font-weight: 700;
+}
+
+.app-main {
+  margin-left: var(--sidebar-width);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: #fff;
+  border-bottom: 1px solid var(--card-border);
+  padding: 12px 20px;
+  position: sticky;
+  top: 0;
+  z-index: 1020;
+}
+
+.topbar-title {
+  font-weight: 700;
+  font-size: 1.1rem;
+  flex: 1;
+}
+
+.btn-icon {
+  background: transparent;
+  border: none;
+  font-size: 1.1rem;
+  color: #374151;
+  padding: 6px 10px;
+  border-radius: 8px;
+}
+
+.btn-icon:hover { background: #f1f3f9; }
+
+.content { padding: 22px; }
+
+/* ---------- Cards / widgets ---------- */
+.card {
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+}
+
+.stat-card {
+  border-radius: 12px;
+  border: 1px solid var(--card-border);
+  background: #fff;
+  padding: 18px 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.stat-card .icon {
+  width: 46px; height: 46px;
+  border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.2rem;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.stat-card .value { font-size: 1.4rem; font-weight: 700; line-height: 1.1; }
+.stat-card .label { color: #6b7280; font-size: .82rem; }
+
+.bg-brand { background: var(--brand); }
+.bg-green { background: #16a34a; }
+.bg-orange { background: #ea580c; }
+.bg-purple { background: #7c3aed; }
+.bg-red { background: #dc2626; }
+
+.table thead th {
+  font-size: .74rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: #6b7280;
+  border-bottom-width: 1px;
+  white-space: nowrap;
+}
+
+.table td { vertical-align: middle; }
+
+.page-actions { display: flex; gap: 8px; align-items: center; }
+
+.btn-brand {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: #fff;
+}
+.btn-brand:hover { background: var(--brand-dark); border-color: var(--brand-dark); color: #fff; }
+
+.btn-outline-brand {
+  color: var(--brand);
+  border-color: var(--brand);
+  background: transparent;
+}
+.btn-outline-brand:hover { background: var(--brand); border-color: var(--brand); color: #fff; }
+
+.badge-status { text-transform: capitalize; }
+
+@media (max-width: 991px) {
+  .sidebar { transform: translateX(-100%); }
+  .sidebar.open { transform: translateX(0); }
+  .app-main { margin-left: 0; }
+}
