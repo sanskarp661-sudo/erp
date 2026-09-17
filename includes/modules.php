@@ -9,6 +9,7 @@
 $MODULES = [
     'inventory' => [
         'label' => 'Inventory',
+        'color' => '#2f6fed',
         'icon'  => 'fa-solid fa-box',
         'home'  => 'inventory/index.php',
         'match' => '/inventory/',
@@ -21,6 +22,7 @@ $MODULES = [
     ],
     'supply-chain' => [
         'label' => 'Supply Chain',
+        'color' => '#0891b2',
         'icon'  => 'fa-solid fa-truck-ramp-box',
         'home'  => 'supply-chain/index.php',
         'match' => '/supply-chain/',
@@ -32,6 +34,7 @@ $MODULES = [
     ],
     'procurement' => [
         'label' => 'Procurement',
+        'color' => '#ea580c',
         'icon'  => 'fa-solid fa-truck-field',
         'home'  => 'purchases/index.php',
         'match' => '/purchases/',
@@ -44,6 +47,7 @@ $MODULES = [
     ],
     'sales' => [
         'label' => 'Sales',
+        'color' => '#16a34a',
         'icon'  => 'fa-solid fa-cart-shopping',
         'home'  => 'sales/index.php',
         'match' => '/sales/',
@@ -55,6 +59,7 @@ $MODULES = [
     ],
     'pos' => [
         'label' => 'POS',
+        'color' => '#7c3aed',
         'icon'  => 'fa-solid fa-cash-register',
         'home'  => 'pos/index.php',
         'match' => '/pos/',
@@ -65,6 +70,7 @@ $MODULES = [
     ],
     'hrms' => [
         'label' => 'HRMS',
+        'color' => '#db2777',
         'icon'  => 'fa-solid fa-user-tie',
         'home'  => 'hr/index.php',
         'match' => '/hr/',
@@ -78,6 +84,7 @@ $MODULES = [
     ],
     'crm' => [
         'label' => 'CRM',
+        'color' => '#4f46e5',
         'icon'  => 'fa-solid fa-address-book',
         'home'  => 'crm/index.php',
         'match' => '/crm/',
@@ -88,6 +95,7 @@ $MODULES = [
     ],
     'finance' => [
         'label' => 'Finance',
+        'color' => '#ca8a04',
         'icon'  => 'fa-solid fa-sack-dollar',
         'home'  => 'accounting/index.php',
         'match' => '/accounting/',

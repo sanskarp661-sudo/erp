@@ -30,7 +30,7 @@ function nav_active(string $needle, string $current): string
 <title><?= isset($page_title) ? e($page_title) . ' · ' : '' ?><?= e(setting('company_name', APP_NAME)) ?></title>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-<link href="<?= base_url('assets/css/style.css') ?>" rel="stylesheet">
+<link href="<?= asset_url('assets/css/style.css') ?>" rel="stylesheet">
 </head>
 <body>
 <?php if ($user): ?>

@@ -122,6 +122,19 @@ function base_url(string $path = ''): string
 }
 
 /**
+ * Same as base_url() but appends a ?v=<file mtime> cache-buster, so
+ * uploading a new assets/css/style.css or assets/js/app.js via File
+ * Manager takes effect immediately instead of serving a browser-cached
+ * copy of the old file.
+ */
+function asset_url(string $path): string
+{
+    $full = __DIR__ . '/../' . ltrim($path, '/');
+    $version = is_file($full) ? filemtime($full) : time();
+    return base_url($path) . '?v=' . $version;
+}
+
+/**
  * Generic activity log, keyed by (entity_type, entity_id). Used by the
  * User page's Activity feed; the shape is generic enough to reuse for
  * other records later.

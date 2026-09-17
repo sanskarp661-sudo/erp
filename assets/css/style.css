@@ -225,35 +225,68 @@ body {
 
 .badge-status { text-transform: capitalize; }
 
+.empty-state {
+  text-align: center;
+  color: #9aa3b5;
+  padding: 32px 12px !important;
+  font-size: .86rem;
+}
+.empty-state i {
+  display: block;
+  font-size: 1.6rem;
+  margin-bottom: 8px;
+  color: #c3cae0;
+}
+.empty-state i.text-success { color: #16a34a; }
+
 /* ---------- Module launcher cards (main dashboard) ---------- */
 .module-card {
+  --module-color: var(--brand);
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  padding: 22px 12px;
-  border-radius: 12px;
+  gap: 12px;
+  padding: 26px 12px 22px;
+  border-radius: 14px;
   border: 1px solid var(--card-border);
   background: #fff;
   text-decoration: none;
   color: #1f2937;
   height: 100%;
-  transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+  overflow: hidden;
+  transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+}
+.module-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: var(--module-color);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform .18s ease;
 }
 .module-card:hover {
   color: #1f2937;
-  border-color: var(--brand);
-  box-shadow: 0 6px 16px rgba(47,111,237,.14);
-  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--module-color) 45%, var(--card-border));
+  box-shadow: 0 10px 22px -6px color-mix(in srgb, var(--module-color) 35%, transparent);
+  transform: translateY(-3px);
 }
+.module-card:hover::before { transform: scaleX(1); }
 .module-card-icon {
-  width: 48px; height: 48px;
-  border-radius: 12px;
-  background: var(--brand);
-  color: #fff;
+  width: 50px; height: 50px;
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--module-color) 12%, white);
+  color: var(--module-color);
   display: flex; align-items: center; justify-content: center;
-  font-size: 1.25rem;
+  font-size: 1.3rem;
+  transition: background .15s ease, color .15s ease;
+}
+.module-card:hover .module-card-icon {
+  background: var(--module-color);
+  color: #fff;
 }
 .module-card-label { font-weight: 600; font-size: .92rem; text-align: center; }
 

@@ -46,7 +46,7 @@ require __DIR__ . '/includes/header.php';
 <div class="row g-3 mb-3">
   <?php foreach ($MODULES as $mod): ?>
     <div class="col-6 col-sm-4 col-lg-3">
-      <a href="<?= base_url($mod['home']) ?>" class="module-card">
+      <a href="<?= base_url($mod['home']) ?>" class="module-card" style="--module-color: <?= e($mod['color']) ?>">
         <div class="module-card-icon"><i class="<?= e($mod['icon']) ?>"></i></div>
         <div class="module-card-label"><?= e($mod['label']) ?></div>
       </a>
@@ -120,7 +120,12 @@ require __DIR__ . '/includes/header.php';
               <td class="text-end"><?= money($o['total_amount']) ?></td>
             </tr>
           <?php endforeach; ?>
-          <?php if (!$recentOrders): ?><tr><td colspan="5" class="text-muted text-center">No sales orders yet.</td></tr><?php endif; ?>
+          <?php if (!$recentOrders): ?>
+            <tr><td colspan="5" class="empty-state">
+              <i class="fa-solid fa-cart-shopping"></i>
+              <div>No sales orders yet</div>
+            </td></tr>
+          <?php endif; ?>
           </tbody>
         </table>
       </div>
@@ -144,7 +149,12 @@ require __DIR__ . '/includes/header.php';
               <td class="text-end"><?= (int)$p['reorder_level'] ?></td>
             </tr>
           <?php endforeach; ?>
-          <?php if (!$lowStockItems): ?><tr><td colspan="4" class="text-muted text-center">Stock levels look healthy.</td></tr><?php endif; ?>
+          <?php if (!$lowStockItems): ?>
+            <tr><td colspan="4" class="empty-state">
+              <i class="fa-solid fa-circle-check text-success"></i>
+              <div>Stock levels look healthy</div>
+            </td></tr>
+          <?php endif; ?>
           </tbody>
         </table>
       </div>
