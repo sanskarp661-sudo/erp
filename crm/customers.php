@@ -11,7 +11,7 @@ if (is_post() && input('action') === 'delete') {
     } catch (PDOException $e) {
         flash('danger', 'Cannot delete: this customer has existing sales orders or invoices.');
     }
-    redirect('/sales/customers.php');
+    redirect('/crm/customers.php');
 }
 
 $customers = db()->query("

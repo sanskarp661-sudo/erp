@@ -36,7 +36,7 @@ if (is_post()) {
             $stmt->execute([$customer['name'], $customer['company'], $customer['email'], $customer['phone'], $customer['address']]);
             flash('success', 'Customer created.');
         }
-        redirect('/sales/customers.php');
+        redirect('/crm/customers.php');
     }
 }
 

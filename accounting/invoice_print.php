@@ -82,6 +82,9 @@ $balance = $invoice['total'] - $invoice['amount_paid'];
 
   <div class="no-print mt-4">
     <button class="btn btn-primary" onclick="window.print()"><i class="fa-solid fa-print"></i> Print</button>
+    <?php if (input('pos') === '1'): ?>
+      <a href="<?= base_url('pos/index.php') ?>" class="btn btn-outline-secondary"><i class="fa-solid fa-cash-register"></i> New Sale</a>
+    <?php endif; ?>
   </div>
 </div>
 </body>

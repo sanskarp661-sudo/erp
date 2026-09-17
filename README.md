@@ -5,23 +5,39 @@ designed to run on ordinary shared hosting (including **Hostinger's File
 Manager**), with no build step, no Composer, no Node.js, and no SSH access
 required.
 
-## What's included
+## Navigation
 
-- **Auth & roles** — admin / manager / staff, session-based login.
-- **Inventory** — products, categories, stock movements, low-stock alerts.
-- **Sales / CRM** — customers, sales orders with a pending → confirmed →
-  shipped → completed workflow (confirming an order deducts stock;
-  cancelling a confirmed/shipped order restores it).
-- **Purchases** — vendors, purchase orders with a pending → ordered →
-  received workflow (receiving adds stock).
-- **Accounting** — invoices (standalone or generated from a sales order),
-  printable invoice view, payments with automatic unpaid → partially paid →
-  paid status, and expense tracking.
-- **HR** — departments, employees, daily attendance, leave requests with
-  approval.
-- **Reports** — sales, inventory, purchases, and a financial (revenue vs.
-  expenses) report, each with charts.
-- **Admin** — user management and company settings (name, currency, tax).
+The app is organized as 8 modules. The main sidebar (and the dashboard's
+launcher cards) list only the modules; clicking one takes you into that
+module, where the sidebar switches to show just that module's own
+features/doctypes plus a "‹ All Modules" link back to the top level.
+
+- **Inventory** (`inventory/`) — products, categories, inventory valuation.
+- **Supply Chain** (`supply-chain/`) — stock movements / stock entries
+  (the audit trail of goods flowing in, out, or adjusted).
+- **Procurement** (`purchases/`) — vendors, purchase orders with a
+  pending → ordered → received workflow (receiving adds stock).
+- **Sales** (`sales/`) — sales orders with a pending → confirmed →
+  shipped → completed workflow (confirming deducts stock; cancelling a
+  confirmed/shipped order restores it).
+- **POS** (`pos/`) — a point-of-sale checkout screen: tap products to
+  build a cart, charge a customer (defaults to an auto-created "Walk-in
+  Customer"), and it completes the sale, deducts stock, generates a paid
+  invoice, and prints a receipt in one step.
+- **HRMS** (`hr/`) — departments, employees, daily attendance, leave
+  requests with approval.
+- **CRM** (`crm/`) — customers.
+- **Finance** (`accounting/`) — invoices (standalone or generated from a
+  sales order), printable invoice view, payments with automatic
+  unpaid → partially paid → paid status, and expense tracking.
+
+Each module has its own dashboard (KPIs + recent activity) as its landing
+page. Reports live under `reports/` and are linked from their relevant
+module's sidebar. User management and company settings (admin-only) are
+reached from the top-right account menu rather than the module list, since
+they aren't a business module.
+
+Auth is session-based with three roles (admin / manager / staff).
 
 ## Deploying on Hostinger via File Manager
 

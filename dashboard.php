@@ -44,6 +44,17 @@ $page_title = 'Dashboard';
 require __DIR__ . '/includes/header.php';
 ?>
 <div class="row g-3 mb-3">
+  <?php foreach ($MODULES as $mod): ?>
+    <div class="col-6 col-sm-4 col-lg-3">
+      <a href="<?= base_url($mod['home']) ?>" class="module-card">
+        <div class="module-card-icon"><i class="<?= e($mod['icon']) ?>"></i></div>
+        <div class="module-card-label"><?= e($mod['label']) ?></div>
+      </a>
+    </div>
+  <?php endforeach; ?>
+</div>
+
+<div class="row g-3 mb-3">
   <div class="col-sm-6 col-lg-3">
     <div class="stat-card">
       <div class="icon bg-brand"><i class="fa-solid fa-sack-dollar"></i></div>

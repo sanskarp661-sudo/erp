@@ -36,7 +36,7 @@ if (is_post()) {
                 ->execute([$productId, $type, $delta, $reference, $notes, current_user()['id']]);
             $pdo->commit();
             flash('success', 'Stock movement recorded.');
-            redirect('/inventory/stock_movements.php');
+            redirect('/supply-chain/stock_movements.php');
         } catch (Exception $e) {
             $pdo->rollBack();
             $error = 'Could not record stock movement.';
