@@ -5,6 +5,14 @@ designed to run on ordinary shared hosting (including **Hostinger's File
 Manager**), with no build step, no Composer, no Node.js, and no SSH access
 required.
 
+## Updating an existing deployment
+
+If you already deployed this app and are pulling in a newer version, check
+`database/migrations/` for any `.sql` files you haven't run yet against your
+live database (via phpMyAdmin) before re-uploading the application files —
+they're numbered in order and safe to re-run (idempotent). Fresh installs
+don't need them; `database/schema.sql` already includes everything.
+
 ## Navigation
 
 The app is organized as 8 modules. The main sidebar (and the dashboard's

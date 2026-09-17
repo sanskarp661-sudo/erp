@@ -257,6 +257,23 @@ body {
 }
 .module-card-label { font-weight: 600; font-size: .92rem; text-align: center; }
 
+/* ---------- Activity feed (User page) ---------- */
+.activity-feed li {
+  position: relative;
+  padding: 0 0 14px 18px;
+  border-left: 2px solid var(--card-border);
+  font-size: .86rem;
+}
+.activity-feed li:last-child { border-left-color: transparent; padding-bottom: 0; }
+.activity-feed li::before {
+  content: '';
+  position: absolute;
+  left: -5px; top: 4px;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--brand);
+}
+
 /* ---------- POS ---------- */
 .pos-card {
   min-height: 90px;

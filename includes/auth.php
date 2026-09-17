@@ -28,6 +28,12 @@ function require_login(): void
         $_SESSION['redirect_after_login'] = $_SERVER['REQUEST_URI'] ?? '';
         redirect('/login.php');
     }
+
+    $path = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?? '';
+    $exempt = str_contains($path, '/users/change_password.php') || str_contains($path, '/logout.php');
+    if (!$exempt && !empty(current_user()['must_change_password'])) {
+        redirect('/users/change_password.php');
+    }
 }
 
 /** @param string[] $roles Allowed roles, e.g. ['admin','manager'] */
@@ -62,10 +68,11 @@ function attempt_login(string $email, string $password): bool
 
     session_regenerate_id(true);
     $_SESSION['user'] = [
-        'id'    => $user['id'],
-        'name'  => $user['name'],
-        'email' => $user['email'],
-        'role'  => $user['role'],
+        'id'                   => $user['id'],
+        'name'                 => $user['name'],
+        'email'                => $user['email'],
+        'role'                 => $user['role'],
+        'must_change_password' => (bool)$user['must_change_password'],
     ];
 
     return true;

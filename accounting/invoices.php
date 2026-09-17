@@ -5,17 +5,33 @@ require_login();
 // Lazily flag invoices whose due date has passed as overdue.
 db()->exec("UPDATE invoices SET status='overdue' WHERE due_date IS NOT NULL AND due_date < CURDATE() AND status IN ('unpaid','partially_paid')");
 
-$invoices = db()->query("
-  SELECT i.*, c.name customer_name
-  FROM invoices i JOIN customers c ON c.id = i.customer_id
-  ORDER BY i.id DESC
-")->fetchAll();
+$userFilter = (int)input('user');
+$userFilterName = null;
+$sql = "SELECT i.*, c.name customer_name FROM invoices i JOIN customers c ON c.id = i.customer_id";
+$params = [];
+if ($userFilter) {
+    $sql .= " WHERE i.created_by = ?";
+    $params[] = $userFilter;
+    $stmt = db()->prepare('SELECT name FROM users WHERE id = ?');
+    $stmt->execute([$userFilter]);
+    $userFilterName = $stmt->fetchColumn();
+}
+$sql .= " ORDER BY i.id DESC";
+$stmt = db()->prepare($sql);
+$stmt->execute($params);
+$invoices = $stmt->fetchAll();
 
 $badge = ['unpaid' => 'secondary', 'partially_paid' => 'warning', 'paid' => 'success', 'overdue' => 'danger', 'cancelled' => 'dark'];
 
 $page_title = 'Invoices';
 require __DIR__ . '/../includes/header.php';
 ?>
+<?php if ($userFilter): ?>
+  <div class="alert alert-info d-flex justify-content-between align-items-center">
+    <span>Showing invoices created by <strong><?= e($userFilterName ?: 'Unknown user') ?></strong></span>
+    <a href="invoices.php" class="btn btn-sm btn-outline-secondary">Clear filter</a>
+  </div>
+<?php endif; ?>
 <div class="d-flex justify-content-between align-items-center mb-3">
   <input type="text" class="form-control" style="max-width:280px" placeholder="Search invoices..." data-table-search="#invTable">
   <a href="invoice_form.php" class="btn btn-brand"><i class="fa-solid fa-plus"></i> New Invoice</a>

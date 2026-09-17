@@ -2,17 +2,33 @@
 require_once __DIR__ . '/../includes/auth.php';
 require_login();
 
-$orders = db()->query("
-  SELECT po.*, v.name vendor_name
-  FROM purchase_orders po JOIN vendors v ON v.id = po.vendor_id
-  ORDER BY po.id DESC
-")->fetchAll();
+$userFilter = (int)input('user');
+$userFilterName = null;
+$sql = "SELECT po.*, v.name vendor_name FROM purchase_orders po JOIN vendors v ON v.id = po.vendor_id";
+$params = [];
+if ($userFilter) {
+    $sql .= " WHERE po.created_by = ?";
+    $params[] = $userFilter;
+    $stmt = db()->prepare('SELECT name FROM users WHERE id = ?');
+    $stmt->execute([$userFilter]);
+    $userFilterName = $stmt->fetchColumn();
+}
+$sql .= " ORDER BY po.id DESC";
+$stmt = db()->prepare($sql);
+$stmt->execute($params);
+$orders = $stmt->fetchAll();
 
 $badge = ['pending' => 'secondary', 'ordered' => 'info', 'received' => 'success', 'cancelled' => 'danger'];
 
 $page_title = 'Purchase Orders';
 require __DIR__ . '/../includes/header.php';
 ?>
+<?php if ($userFilter): ?>
+  <div class="alert alert-info d-flex justify-content-between align-items-center">
+    <span>Showing purchase orders created by <strong><?= e($userFilterName ?: 'Unknown user') ?></strong></span>
+    <a href="orders.php" class="btn btn-sm btn-outline-secondary">Clear filter</a>
+  </div>
+<?php endif; ?>
 <div class="d-flex justify-content-between align-items-center mb-3">
   <input type="text" class="form-control" style="max-width:280px" placeholder="Search purchase orders..." data-table-search="#poTable">
   <a href="order_form.php" class="btn btn-brand"><i class="fa-solid fa-plus"></i> New Purchase Order</a>

@@ -10,16 +10,56 @@ SET FOREIGN_KEY_CHECKS = 0;
 CREATE TABLE IF NOT EXISTS users (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(120) NOT NULL,
+  first_name VARCHAR(80) NOT NULL DEFAULT '',
+  middle_name VARCHAR(80) DEFAULT NULL,
+  last_name VARCHAR(80) DEFAULT NULL,
+  username VARCHAR(60) DEFAULT NULL UNIQUE,
+  language VARCHAR(20) NOT NULL DEFAULT 'en',
+  time_zone VARCHAR(60) NOT NULL DEFAULT 'UTC',
+  mobile_no VARCHAR(40) DEFAULT NULL,
+  phone VARCHAR(40) DEFAULT NULL,
+  address VARCHAR(255) DEFAULT NULL,
+  bio VARCHAR(500) DEFAULT NULL,
+  must_change_password TINYINT(1) NOT NULL DEFAULT 0,
   email VARCHAR(150) NOT NULL UNIQUE,
   password_hash VARCHAR(255) NOT NULL,
   role ENUM('admin','manager','staff') NOT NULL DEFAULT 'staff',
   status ENUM('active','inactive') NOT NULL DEFAULT 'active',
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS settings (
   setting_key VARCHAR(80) PRIMARY KEY,
   setting_value TEXT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Generic activity log and comments, keyed by (entity_type, entity_id) so
+-- they can be reused for any record — currently only wired up for users.
+CREATE TABLE IF NOT EXISTS activity_log (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  entity_type VARCHAR(40) NOT NULL,
+  entity_id INT UNSIGNED NOT NULL,
+  actor_id INT UNSIGNED DEFAULT NULL,
+  action VARCHAR(30) NOT NULL,
+  field_name VARCHAR(80) DEFAULT NULL,
+  old_value VARCHAR(255) DEFAULT NULL,
+  new_value VARCHAR(255) DEFAULT NULL,
+  description VARCHAR(255) DEFAULT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_entity (entity_type, entity_id),
+  FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS comments (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  entity_type VARCHAR(40) NOT NULL,
+  entity_id INT UNSIGNED NOT NULL,
+  author_id INT UNSIGNED DEFAULT NULL,
+  body TEXT NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_entity (entity_type, entity_id),
+  FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ---------------------------------------------------------------------
@@ -254,8 +294,11 @@ SET FOREIGN_KEY_CHECKS = 1;
 
 -- Default admin login: admin@example.com / Admin@123
 -- (password_hash for 'Admin@123' using PHP password_hash/BCRYPT)
-INSERT INTO users (name, email, password_hash, role, status) VALUES
-('Administrator', 'admin@example.com', '$2y$12$FGHd5COVc9dRpxaOLavEBeAt1b4DTscuTkJ78Vpr.oojbAyBxH8za', 'admin', 'active');
+INSERT INTO users (name, first_name, email, password_hash, role, status) VALUES
+('Administrator', 'Administrator', 'admin@example.com', '$2y$12$FGHd5COVc9dRpxaOLavEBeAt1b4DTscuTkJ78Vpr.oojbAyBxH8za', 'admin', 'active');
+
+INSERT INTO activity_log (entity_type, entity_id, actor_id, action, description) VALUES
+('user', 1, 1, 'created', 'Administrator created this');
 
 INSERT INTO settings (setting_key, setting_value) VALUES
 ('company_name', 'My Company'),

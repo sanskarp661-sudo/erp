@@ -2,17 +2,31 @@
 require_once __DIR__ . '/../includes/auth.php';
 require_login();
 
-$movements = db()->query("
-  SELECT sm.*, p.name product_name, p.sku, u.name user_name
-  FROM stock_movements sm
-  JOIN products p ON p.id = sm.product_id
-  LEFT JOIN users u ON u.id = sm.created_by
-  ORDER BY sm.id DESC LIMIT 200
-")->fetchAll();
+$userFilter = (int)input('user');
+$userFilterName = null;
+$sql = "SELECT sm.*, p.name product_name, p.sku, u.name user_name FROM stock_movements sm JOIN products p ON p.id = sm.product_id LEFT JOIN users u ON u.id = sm.created_by";
+$params = [];
+if ($userFilter) {
+    $sql .= " WHERE sm.created_by = ?";
+    $params[] = $userFilter;
+    $stmt = db()->prepare('SELECT name FROM users WHERE id = ?');
+    $stmt->execute([$userFilter]);
+    $userFilterName = $stmt->fetchColumn();
+}
+$sql .= " ORDER BY sm.id DESC LIMIT 200";
+$stmt = db()->prepare($sql);
+$stmt->execute($params);
+$movements = $stmt->fetchAll();
 
 $page_title = 'Stock Movements';
 require __DIR__ . '/../includes/header.php';
 ?>
+<?php if ($userFilter): ?>
+  <div class="alert alert-info d-flex justify-content-between align-items-center">
+    <span>Showing movements logged by <strong><?= e($userFilterName ?: 'Unknown user') ?></strong></span>
+    <a href="stock_movements.php" class="btn btn-sm btn-outline-secondary">Clear filter</a>
+  </div>
+<?php endif; ?>
 <div class="d-flex justify-content-between align-items-center mb-3">
   <input type="text" class="form-control" style="max-width:280px" placeholder="Search movements..." data-table-search="#moveTable">
   <a href="stock_adjust.php" class="btn btn-brand"><i class="fa-solid fa-plus"></i> New Stock Movement</a>

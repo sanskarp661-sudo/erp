@@ -10,15 +10,33 @@ if (is_post() && input('action') === 'delete') {
     redirect('/accounting/expenses.php');
 }
 
-$expenses = db()->query("
-  SELECT e.*, u.name user_name FROM expenses e LEFT JOIN users u ON u.id = e.created_by ORDER BY e.expense_date DESC, e.id DESC
-")->fetchAll();
+$userFilter = (int)input('user');
+$userFilterName = null;
+$sql = "SELECT e.*, u.name user_name FROM expenses e LEFT JOIN users u ON u.id = e.created_by";
+$params = [];
+if ($userFilter) {
+    $sql .= " WHERE e.created_by = ?";
+    $params[] = $userFilter;
+    $stmt = db()->prepare('SELECT name FROM users WHERE id = ?');
+    $stmt->execute([$userFilter]);
+    $userFilterName = $stmt->fetchColumn();
+}
+$sql .= " ORDER BY e.expense_date DESC, e.id DESC";
+$stmt = db()->prepare($sql);
+$stmt->execute($params);
+$expenses = $stmt->fetchAll();
 
 $total = array_sum(array_column($expenses, 'amount'));
 
 $page_title = 'Expenses';
 require __DIR__ . '/../includes/header.php';
 ?>
+<?php if ($userFilter): ?>
+  <div class="alert alert-info d-flex justify-content-between align-items-center">
+    <span>Showing expenses recorded by <strong><?= e($userFilterName ?: 'Unknown user') ?></strong></span>
+    <a href="expenses.php" class="btn btn-sm btn-outline-secondary">Clear filter</a>
+  </div>
+<?php endif; ?>
 <div class="d-flex justify-content-between align-items-center mb-3">
   <input type="text" class="form-control" style="max-width:280px" placeholder="Search expenses..." data-table-search="#expTable">
   <a href="expense_form.php" class="btn btn-brand"><i class="fa-solid fa-plus"></i> Add Expense</a>
