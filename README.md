@@ -33,7 +33,10 @@ features/doctypes plus a "‹ All Modules" link back to the top level.
   Customer"), and it completes the sale, deducts stock, generates a paid
   invoice, and prints a receipt in one step.
 - **HRMS** (`hr/`) — departments, employees, daily attendance, leave
-  requests with approval.
+  requests with approval, and salary slips (admin/manager only):
+  generate a payslip per employee per month with itemized earnings and
+  deductions, mark it paid (which also records the net pay as a
+  "Payroll" expense under Finance), and print it.
 - **CRM** (`crm/`) — customers.
 - **Finance** (`accounting/`) — invoices (standalone or generated from a
   sales order), printable invoice view, payments with automatic

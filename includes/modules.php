@@ -4,7 +4,14 @@
  * appear in each module's own sidebar. includes/header.php uses this to
  * decide whether to show the module list (top level) or a module's
  * feature list (once inside a module), based on the current URL path.
+ *
+ * Declared `global` explicitly: includes/auth.php's require_role() renders
+ * the 403 page by `require`-ing header.php from inside a function body, so
+ * without this, a plain top-level `$MODULES = [...]` would land in that
+ * function's local scope instead of the global scope current_module_key()
+ * reads from.
  */
+global $MODULES, $ADMIN_ITEMS;
 
 $MODULES = [
     'inventory' => [
@@ -80,6 +87,7 @@ $MODULES = [
             ['label' => 'Departments',  'icon' => 'fa-solid fa-sitemap',         'url' => 'hr/departments.php', 'match' => 'hr/department'],
             ['label' => 'Attendance',   'icon' => 'fa-solid fa-calendar-check',  'url' => 'hr/attendance.php',  'match' => 'hr/attendance'],
             ['label' => 'Leaves',       'icon' => 'fa-solid fa-plane-departure', 'url' => 'hr/leaves.php',      'match' => 'hr/leave'],
+            ['label' => 'Salary Slips', 'icon' => 'fa-solid fa-money-check-dollar', 'url' => 'hr/salary_slips.php', 'match' => 'hr/salary_slip', 'roles' => ['admin', 'manager']],
         ],
     ],
     'crm' => [

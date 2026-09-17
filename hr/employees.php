@@ -40,6 +40,7 @@ require __DIR__ . '/../includes/header.php';
           <?php if ($canSeeSalary): ?><td class="text-end"><?= money($emp['salary']) ?></td><?php endif; ?>
           <td><span class="badge text-bg-<?= $emp['status'] === 'active' ? 'success' : 'secondary' ?> badge-status"><?= e($emp['status']) ?></span></td>
           <td class="text-end">
+            <?php if ($canSeeSalary): ?><a href="salary_slips.php?employee=<?= (int)$emp['id'] ?>" class="btn btn-sm btn-outline-secondary" title="Salary Slips"><i class="fa-solid fa-money-check-dollar"></i></a><?php endif; ?>
             <a href="employee_form.php?id=<?= (int)$emp['id'] ?>" class="btn btn-sm btn-outline-secondary"><i class="fa-solid fa-pen"></i></a>
             <form method="post" class="d-inline" data-confirm="Delete this employee?">
               <?= csrf_field() ?>

@@ -48,6 +48,7 @@ function nav_active(string $needle, string $current): string
         <a href="<?= base_url('dashboard.php') ?>" class="back-link"><i class="fa-solid fa-arrow-left"></i> All Modules</a>
         <div class="nav-section"><i class="<?= e($mod['icon']) ?>"></i> <?= e($mod['label']) ?></div>
         <?php foreach ($mod['items'] as $item): ?>
+          <?php if (isset($item['roles']) && !in_array($user['role'], $item['roles'], true)) continue; ?>
           <a href="<?= base_url($item['url']) ?>" class="<?= nav_active($item['match'], $current_path) ?>"><i class="<?= e($item['icon']) ?>"></i> <?= e($item['label']) ?></a>
         <?php endforeach; ?>
 
