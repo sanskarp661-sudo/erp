@@ -2,6 +2,28 @@
 
 Options -Indexes
 
+# Block access to .git and any other dotfile/dot-directory anywhere in the
+# project. This matters most if this repo is ever deployed by pointing a
+# host's Git integration straight at the web root: without this, the .git
+# folder would sit inside a web-servable directory and its full history
+# (including anything ever committed, even if later reverted) could be
+# reconstructed by anyone who requests known paths like .git/HEAD.
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule "(^|/)\." - [F]
+</IfModule>
+<IfModule !mod_rewrite.c>
+    <FilesMatch "^\.">
+        <IfModule mod_authz_core.c>
+            Require all denied
+        </IfModule>
+        <IfModule !mod_authz_core.c>
+            Order allow,deny
+            Deny from all
+        </IfModule>
+    </FilesMatch>
+</IfModule>
+
 # Block direct access to sensitive file types anywhere in the project
 <FilesMatch "\.(sql|log|md|sh|ini|bak|env)$">
     <IfModule mod_authz_core.c>
