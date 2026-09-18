@@ -73,9 +73,60 @@ function pf_common_tokens(): array
 {
     return [
         'company_name' => e(setting('company_name', APP_NAME)),
+        'company_address' => nl2br(e(setting('company_address', ''))),
+        'company_phone' => e(setting('company_phone', '')),
+        'company_email' => e(setting('company_email', '')),
+        'company_tax_id' => e(setting('company_tax_id', '')),
         'currency_symbol' => e(setting('currency_symbol', '$')),
         'today' => e(date('M j, Y')),
     ];
+}
+
+/** Spells out a decimal amount in words, e.g. 45620.50 => "Forty-Five Thousand Six Hundred Twenty and 50/100 Only". */
+function pf_number_to_words(float $amount): string
+{
+    $ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',
+        'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+    $tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+
+    $threeDigits = function (int $n) use ($ones, $tens): string {
+        $parts = [];
+        if ($n >= 100) {
+            $parts[] = $ones[intdiv($n, 100)] . ' Hundred';
+            $n %= 100;
+        }
+        if ($n >= 20) {
+            $word = $tens[intdiv($n, 10)];
+            $n %= 10;
+            $parts[] = $n ? $word . '-' . $ones[$n] : $word;
+        } elseif ($n > 0) {
+            $parts[] = $ones[$n];
+        }
+        return implode(' ', $parts);
+    };
+
+    $whole = (int)floor(abs($amount));
+    $cents = (int)round((abs($amount) - $whole) * 100);
+
+    if ($whole === 0) {
+        $words = 'Zero';
+    } else {
+        $scales = ['', ' Thousand', ' Million', ' Billion'];
+        $chunks = [];
+        $n = $whole;
+        $i = 0;
+        while ($n > 0) {
+            $chunk = $n % 1000;
+            if ($chunk > 0) {
+                $chunks[] = $threeDigits($chunk) . $scales[$i];
+            }
+            $n = intdiv($n, 1000);
+            $i++;
+        }
+        $words = implode(' ', array_reverse($chunks));
+    }
+
+    return trim($words) . ' and ' . str_pad((string)$cents, 2, '0', STR_PAD_LEFT) . '/100 Only';
 }
 
 /**
@@ -99,7 +150,7 @@ function pf_doctypes(): array
             'label' => 'Sales Invoice',
             'roles' => null,
             'fetch' => function (int $id): ?array {
-                $stmt = db()->prepare('SELECT i.*, c.name customer_name, c.email customer_email, c.phone customer_phone, c.address customer_address FROM invoices i JOIN customers c ON c.id = i.customer_id WHERE i.id = ?');
+                $stmt = db()->prepare('SELECT i.*, c.name customer_name, c.email customer_email, c.phone customer_phone, c.address customer_address, so.order_no reference_order_no FROM invoices i JOIN customers c ON c.id = i.customer_id LEFT JOIN sales_orders so ON so.id = i.sales_order_id WHERE i.id = ?');
                 $stmt->execute([$id]);
                 $inv = $stmt->fetch();
                 if (!$inv) return null;
@@ -115,6 +166,7 @@ function pf_doctypes(): array
 
                 return pf_common_tokens() + [
                     'invoice_no' => e($inv['invoice_no']),
+                    'reference_order_no' => e($inv['reference_order_no'] ?? ''),
                     'invoice_date' => e($inv['invoice_date']),
                     'due_date' => e($inv['due_date'] ?? ''),
                     'status' => e(str_replace('_', ' ', ucfirst($inv['status']))),
@@ -135,10 +187,11 @@ function pf_doctypes(): array
                 ];
             },
             'tokens' => [
-                'invoice_no' => 'Invoice number', 'invoice_date' => 'Invoice date', 'due_date' => 'Due date', 'status' => 'Status',
+                'invoice_no' => 'Invoice number', 'reference_order_no' => 'Linked sales order number (blank if none)', 'invoice_date' => 'Invoice date', 'due_date' => 'Due date', 'status' => 'Status',
                 'customer_name' => 'Customer name', 'customer_email' => 'Customer email', 'customer_phone' => 'Customer phone', 'customer_address' => 'Customer address',
                 'items_table' => 'Line items table', 'subtotal' => 'Subtotal', 'tax' => 'Tax', 'total' => 'Total',
                 'amount_paid' => 'Amount paid', 'balance_due' => 'Balance due', 'notes' => 'Notes',
+                'company_address' => 'Company address', 'company_phone' => 'Company phone', 'company_email' => 'Company email', 'company_tax_id' => 'Company tax ID / GSTIN',
             ],
             'default' => pf_default_invoice_template(),
         ],
@@ -312,8 +365,9 @@ function pf_doctypes(): array
                 'order_no' => 'PO number', 'order_date' => 'Order date', 'status' => 'Status',
                 'customer_name' => 'Vendor name', 'customer_email' => 'Vendor email', 'customer_phone' => 'Vendor phone', 'customer_address' => 'Vendor address',
                 'items_table' => 'Line items table', 'total' => 'Total', 'notes' => 'Notes',
+                'company_address' => 'Company address', 'company_phone' => 'Company phone', 'company_email' => 'Company email', 'company_tax_id' => 'Company tax ID / GSTIN',
             ],
-            'default' => pf_default_order_template('Purchase Order', '{{order_no}}', '{{customer_name}}'),
+            'default' => pf_default_purchase_order_template(),
         ],
 
         'salary_slip' => [
@@ -342,6 +396,17 @@ function pf_doctypes(): array
                 }
                 $cols = [['key' => 'description', 'label' => 'Component'], ['key' => 'amount', 'label' => 'Amount', 'align' => 'right']];
 
+                $payDays = (int)((strtotime($s['pay_period_end']) - strtotime($s['pay_period_start'])) / 86400) + 1;
+
+                $ytd = db()->prepare("
+                  SELECT COALESCE(SUM(total_earnings),0) gross, COALESCE(SUM(total_deductions),0) ded, COALESCE(SUM(net_pay),0) net
+                  FROM salary_slips
+                  WHERE employee_id = ? AND status = 'paid'
+                    AND YEAR(pay_period_end) = YEAR(?) AND pay_period_end <= ?
+                ");
+                $ytd->execute([$s['employee_id'], $s['pay_period_end'], $s['pay_period_end']]);
+                $y = $ytd->fetch();
+
                 return pf_common_tokens() + [
                     'slip_no' => e($s['slip_no']),
                     'employee_name' => e($s['employee_name']),
@@ -349,19 +414,29 @@ function pf_doctypes(): array
                     'designation' => e($s['designation'] ?? ''),
                     'department_name' => e($s['department_name'] ?? ''),
                     'pay_period' => e(date('M j', strtotime($s['pay_period_start']))) . ' &ndash; ' . e(date('M j, Y', strtotime($s['pay_period_end']))),
+                    'pay_month' => e(date('F Y', strtotime($s['pay_period_end']))),
+                    'pay_days' => $payDays,
                     'status' => e(ucfirst($s['status'])),
                     'earnings_table' => pf_table($cols, $earnRows),
                     'deductions_table' => pf_table($cols, $dedRows),
                     'total_earnings' => money($s['total_earnings']),
                     'total_deductions' => money($s['total_deductions']),
                     'net_pay' => money($s['net_pay']),
+                    'net_pay_words' => e(pf_number_to_words((float)$s['net_pay'])),
+                    'ytd_gross' => money($y['gross']),
+                    'ytd_deductions' => money($y['ded']),
+                    'ytd_net' => money($y['net']),
                 ];
             },
             'tokens' => [
                 'slip_no' => 'Slip number', 'employee_name' => 'Employee name', 'employee_code' => 'Employee code',
-                'designation' => 'Designation', 'department_name' => 'Department', 'pay_period' => 'Pay period', 'status' => 'Status',
+                'designation' => 'Designation', 'department_name' => 'Department', 'pay_period' => 'Pay period (range)',
+                'pay_month' => 'Pay period (month name)', 'pay_days' => 'Days in pay period', 'status' => 'Status',
                 'earnings_table' => 'Earnings table', 'deductions_table' => 'Deductions table',
                 'total_earnings' => 'Total earnings', 'total_deductions' => 'Total deductions', 'net_pay' => 'Net pay',
+                'net_pay_words' => 'Net pay spelled out in words',
+                'ytd_gross' => 'Year-to-date gross earnings (paid slips)', 'ytd_deductions' => 'Year-to-date deductions (paid slips)', 'ytd_net' => 'Year-to-date net pay (paid slips)',
+                'company_address' => 'Company address', 'company_phone' => 'Company phone', 'company_email' => 'Company email', 'company_tax_id' => 'Company tax ID / GSTIN',
             ],
             'default' => pf_default_salary_slip_template(),
         ],
@@ -374,39 +449,52 @@ function pf_default_invoice_template(): string
 {
     return <<<HTML
 <div class="pf-header">
-  <div><div class="pf-brand">{{company_name}}</div><div class="pf-subtitle">Invoice</div></div>
-  <div class="pf-right"><div class="pf-doc-no">{{invoice_no}}</div><div>Date: {{invoice_date}}</div><div>Due: {{due_date}}</div></div>
+  <div class="pf-company-block">
+    <div class="pf-brand">{{company_name}}</div>
+    <div class="pf-company-meta">{{company_address}}<br>{{company_phone}} &middot; {{company_email}}<br>{{company_tax_id}}</div>
+  </div>
+  <div class="pf-right">
+    <div class="pf-subtitle" style="font-size:1.2rem;font-weight:700;letter-spacing:.06em;color:#111827">INVOICE</div>
+    <table class="pf-meta-table">
+      <tr><th>Invoice #</th><td>{{invoice_no}}</td></tr>
+      <tr><th>Date</th><td>{{invoice_date}}</td></tr>
+      <tr><th>Due Date</th><td>{{due_date}}</td></tr>
+      <tr><th>Order Ref</th><td>{{reference_order_no}}</td></tr>
+      <tr><th>Status</th><td>{{status}}</td></tr>
+    </table>
+  </div>
 </div>
-<div class="pf-section"><strong>Bill To:</strong><br>{{customer_name}}<br>{{customer_address}}<br>{{customer_email}} {{customer_phone}}</div>
+<div class="pf-section"><strong>Bill To</strong><br>{{customer_name}}<br>{{customer_address}}<br>{{customer_email}} {{customer_phone}}</div>
 {{items_table}}
 <table class="pf-totals">
   <tr><th>Subtotal</th><td>{{subtotal}}</td></tr>
   <tr><th>Tax</th><td>{{tax}}</td></tr>
-  <tr><th>Total</th><td>{{total}}</td></tr>
-  <tr><th>Paid</th><td>{{amount_paid}}</td></tr>
-  <tr class="pf-highlight"><th>Balance Due</th><td>{{balance_due}}</td></tr>
+  <tr class="pf-highlight"><th>Total</th><td>{{total}}</td></tr>
+  <tr><th>Amount Paid</th><td>{{amount_paid}}</td></tr>
+  <tr><th>Balance Due</th><td>{{balance_due}}</td></tr>
 </table>
 <div class="pf-section">{{notes}}</div>
+<div class="pf-signature">
+  <div></div>
+  <div class="pf-sign-box">Authorized Signature</div>
+</div>
+<div class="pf-footer-note">Thank you for your business &middot; {{company_name}}</div>
 HTML;
 }
 
 function pf_default_product_template(): string
 {
     return <<<HTML
-<div class="pf-header">
-  <div><div class="pf-brand">{{company_name}}</div><div class="pf-subtitle">Item Card</div></div>
-  <div class="pf-right"><div class="pf-doc-no">{{sku}}</div></div>
+<div class="pf-tag-card">
+  <div class="pf-brand">{{company_name}}</div>
+  <div class="pf-tag-name">{{name}}</div>
+  <div class="pf-tag-sku">{{sku}}</div>
+  <div><span class="pf-tag-category">{{category_name}}</span></div>
+  <div class="pf-tag-price">{{selling_price}}</div>
+  <div class="pf-tag-unit">per {{unit}}</div>
+  <hr>
+  <div class="pf-tag-foot"><span>Stock: {{quantity}}</span><span>Status: {{status}}</span></div>
 </div>
-<table class="pf-totals">
-  <tr><th>Name</th><td>{{name}}</td></tr>
-  <tr><th>Category</th><td>{{category_name}}</td></tr>
-  <tr><th>Unit</th><td>{{unit}}</td></tr>
-  <tr><th>Cost Price</th><td>{{cost_price}}</td></tr>
-  <tr><th>Selling Price</th><td>{{selling_price}}</td></tr>
-  <tr><th>Quantity in Stock</th><td>{{quantity}}</td></tr>
-  <tr><th>Reorder Level</th><td>{{reorder_level}}</td></tr>
-  <tr><th>Status</th><td>{{status}}</td></tr>
-</table>
 HTML;
 }
 
@@ -428,6 +516,35 @@ function pf_default_party_template(string $label): string
 HTML;
 }
 
+function pf_default_purchase_order_template(): string
+{
+    return <<<HTML
+<div class="pf-header">
+  <div class="pf-company-block">
+    <div class="pf-brand">{{company_name}}</div>
+    <div class="pf-company-meta">{{company_address}}<br>{{company_phone}} &middot; {{company_email}}<br>{{company_tax_id}}</div>
+  </div>
+  <div class="pf-right">
+    <div class="pf-subtitle" style="font-size:1.2rem;font-weight:700;letter-spacing:.06em;color:#111827">PURCHASE ORDER</div>
+    <table class="pf-meta-table">
+      <tr><th>PO #</th><td>{{order_no}}</td></tr>
+      <tr><th>Date</th><td>{{order_date}}</td></tr>
+      <tr><th>Status</th><td>{{status}}</td></tr>
+    </table>
+  </div>
+</div>
+<div class="pf-section"><strong>Vendor</strong><br>{{customer_name}}<br>{{customer_address}}<br>{{customer_email}} {{customer_phone}}</div>
+{{items_table}}
+<table class="pf-totals"><tr class="pf-highlight"><th>Total</th><td>{{total}}</td></tr></table>
+<div class="pf-section">{{notes}}</div>
+<div class="pf-signature">
+  <div></div>
+  <div class="pf-sign-box">Authorized Signature</div>
+</div>
+<div class="pf-footer-note">{{company_name}} &middot; Purchase Order {{order_no}}</div>
+HTML;
+}
+
 function pf_default_order_template(string $label, string $noToken, string $partyToken): string
 {
     return <<<HTML
@@ -445,17 +562,38 @@ HTML;
 function pf_default_salary_slip_template(): string
 {
     return <<<HTML
-<div class="pf-header">
-  <div><div class="pf-brand">{{company_name}}</div><div class="pf-subtitle">Payslip</div></div>
-  <div class="pf-right"><div class="pf-doc-no">{{slip_no}}</div><div>Period: {{pay_period}}</div><div>Status: {{status}}</div></div>
+<div class="pf-center pf-section">
+  <div class="pf-brand">{{company_name}}</div>
+  <div class="pf-company-meta">{{company_address}}<br>{{company_phone}} &middot; {{company_email}} &middot; {{company_tax_id}}</div>
+  <div class="pf-badge-period">Pay Slip for {{pay_month}}</div>
 </div>
-<div class="pf-section"><strong>Employee:</strong> {{employee_name}} ({{employee_code}})<br>{{designation}} &middot; {{department_name}}</div>
-{{earnings_table}}
-{{deductions_table}}
+<div class="pf-info-grid">
+  <div>
+    <div class="pf-info-row"><span class="pf-info-label">Employee Name</span><span class="pf-info-value">{{employee_name}}</span></div>
+    <div class="pf-info-row"><span class="pf-info-label">Employee Code</span><span class="pf-info-value">{{employee_code}}</span></div>
+    <div class="pf-info-row"><span class="pf-info-label">Designation</span><span class="pf-info-value">{{designation}}</span></div>
+  </div>
+  <div>
+    <div class="pf-info-row"><span class="pf-info-label">Department</span><span class="pf-info-value">{{department_name}}</span></div>
+    <div class="pf-info-row"><span class="pf-info-label">Pay Period</span><span class="pf-info-value">{{pay_period}}</span></div>
+    <div class="pf-info-row"><span class="pf-info-label">Pay Days</span><span class="pf-info-value">{{pay_days}}</span></div>
+  </div>
+</div>
+<div class="pf-two-col">
+  <div><strong>Earnings</strong>{{earnings_table}}</div>
+  <div><strong>Deductions</strong>{{deductions_table}}</div>
+</div>
 <table class="pf-totals">
   <tr><th>Total Earnings</th><td>{{total_earnings}}</td></tr>
   <tr><th>Total Deductions</th><td>{{total_deductions}}</td></tr>
   <tr class="pf-highlight"><th>Net Pay</th><td>{{net_pay}}</td></tr>
 </table>
+<div class="pf-words-line">Amount in Words: {{net_pay_words}}</div>
+<div class="pf-ytd-box">
+  <div><span class="pf-info-label">YTD Gross</span><strong>{{ytd_gross}}</strong></div>
+  <div><span class="pf-info-label">YTD Deductions</span><strong>{{ytd_deductions}}</strong></div>
+  <div><span class="pf-info-label">YTD Net</span><strong>{{ytd_net}}</strong></div>
+</div>
+<div class="pf-footer-note">This is a computer-generated payslip — {{slip_no}} &middot; Status: {{status}}</div>
 HTML;
 }

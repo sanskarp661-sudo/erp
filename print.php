@@ -77,6 +77,52 @@ $currentFormatId = $selectedFormat['id'] ?? 0;
   .pf-totals .pf-highlight { background: #fff3cd; font-weight: 700; font-size: 1.1rem; }
   .pf-toolbar { max-width: 800px; margin: 0 auto 24px; }
   .pf-content { max-width: 800px; margin: 0 auto; }
+
+  /* Company / document header block used by the redesigned invoice & PO templates */
+  .pf-company-block .pf-brand { font-size: 1.5rem; }
+  .pf-company-block .pf-company-meta { color: #6b7280; font-size: .85rem; line-height: 1.5; margin-top: 4px; }
+  .pf-meta-table { border-collapse: collapse; margin-left: auto; }
+  .pf-meta-table th, .pf-meta-table td { padding: 3px 8px; font-size: .88rem; }
+  .pf-meta-table th { text-align: left; color: #6b7280; font-weight: 600; white-space: nowrap; }
+  .pf-meta-table td { text-align: right; font-weight: 600; }
+
+  /* Two-column label/value grid (payslip employee info, party details) */
+  .pf-info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 24px; margin-bottom: 18px; font-size: .9rem; }
+  .pf-info-grid .pf-info-row { display: flex; justify-content: space-between; border-bottom: 1px dashed #e5e7eb; padding: 4px 0; }
+  .pf-info-grid .pf-info-label { color: #6b7280; }
+  .pf-info-grid .pf-info-value { font-weight: 600; text-align: right; }
+
+  /* Centered pill showing the document period */
+  .pf-badge-period { display: inline-block; margin: 6px auto 0; padding: 4px 18px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-weight: 700; font-size: .95rem; }
+  .pf-center { text-align: center; }
+
+  /* Side-by-side earnings/deductions tables */
+  .pf-two-col { display: flex; gap: 16px; margin-bottom: 18px; }
+  .pf-two-col > div { flex: 1; }
+  .pf-two-col .pf-table { margin-bottom: 0; }
+
+  /* Highlighted YTD summary box */
+  .pf-ytd-box { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 10px 14px; margin-bottom: 18px; font-size: .85rem; display: flex; justify-content: space-between; }
+  .pf-ytd-box strong { display: block; font-size: .95rem; }
+
+  .pf-words-line { font-style: italic; color: #374151; margin: 10px 0 18px; padding-top: 10px; border-top: 1px solid #dee2e6; }
+
+  .pf-signature { display: flex; justify-content: space-between; margin-top: 60px; }
+  .pf-signature .pf-sign-box { text-align: center; width: 200px; border-top: 1px solid #6b7280; padding-top: 6px; font-size: .85rem; color: #6b7280; }
+
+  .pf-footer-note { text-align: center; color: #9ca3af; font-size: .78rem; margin-top: 24px; }
+
+  /* Compact product tag / shelf-label card */
+  .pf-tag-card { max-width: 340px; margin: 0 auto; border: 2px dashed #cbd5e1; border-radius: 10px; padding: 22px; text-align: center; }
+  .pf-tag-card .pf-brand { font-size: .95rem; color: #6b7280; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+  .pf-tag-card .pf-tag-name { font-size: 1.3rem; font-weight: 700; margin: 8px 0 2px; }
+  .pf-tag-card .pf-tag-sku { font-family: ui-monospace, monospace; letter-spacing: .1em; color: #6b7280; font-size: .85rem; }
+  .pf-tag-card .pf-tag-category { display: inline-block; margin: 10px 0; padding: 3px 12px; border-radius: 999px; background: #f1f5f9; color: #475569; font-size: .78rem; font-weight: 600; }
+  .pf-tag-card .pf-tag-price { font-size: 2.4rem; font-weight: 800; color: #111827; margin: 10px 0 4px; }
+  .pf-tag-card .pf-tag-unit { color: #6b7280; font-size: .85rem; }
+  .pf-tag-card hr { margin: 14px 0; }
+  .pf-tag-card .pf-tag-foot { display: flex; justify-content: space-between; font-size: .78rem; color: #6b7280; }
+
   @media print { .no-print { display: none; } body { padding: 0; } .pf-content { max-width: none; } }
 </style>
 </head>

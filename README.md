@@ -104,7 +104,9 @@ Auth is session-based with three roles (admin / manager / staff).
    roles there.
 
 6. **Set your company details.** Under Administration → Settings, set your
-   company name, currency symbol, and default tax rate.
+   company name, currency symbol, default tax rate, and address/phone/email/
+   tax ID (GSTIN) — the latter appear on the built-in Invoice, Purchase
+   Order, and Salary Slip print formats.
 
 That's it — no server restart, no CLI commands, no build step. Any time you
 need to change something, just edit the PHP files directly in File Manager
