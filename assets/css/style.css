@@ -313,10 +313,17 @@ body {
   white-space: normal;
 }
 
+/* Sidebar toggle button: works at any screen width. Desktop starts open
+   (toggling collapses it); narrow screens start collapsed (toggling
+   reveals it) — same class, opposite default per breakpoint below. */
+body.sidebar-toggled .sidebar { transform: translateX(-100%); }
+body.sidebar-toggled .app-main { margin-left: 0; }
+
 @media (max-width: 991px) {
   .sidebar { transform: translateX(-100%); }
-  .sidebar.open { transform: translateX(0); }
   .app-main { margin-left: 0; }
+  body.sidebar-toggled .sidebar { transform: translateX(0); }
+  body.sidebar-toggled .app-main { margin-left: 0; }
 }
 
 /* ---------- Printing any in-app page ---------- */
