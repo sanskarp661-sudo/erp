@@ -77,7 +77,7 @@ function nav_active(string $needle, string $current): string
       <div class="topbar-title"><?= isset($page_title) ? e($page_title) : '' ?></div>
       <div class="topbar-user dropdown">
         <button class="btn-icon dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-          <i class="fa-solid fa-circle-user"></i> <?= e($user['name']) ?> <span class="badge text-bg-secondary"><?= e(implode(', ', array_map('role_label', $user['roles']))) ?: 'No roles' ?></span>
+          <i class="fa-solid fa-circle-user"></i> <?= e($user['name']) ?> <span class="badge text-bg-secondary"><?= e(implode(', ', array_map('role_label', $user['roles'] ?? []))) ?: 'No roles' ?></span>
         </button>
         <ul class="dropdown-menu dropdown-menu-end">
           <?php if (can_view_admin_section()): ?>
