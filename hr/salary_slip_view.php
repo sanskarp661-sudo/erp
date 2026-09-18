@@ -64,7 +64,7 @@ require __DIR__ . '/../includes/header.php';
     <div class="text-muted"><?= e($slip['employee_name']) ?> (<?= e($slip['employee_code']) ?>) &middot; <?= e(date('M j', strtotime($slip['pay_period_start']))) ?> &ndash; <?= e(date('M j, Y', strtotime($slip['pay_period_end']))) ?></div>
   </div>
   <div class="page-actions">
-    <a href="salary_slip_print.php?id=<?= $id ?>" target="_blank" class="btn btn-outline-brand btn-sm"><i class="fa-solid fa-print"></i> Print Payslip</a>
+    <a href="<?= base_url('print.php?doctype=salary_slip&id=' . $id) ?>" target="_blank" class="btn btn-outline-brand btn-sm"><i class="fa-solid fa-print"></i> Print Payslip</a>
     <?php if ($slip['status'] === 'draft'): ?>
       <form method="post" class="d-inline" data-confirm="Delete this draft salary slip?">
         <?= csrf_field() ?><input type="hidden" name="action" value="delete">

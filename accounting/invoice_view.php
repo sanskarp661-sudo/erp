@@ -70,7 +70,7 @@ require __DIR__ . '/../includes/header.php';
     <?php if ($invoice['amount_paid'] == 0 && $invoice['status'] === 'unpaid'): ?>
       <a href="invoice_form.php?id=<?= $id ?>" class="btn btn-outline-secondary btn-sm"><i class="fa-solid fa-pen"></i> Edit</a>
     <?php endif; ?>
-    <a href="invoice_print.php?id=<?= $id ?>" target="_blank" class="btn btn-outline-brand btn-sm"><i class="fa-solid fa-print"></i> Print / PDF</a>
+    <a href="<?= base_url('print.php?doctype=invoice&id=' . $id) ?>" target="_blank" class="btn btn-outline-brand btn-sm"><i class="fa-solid fa-print"></i> Print / PDF</a>
     <a href="invoices.php" class="btn btn-outline-secondary btn-sm">Back to list</a>
   </div>
 </div>

@@ -122,6 +122,7 @@ require __DIR__ . '/../includes/header.php';
         <a href="<?= base_url('accounting/invoice_form.php?from_order=' . $id) ?>" class="btn btn-outline-brand btn-sm"><i class="fa-solid fa-file-invoice-dollar"></i> Create Invoice</a>
       <?php endif; ?>
     <?php endif; ?>
+    <a href="<?= base_url('print.php?doctype=sales_order&id=' . $id) ?>" target="_blank" class="btn btn-outline-brand btn-sm"><i class="fa-solid fa-print"></i> Print</a>
     <a href="orders.php" class="btn btn-outline-secondary btn-sm">Back to list</a>
   </div>
 </div>

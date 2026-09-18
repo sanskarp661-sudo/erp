@@ -318,3 +318,11 @@ body {
   .sidebar.open { transform: translateX(0); }
   .app-main { margin-left: 0; }
 }
+
+/* ---------- Printing any in-app page ---------- */
+@media print {
+  .sidebar, .topbar, .no-print { display: none !important; }
+  .app-main { margin-left: 0 !important; }
+  .content { padding: 0 !important; }
+  body { background: #fff !important; }
+}

@@ -83,6 +83,7 @@ require __DIR__ . '/../includes/header.php';
         <button class="btn btn-outline-danger btn-sm" type="submit"><i class="fa-solid fa-ban"></i> Cancel</button>
       </form>
     <?php endif; ?>
+    <a href="<?= base_url('print.php?doctype=purchase_order&id=' . $id) ?>" target="_blank" class="btn btn-outline-brand btn-sm"><i class="fa-solid fa-print"></i> Print</a>
     <a href="orders.php" class="btn btn-outline-secondary btn-sm">Back to list</a>
   </div>
 </div>

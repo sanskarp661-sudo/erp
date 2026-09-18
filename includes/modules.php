@@ -122,10 +122,11 @@ $MODULES = [
 $ADMIN_ITEMS = [
     'label' => 'Administration',
     'icon'  => 'fa-solid fa-gear',
-    'match' => '/users/',
+    'match' => ['/users/', '/print_formats/'],
     'items' => [
-        ['label' => 'Users',    'icon' => 'fa-solid fa-users-gear', 'url' => 'users/users.php',    'match' => 'users/user'],
-        ['label' => 'Settings', 'icon' => 'fa-solid fa-gear',       'url' => 'users/settings.php', 'match' => 'users/settings'],
+        ['label' => 'Users',          'icon' => 'fa-solid fa-users-gear', 'url' => 'users/users.php',         'match' => 'users/user'],
+        ['label' => 'Settings',       'icon' => 'fa-solid fa-gear',       'url' => 'users/settings.php',      'match' => 'users/settings'],
+        ['label' => 'Print Formats',  'icon' => 'fa-solid fa-palette',    'url' => 'print_formats/index.php', 'match' => 'print_formats/'],
     ],
 ];
 

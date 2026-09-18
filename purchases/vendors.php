@@ -39,6 +39,7 @@ require __DIR__ . '/../includes/header.php';
           <td><?= e($v['phone']) ?></td>
           <td><?= (int)$v['order_count'] ?></td>
           <td class="text-end">
+            <a href="<?= base_url('print.php?doctype=vendor&id=' . (int)$v['id']) ?>" target="_blank" class="btn btn-sm btn-outline-secondary" title="Print"><i class="fa-solid fa-print"></i></a>
             <a href="vendor_form.php?id=<?= (int)$v['id'] ?>" class="btn btn-sm btn-outline-secondary"><i class="fa-solid fa-pen"></i></a>
             <form method="post" class="d-inline" data-confirm="Delete this vendor?">
               <?= csrf_field() ?>

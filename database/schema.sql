@@ -318,6 +318,22 @@ CREATE TABLE IF NOT EXISTS salary_slip_items (
   FOREIGN KEY (salary_slip_id) REFERENCES salary_slips(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- ---------------------------------------------------------------------
+-- Print Formats
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS print_formats (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(120) NOT NULL,
+  doctype VARCHAR(40) NOT NULL,
+  html_template LONGTEXT NOT NULL,
+  is_default TINYINT(1) NOT NULL DEFAULT 0,
+  created_by INT UNSIGNED DEFAULT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NULL,
+  INDEX idx_doctype (doctype),
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- ---------------------------------------------------------------------

@@ -29,6 +29,9 @@ arsort($byCategory);
 $page_title = 'Inventory Report';
 require __DIR__ . '/../includes/header.php';
 ?>
+<div class="text-end mb-2 no-print">
+  <button type="button" class="btn btn-outline-secondary btn-sm" onclick="window.print()"><i class="fa-solid fa-print"></i> Print</button>
+</div>
 <div class="row g-3 mb-3">
   <div class="col-sm-6 col-lg-3">
     <div class="stat-card"><div class="icon bg-brand"><i class="fa-solid fa-warehouse"></i></div>

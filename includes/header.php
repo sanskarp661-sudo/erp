@@ -15,7 +15,10 @@ require_once __DIR__ . '/modules.php';
 $user = current_user();
 $current_path = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH);
 $currentModuleKey = current_module_key($current_path);
-$inAdminSection = str_contains($current_path, $ADMIN_ITEMS['match']);
+$inAdminSection = false;
+foreach ((array)$ADMIN_ITEMS['match'] as $adminMatch) {
+    if (str_contains($current_path, $adminMatch)) { $inAdminSection = true; break; }
+}
 
 function nav_active(string $needle, string $current): string
 {
@@ -80,6 +83,7 @@ function nav_active(string $needle, string $current): string
           <?php if (is_admin()): ?>
           <li><a class="dropdown-item" href="<?= base_url('users/users.php') ?>"><i class="fa-solid fa-users-gear"></i> Users</a></li>
           <li><a class="dropdown-item" href="<?= base_url('users/settings.php') ?>"><i class="fa-solid fa-gear"></i> Settings</a></li>
+          <li><a class="dropdown-item" href="<?= base_url('print_formats/index.php') ?>"><i class="fa-solid fa-palette"></i> Print Formats</a></li>
           <li><hr class="dropdown-divider"></li>
           <?php endif; ?>
           <li><a class="dropdown-item" href="<?= base_url('logout.php') ?>"><i class="fa-solid fa-right-from-bracket"></i> Logout</a></li>

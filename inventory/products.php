@@ -42,6 +42,7 @@ require __DIR__ . '/../includes/header.php';
           <td class="text-end fw-bold"><?= (int)$p['quantity'] ?> <?= e($p['unit']) ?></td>
           <td><span class="badge text-bg-<?= $p['status'] === 'active' ? 'success' : 'secondary' ?> badge-status"><?= e($p['status']) ?></span></td>
           <td class="text-end">
+            <a href="<?= base_url('print.php?doctype=product&id=' . (int)$p['id']) ?>" target="_blank" class="btn btn-sm btn-outline-secondary" title="Print"><i class="fa-solid fa-print"></i></a>
             <a href="product_form.php?id=<?= (int)$p['id'] ?>" class="btn btn-sm btn-outline-secondary"><i class="fa-solid fa-pen"></i></a>
             <form method="post" class="d-inline" data-confirm="Delete this product?">
               <?= csrf_field() ?>

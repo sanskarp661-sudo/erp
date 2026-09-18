@@ -48,7 +48,7 @@ $data = array_map(fn($r) => (float)$r['t'], $byDay);
 $page_title = 'Sales Report';
 require __DIR__ . '/../includes/header.php';
 ?>
-<form method="get" class="row g-2 mb-3 align-items-end">
+<form method="get" class="row g-2 mb-3 align-items-end no-print">
   <div class="col-auto">
     <label class="form-label mb-1">From</label>
     <input type="date" name="start" class="form-control" value="<?= e($start) ?>">
@@ -58,6 +58,7 @@ require __DIR__ . '/../includes/header.php';
     <input type="date" name="end" class="form-control" value="<?= e($end) ?>">
   </div>
   <div class="col-auto"><button class="btn btn-brand">Apply</button></div>
+  <div class="col-auto"><button type="button" class="btn btn-outline-secondary" onclick="window.print()"><i class="fa-solid fa-print"></i> Print</button></div>
 </form>
 
 <div class="row g-3 mb-3">

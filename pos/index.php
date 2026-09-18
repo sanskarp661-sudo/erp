@@ -81,7 +81,7 @@ if (is_post()) {
 
             $pdo->commit();
             flash('success', 'Sale completed — ' . money($subtotal) . ' charged.');
-            redirect('/accounting/invoice_print.php?id=' . $invoiceId . '&pos=1');
+            redirect('/print.php?doctype=invoice&id=' . $invoiceId . '&pos=1');
         } catch (Exception $e) {
             $pdo->rollBack();
             $error = $e->getMessage() ?: 'Could not complete the sale.';

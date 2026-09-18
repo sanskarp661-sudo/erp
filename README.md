@@ -44,9 +44,26 @@ features/doctypes plus a "‹ All Modules" link back to the top level.
 
 Each module has its own dashboard (KPIs + recent activity) as its landing
 page. Reports live under `reports/` and are linked from their relevant
-module's sidebar. User management and company settings (admin-only) are
-reached from the top-right account menu rather than the module list, since
-they aren't a business module.
+module's sidebar. User management, company settings, and Print Formats
+(admin-only) are reached from the top-right account menu rather than the
+module list, since they aren't a business module.
+
+## Print Formats
+
+Admin users can design custom print layouts under **Print Formats**
+(account menu, top right). A print format is scoped to one document type
+(Sales Invoice, Item Master, Customer, Supplier, Sales Order, Purchase
+Order, or Salary Slip) — a format you create for Sales Invoice only ever
+shows up when printing an invoice, never elsewhere. The editor is an HTML
+template with `{{token}}` placeholders (click any token in the sidebar to
+insert it) that get replaced with that record's real data at print time;
+`{{items_table}}` (or `{{earnings_table}}`/`{{deductions_table}}` for
+salary slips) inserts the line-items as a formatted table. Every document
+that's printable (`print.php?doctype=...&id=...`, linked from its Print
+button) shows a format switcher — pick any format you've created for that
+doctype, or "Standard (Built-in)" — and you can set one format as the
+default for its doctype. Reports don't use this system; their Print
+button is a plain browser print of the report as shown.
 
 Auth is session-based with three roles (admin / manager / staff).
 
