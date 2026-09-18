@@ -26,7 +26,9 @@ function pf_sample_records(string $doctype, int $limit = 20): array
         'sales_order'     => "SELECT so.id, CONCAT(so.order_no, ' — ', c.name) label FROM sales_orders so JOIN customers c ON c.id = so.customer_id ORDER BY so.id DESC LIMIT $limit",
         'purchase_order'  => "SELECT po.id, CONCAT(po.po_no, ' — ', v.name) label FROM purchase_orders po JOIN vendors v ON v.id = po.vendor_id ORDER BY po.id DESC LIMIT $limit",
         'delivery_note'   => "SELECT dn.id, CONCAT(dn.dn_no, ' — ', c.name) label FROM delivery_notes dn JOIN customers c ON c.id = dn.customer_id ORDER BY dn.id DESC LIMIT $limit",
+        'sales_return'    => "SELECT sr.id, CONCAT(sr.return_no, ' — ', c.name) label FROM sales_returns sr JOIN customers c ON c.id = sr.customer_id ORDER BY sr.id DESC LIMIT $limit",
         'grn'             => "SELECT g.id, CONCAT(g.grn_no, ' — ', v.name) label FROM goods_receipts g JOIN vendors v ON v.id = g.vendor_id ORDER BY g.id DESC LIMIT $limit",
+        'purchase_return' => "SELECT pr.id, CONCAT(pr.return_no, ' — ', v.name) label FROM purchase_returns pr JOIN vendors v ON v.id = pr.vendor_id ORDER BY pr.id DESC LIMIT $limit",
         'purchase_invoice' => "SELECT pi.id, CONCAT(pi.pi_no, ' — ', v.name) label FROM purchase_invoices pi JOIN vendors v ON v.id = pi.vendor_id ORDER BY pi.id DESC LIMIT $limit",
         'salary_slip'     => "SELECT s.id, CONCAT(s.slip_no, ' — ', e.name) label FROM salary_slips s JOIN employees e ON e.id = s.employee_id ORDER BY s.id DESC LIMIT $limit",
     ];
@@ -416,6 +418,49 @@ function pf_doctypes(): array
             'default' => pf_default_order_template('Delivery Note', '{{order_no}}', '{{customer_name}}'),
         ],
 
+        'sales_return' => [
+            'label' => 'Sales Return',
+            'roles' => null,
+            'fetch' => function (int $id): ?array {
+                $stmt = db()->prepare('SELECT sr.*, c.name customer_name, c.email customer_email, c.phone customer_phone, c.address customer_address, w.name warehouse_name FROM sales_returns sr JOIN customers c ON c.id = sr.customer_id JOIN warehouses w ON w.id = sr.warehouse_id WHERE sr.id = ?');
+                $stmt->execute([$id]);
+                $o = $stmt->fetch();
+                if (!$o) return null;
+
+                $items = db()->prepare('SELECT sri.*, p.name product_name, p.sku FROM sales_return_items sri JOIN products p ON p.id = sri.product_id WHERE sales_return_id = ?');
+                $items->execute([$id]);
+                $rows = array_map(fn($it) => [
+                    'description' => e($it['product_name']) . ' <span style="color:#888">(' . e($it['sku']) . ')</span>',
+                    'quantity' => (int)$it['quantity'],
+                    'unit_price' => money($it['unit_price']),
+                    'subtotal' => money($it['subtotal']),
+                ], $items->fetchAll());
+
+                return pf_common_tokens() + [
+                    'order_no' => e($o['return_no']),
+                    'order_date' => e($o['return_date']),
+                    'status' => e(ucfirst($o['status'])),
+                    'warehouse_name' => e($o['warehouse_name']),
+                    'customer_name' => e($o['customer_name']),
+                    'customer_email' => e($o['customer_email'] ?? ''),
+                    'customer_phone' => e($o['customer_phone'] ?? ''),
+                    'customer_address' => nl2br(e($o['customer_address'] ?? '')),
+                    'items_table' => pf_table(
+                        [['key' => 'description', 'label' => 'Product'], ['key' => 'quantity', 'label' => 'Qty', 'align' => 'right'], ['key' => 'unit_price', 'label' => 'Unit Price', 'align' => 'right'], ['key' => 'subtotal', 'label' => 'Subtotal', 'align' => 'right']],
+                        $rows
+                    ),
+                    'total' => money($o['total_amount']),
+                    'notes' => nl2br(e($o['reason'] ?? '')),
+                ];
+            },
+            'tokens' => [
+                'order_no' => 'Return number', 'order_date' => 'Return date', 'status' => 'Status', 'warehouse_name' => 'Warehouse',
+                'customer_name' => 'Customer name', 'customer_email' => 'Customer email', 'customer_phone' => 'Customer phone', 'customer_address' => 'Customer address',
+                'items_table' => 'Line items table', 'total' => 'Total', 'notes' => 'Reason',
+            ],
+            'default' => pf_default_order_template('Sales Return', '{{order_no}}', '{{customer_name}}'),
+        ],
+
         'grn' => [
             'label' => 'Goods Receipt',
             'roles' => null,
@@ -457,6 +502,49 @@ function pf_doctypes(): array
                 'items_table' => 'Line items table', 'total' => 'Total', 'notes' => 'Notes',
             ],
             'default' => pf_default_order_template('Goods Receipt Note', '{{order_no}}', '{{customer_name}}'),
+        ],
+
+        'purchase_return' => [
+            'label' => 'Purchase Return',
+            'roles' => null,
+            'fetch' => function (int $id): ?array {
+                $stmt = db()->prepare('SELECT pr.*, v.name vendor_name, v.email vendor_email, v.phone vendor_phone, v.address vendor_address, w.name warehouse_name FROM purchase_returns pr JOIN vendors v ON v.id = pr.vendor_id JOIN warehouses w ON w.id = pr.warehouse_id WHERE pr.id = ?');
+                $stmt->execute([$id]);
+                $o = $stmt->fetch();
+                if (!$o) return null;
+
+                $items = db()->prepare('SELECT pri.*, p.name product_name, p.sku FROM purchase_return_items pri JOIN products p ON p.id = pri.product_id WHERE purchase_return_id = ?');
+                $items->execute([$id]);
+                $rows = array_map(fn($it) => [
+                    'description' => e($it['product_name']) . ' <span style="color:#888">(' . e($it['sku']) . ')</span>',
+                    'quantity' => (int)$it['quantity'],
+                    'unit_price' => money($it['unit_cost']),
+                    'subtotal' => money($it['subtotal']),
+                ], $items->fetchAll());
+
+                return pf_common_tokens() + [
+                    'order_no' => e($o['return_no']),
+                    'order_date' => e($o['return_date']),
+                    'status' => e(ucfirst($o['status'])),
+                    'warehouse_name' => e($o['warehouse_name']),
+                    'customer_name' => e($o['vendor_name']),
+                    'customer_email' => e($o['vendor_email'] ?? ''),
+                    'customer_phone' => e($o['vendor_phone'] ?? ''),
+                    'customer_address' => nl2br(e($o['vendor_address'] ?? '')),
+                    'items_table' => pf_table(
+                        [['key' => 'description', 'label' => 'Product'], ['key' => 'quantity', 'label' => 'Qty', 'align' => 'right'], ['key' => 'unit_price', 'label' => 'Unit Cost', 'align' => 'right'], ['key' => 'subtotal', 'label' => 'Subtotal', 'align' => 'right']],
+                        $rows
+                    ),
+                    'total' => money($o['total_amount']),
+                    'notes' => nl2br(e($o['reason'] ?? '')),
+                ];
+            },
+            'tokens' => [
+                'order_no' => 'Return number', 'order_date' => 'Return date', 'status' => 'Status', 'warehouse_name' => 'Warehouse',
+                'customer_name' => 'Vendor name', 'customer_email' => 'Vendor email', 'customer_phone' => 'Vendor phone', 'customer_address' => 'Vendor address',
+                'items_table' => 'Line items table', 'total' => 'Total', 'notes' => 'Reason',
+            ],
+            'default' => pf_default_order_template('Purchase Return', '{{order_no}}', '{{customer_name}}'),
         ],
 
         'purchase_invoice' => [

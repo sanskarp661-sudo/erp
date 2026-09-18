@@ -5,7 +5,7 @@ $canEdit = can_edit_module('sales');
 $canManage = can_manage_module('sales');
 
 $id = (int)input('id');
-$stmt = db()->prepare('SELECT so.*, c.name customer_name, c.email customer_email, c.phone customer_phone FROM sales_orders so JOIN customers c ON c.id = so.customer_id WHERE so.id = ?');
+$stmt = db()->prepare('SELECT so.*, c.name customer_name, c.email customer_email, c.phone customer_phone, w.name warehouse_name FROM sales_orders so JOIN customers c ON c.id = so.customer_id LEFT JOIN warehouses w ON w.id = so.warehouse_id WHERE so.id = ?');
 $stmt->execute([$id]);
 $order = $stmt->fetch();
 
@@ -51,6 +51,11 @@ $dnStmt = db()->prepare('SELECT id, dn_no, status FROM delivery_notes WHERE sale
 $dnStmt->execute([$id]);
 $existingDn = $dnStmt->fetch();
 
+$returnsStmt = db()->prepare('SELECT id, return_no, status, return_date, total_amount FROM sales_returns WHERE sales_order_id = ? ORDER BY id DESC');
+$returnsStmt->execute([$id]);
+$returns = $returnsStmt->fetchAll();
+$returnBadge = ['draft' => 'secondary', 'completed' => 'success', 'cancelled' => 'danger'];
+
 $badge = ['pending' => 'secondary', 'confirmed' => 'info', 'shipped' => 'primary', 'completed' => 'success', 'cancelled' => 'danger'];
 
 $page_title = 'Sales Order ' . $order['order_no'];
@@ -59,7 +64,7 @@ require __DIR__ . '/../includes/header.php';
 <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
   <div>
     <h4 class="mb-1"><?= e($order['order_no']) ?> <span class="badge text-bg-<?= $badge[$order['status']] ?> badge-status"><?= e($order['status']) ?></span></h4>
-    <div class="text-muted"><?= e($order['customer_name']) ?> &middot; <?= e($order['order_date']) ?></div>
+    <div class="text-muted"><?= e($order['customer_name']) ?><?= $order['warehouse_name'] ? ' &middot; ' . e($order['warehouse_name']) : '' ?> &middot; <?= e($order['order_date']) ?></div>
   </div>
   <div class="page-actions">
     <?php if ($order['status'] === 'pending'): ?>
@@ -111,6 +116,9 @@ require __DIR__ . '/../includes/header.php';
         <a href="<?= base_url('sales/delivery_note_form.php?from_order=' . $id) ?>" class="btn btn-outline-brand btn-sm"><i class="fa-solid fa-truck"></i> Create Delivery Note</a>
       <?php endif; ?>
     <?php endif; ?>
+    <?php if ($existingDn && $existingDn['status'] === 'delivered' && $canEdit): ?>
+      <a href="<?= base_url('sales/return_form.php?from_order=' . $id) ?>" class="btn btn-outline-brand btn-sm"><i class="fa-solid fa-rotate-left"></i> New Sales Return</a>
+    <?php endif; ?>
     <a href="<?= base_url('print.php?doctype=sales_order&id=' . $id) ?>" target="_blank" class="btn btn-outline-brand btn-sm"><i class="fa-solid fa-print"></i> Print</a>
     <a href="orders.php" class="btn btn-outline-secondary btn-sm">Back to list</a>
   </div>
@@ -137,4 +145,26 @@ require __DIR__ . '/../includes/header.php';
   </div>
   <?php if ($order['notes']): ?><div class="mt-2"><strong>Notes:</strong> <?= e($order['notes']) ?></div><?php endif; ?>
 </div>
+
+<?php if ($returns): ?>
+<div class="card p-3 mt-3">
+  <h6 class="mb-2">Sales Returns</h6>
+  <div class="table-responsive">
+    <table class="table table-sm">
+      <thead><tr><th>Return #</th><th>Date</th><th>Status</th><th class="text-end">Amount</th><th class="text-end">Actions</th></tr></thead>
+      <tbody>
+      <?php foreach ($returns as $r): ?>
+        <tr>
+          <td><?= e($r['return_no']) ?></td>
+          <td><?= e($r['return_date']) ?></td>
+          <td><span class="badge text-bg-<?= $returnBadge[$r['status']] ?? 'secondary' ?> badge-status"><?= e($r['status']) ?></span></td>
+          <td class="text-end"><?= money($r['total_amount']) ?></td>
+          <td class="text-end"><a href="<?= base_url('sales/return_view.php?id=' . (int)$r['id']) ?>" class="btn btn-sm btn-outline-secondary"><i class="fa-solid fa-eye"></i> View</a></td>
+        </tr>
+      <?php endforeach; ?>
+      </tbody>
+    </table>
+  </div>
+</div>
+<?php endif; ?>
 <?php require __DIR__ . '/../includes/footer.php'; ?>

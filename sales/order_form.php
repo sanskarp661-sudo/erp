@@ -3,7 +3,7 @@ require_once __DIR__ . '/../includes/auth.php';
 require_module_edit('sales');
 
 $id = (int)input('id');
-$order = ['id' => 0, 'order_no' => '', 'customer_id' => '', 'order_date' => today(), 'notes' => ''];
+$order = ['id' => 0, 'order_no' => '', 'customer_id' => '', 'warehouse_id' => default_warehouse_id(), 'order_date' => today(), 'notes' => ''];
 $items = [];
 
 if ($id) {
@@ -28,6 +28,7 @@ $error = '';
 if (is_post()) {
     csrf_verify();
     $customerId = (int)input('customer_id');
+    $warehouseId = (int)input('warehouse_id') ?: null;
     $orderDate = input('order_date') ?: today();
     $notes = input('notes');
     $productIds = $_POST['product_id'] ?? [];
@@ -56,14 +57,14 @@ if (is_post()) {
         $pdo->beginTransaction();
         try {
             if ($id) {
-                $pdo->prepare('UPDATE sales_orders SET customer_id=?, order_date=?, notes=?, total_amount=? WHERE id=?')
-                    ->execute([$customerId, $orderDate, $notes, $total, $id]);
+                $pdo->prepare('UPDATE sales_orders SET customer_id=?, warehouse_id=?, order_date=?, notes=?, total_amount=? WHERE id=?')
+                    ->execute([$customerId, $warehouseId, $orderDate, $notes, $total, $id]);
                 $pdo->prepare('DELETE FROM sales_order_items WHERE order_id=?')->execute([$id]);
                 $orderId = $id;
             } else {
                 $orderNo = next_code('SO', 'sales_orders', 'order_no');
-                $pdo->prepare('INSERT INTO sales_orders (order_no, customer_id, order_date, status, notes, total_amount, created_by) VALUES (?,?,?,?,?,?,?)')
-                    ->execute([$orderNo, $customerId, $orderDate, 'pending', $notes, $total, current_user()['id']]);
+                $pdo->prepare('INSERT INTO sales_orders (order_no, customer_id, warehouse_id, order_date, status, notes, total_amount, created_by) VALUES (?,?,?,?,?,?,?,?)')
+                    ->execute([$orderNo, $customerId, $warehouseId, $orderDate, 'pending', $notes, $total, current_user()['id']]);
                 $orderId = (int)$pdo->lastInsertId();
             }
             $itemStmt = $pdo->prepare('INSERT INTO sales_order_items (order_id, product_id, quantity, unit_price, subtotal) VALUES (?,?,?,?,?)');
@@ -79,12 +80,13 @@ if (is_post()) {
         }
     }
 
-    $order = ['id' => $id, 'order_no' => $order['order_no'] ?? '', 'customer_id' => $customerId, 'order_date' => $orderDate, 'notes' => $notes];
+    $order = ['id' => $id, 'order_no' => $order['order_no'] ?? '', 'customer_id' => $customerId, 'warehouse_id' => $warehouseId, 'order_date' => $orderDate, 'notes' => $notes];
     $items = $lineItems;
 }
 
 $customers = db()->query('SELECT id, name FROM customers ORDER BY name')->fetchAll();
 $products = db()->query("SELECT id, sku, name, selling_price, quantity, unit FROM products WHERE status='active' ORDER BY name")->fetchAll();
+$warehouses = leaf_warehouses();
 
 $page_title = $id ? 'Edit Sales Order' : 'New Sales Order';
 require __DIR__ . '/../includes/header.php';
@@ -94,7 +96,7 @@ require __DIR__ . '/../includes/header.php';
   <form method="post">
     <?= csrf_field() ?>
     <div class="row g-3 mb-3">
-      <div class="col-sm-5">
+      <div class="col-sm-4">
         <label class="form-label">Customer</label>
         <select name="customer_id" class="form-select" required>
           <option value="">— Select customer —</option>
@@ -104,10 +106,19 @@ require __DIR__ . '/../includes/header.php';
         </select>
       </div>
       <div class="col-sm-3">
+        <label class="form-label">Warehouse <span class="text-muted small">(for reservation reporting only)</span></label>
+        <select name="warehouse_id" class="form-select">
+          <option value="">— Not set —</option>
+          <?php foreach ($warehouses as $w): ?>
+            <option value="<?= (int)$w['id'] ?>" <?= (string)($order['warehouse_id'] ?? '') === (string)$w['id'] ? 'selected' : '' ?>><?= e($w['name']) ?></option>
+          <?php endforeach; ?>
+        </select>
+      </div>
+      <div class="col-sm-2">
         <label class="form-label">Order Date</label>
         <input type="date" name="order_date" class="form-control" value="<?= e($order['order_date']) ?>" required>
       </div>
-      <div class="col-sm-4">
+      <div class="col-sm-3">
         <label class="form-label">Notes</label>
         <input type="text" name="notes" class="form-control" value="<?= e($order['notes'] ?? '') ?>">
       </div>

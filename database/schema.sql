@@ -153,10 +153,14 @@ CREATE TABLE IF NOT EXISTS customers (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- warehouse_id is optional and only used for the Stock Balance Report's
+-- "Reserved Qty" column — a Sales Order never moves stock itself, that's
+-- still exclusively the job of its Delivery Note.
 CREATE TABLE IF NOT EXISTS sales_orders (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   order_no VARCHAR(30) NOT NULL UNIQUE,
   customer_id INT UNSIGNED NOT NULL,
+  warehouse_id INT UNSIGNED DEFAULT NULL,
   order_date DATE NOT NULL,
   status ENUM('pending','confirmed','shipped','completed','cancelled') NOT NULL DEFAULT 'pending',
   notes VARCHAR(255) DEFAULT NULL,
@@ -164,6 +168,7 @@ CREATE TABLE IF NOT EXISTS sales_orders (
   created_by INT UNSIGNED DEFAULT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
+  FOREIGN KEY (warehouse_id) REFERENCES warehouses(id) ON DELETE SET NULL,
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -318,12 +323,15 @@ CREATE TABLE IF NOT EXISTS invoice_items (
   FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- method 'credit_note' is only ever written by Sales Return when it posts
+-- a credit against this invoice — never selectable on the manual
+-- "Record Payment" form.
 CREATE TABLE IF NOT EXISTS payments (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   invoice_id INT UNSIGNED NOT NULL,
   amount DECIMAL(14,2) NOT NULL,
   payment_date DATE NOT NULL,
-  method ENUM('cash','bank_transfer','card','cheque','other') NOT NULL DEFAULT 'cash',
+  method ENUM('cash','bank_transfer','card','cheque','other','credit_note') NOT NULL DEFAULT 'cash',
   reference VARCHAR(120) DEFAULT NULL,
   notes VARCHAR(255) DEFAULT NULL,
   created_by INT UNSIGNED DEFAULT NULL,
@@ -369,18 +377,94 @@ CREATE TABLE IF NOT EXISTS purchase_invoice_items (
   FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- method 'debit_note' is only ever written by Purchase Return when it
+-- posts a debit against this bill — never selectable on the manual
+-- "Record Payment" form.
 CREATE TABLE IF NOT EXISTS purchase_payments (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   purchase_invoice_id INT UNSIGNED NOT NULL,
   amount DECIMAL(14,2) NOT NULL,
   payment_date DATE NOT NULL,
-  method ENUM('cash','bank_transfer','card','cheque','other') NOT NULL DEFAULT 'cash',
+  method ENUM('cash','bank_transfer','card','cheque','other','debit_note') NOT NULL DEFAULT 'cash',
   reference VARCHAR(120) DEFAULT NULL,
   notes VARCHAR(255) DEFAULT NULL,
   created_by INT UNSIGNED DEFAULT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (purchase_invoice_id) REFERENCES purchase_invoices(id) ON DELETE CASCADE,
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- A Sales Return is created against a Sales Order (capped at ordered qty
+-- minus whatever's already been returned on it), reverses the stock its
+-- Delivery Note took out, and — via invoice_id/credit_amount, set when
+-- completed — issues a credit note against the linked Sales Invoice.
+CREATE TABLE IF NOT EXISTS sales_returns (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  return_no VARCHAR(30) NOT NULL UNIQUE,
+  sales_order_id INT UNSIGNED NOT NULL,
+  customer_id INT UNSIGNED NOT NULL,
+  warehouse_id INT UNSIGNED NOT NULL,
+  invoice_id INT UNSIGNED DEFAULT NULL,
+  return_date DATE NOT NULL,
+  status ENUM('draft','completed','cancelled') NOT NULL DEFAULT 'draft',
+  reason VARCHAR(255) DEFAULT NULL,
+  total_amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+  credit_amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+  created_by INT UNSIGNED DEFAULT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (sales_order_id) REFERENCES sales_orders(id) ON DELETE CASCADE,
+  FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
+  FOREIGN KEY (warehouse_id) REFERENCES warehouses(id) ON DELETE RESTRICT,
+  FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE SET NULL,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS sales_return_items (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  sales_return_id INT UNSIGNED NOT NULL,
+  product_id INT UNSIGNED NOT NULL,
+  quantity INT NOT NULL,
+  unit_price DECIMAL(14,2) NOT NULL,
+  subtotal DECIMAL(14,2) NOT NULL,
+  FOREIGN KEY (sales_return_id) REFERENCES sales_returns(id) ON DELETE CASCADE,
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- A Purchase Return is created against a Purchase Order (capped at
+-- ordered qty minus whatever's already been returned on it), reverses
+-- the stock its GRN brought in, and — via purchase_invoice_id/
+-- debit_amount, set when completed — issues a debit note against the
+-- linked Purchase Invoice.
+CREATE TABLE IF NOT EXISTS purchase_returns (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  return_no VARCHAR(30) NOT NULL UNIQUE,
+  purchase_order_id INT UNSIGNED NOT NULL,
+  vendor_id INT UNSIGNED NOT NULL,
+  warehouse_id INT UNSIGNED NOT NULL,
+  purchase_invoice_id INT UNSIGNED DEFAULT NULL,
+  return_date DATE NOT NULL,
+  status ENUM('draft','completed','cancelled') NOT NULL DEFAULT 'draft',
+  reason VARCHAR(255) DEFAULT NULL,
+  total_amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+  debit_amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+  created_by INT UNSIGNED DEFAULT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (purchase_order_id) REFERENCES purchase_orders(id) ON DELETE CASCADE,
+  FOREIGN KEY (vendor_id) REFERENCES vendors(id) ON DELETE CASCADE,
+  FOREIGN KEY (warehouse_id) REFERENCES warehouses(id) ON DELETE RESTRICT,
+  FOREIGN KEY (purchase_invoice_id) REFERENCES purchase_invoices(id) ON DELETE SET NULL,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS purchase_return_items (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  purchase_return_id INT UNSIGNED NOT NULL,
+  product_id INT UNSIGNED NOT NULL,
+  quantity INT NOT NULL,
+  unit_cost DECIMAL(14,2) NOT NULL,
+  subtotal DECIMAL(14,2) NOT NULL,
+  FOREIGN KEY (purchase_return_id) REFERENCES purchase_returns(id) ON DELETE CASCADE,
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS expenses (

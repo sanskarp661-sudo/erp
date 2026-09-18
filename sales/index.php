@@ -41,6 +41,7 @@ require __DIR__ . '/../includes/header.php';
 <div class="d-flex gap-2 mb-3">
   <a href="order_form.php" class="btn btn-brand"><i class="fa-solid fa-plus"></i> New Sales Order</a>
   <a href="delivery_notes.php" class="btn btn-outline-brand">Delivery Notes</a>
+  <a href="returns.php" class="btn btn-outline-brand">Sales Returns</a>
   <a href="<?= base_url('crm/customers.php') ?>" class="btn btn-outline-brand">View Customers</a>
   <a href="<?= base_url('reports/sales_report.php') ?>" class="btn btn-outline-secondary">Full Report</a>
 </div>
