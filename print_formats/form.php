@@ -24,40 +24,70 @@ if ($id) {
 $error = '';
 
 if (is_post()) {
-    csrf_verify();
-    $name = input('name');
-    $doctype = input('doctype');
-    $template = $_POST['html_template'] ?? '';
-    $isDefault = input('is_default') === '1' ? 1 : 0;
-
-    if ($name === '' || !isset($doctypes[$doctype]) || trim($template) === '') {
-        $error = 'Name, a valid document type, and a template are required.';
+    // If PHP's post_max_size was exceeded, PHP silently empties $_POST and
+    // $_FILES (no warning, no exception) while CONTENT_LENGTH still shows
+    // what the browser actually sent. That's the #1 cause of "I pasted a
+    // large template and it got cut off with no error" on shared hosting
+    // — catch it before csrf_verify() (which would otherwise fail here
+    // too, with a much less useful "invalid form submission" message).
+    $contentLength = (int)($_SERVER['CONTENT_LENGTH'] ?? 0);
+    if (empty($_POST) && empty($_FILES) && $contentLength > 0) {
+        $error = 'The server rejected this submission as too large ('
+            . round($contentLength / 1024 / 1024, 2) . ' MB) before this page saw any of it — '
+            . 'nothing was truncated on our end, the whole submission was dropped by a server-side size limit (PHP\'s post_max_size, or a hosting firewall). '
+            . 'Try the "Upload a .html file instead" option below, or ask your host to raise post_max_size / upload_max_filesize.';
     } else {
-        $pdo = db();
-        $pdo->beginTransaction();
-        try {
-            if ($id) {
-                $pdo->prepare('UPDATE print_formats SET name=?, doctype=?, html_template=?, updated_at=NOW() WHERE id=?')
-                    ->execute([$name, $doctype, $template, $id]);
-                $formatId = $id;
-            } else {
-                $pdo->prepare('INSERT INTO print_formats (name, doctype, html_template, created_by) VALUES (?,?,?,?)')
-                    ->execute([$name, $doctype, $template, current_user()['id']]);
-                $formatId = (int)$pdo->lastInsertId();
+        csrf_verify();
+        $name = input('name');
+        $doctype = input('doctype');
+        $template = $_POST['html_template'] ?? '';
+
+        $uploadError = '';
+        if (!empty($_FILES['template_file']['name'])) {
+            $fileErr = $_FILES['template_file']['error'] ?? UPLOAD_ERR_NO_FILE;
+            if ($fileErr === UPLOAD_ERR_INI_SIZE || $fileErr === UPLOAD_ERR_FORM_SIZE) {
+                $uploadError = 'The uploaded file is larger than this server allows (upload_max_filesize). Paste the template directly instead, or ask your host to raise the limit.';
+            } elseif ($fileErr === UPLOAD_ERR_OK && is_uploaded_file($_FILES['template_file']['tmp_name'])) {
+                $uploaded = file_get_contents($_FILES['template_file']['tmp_name']);
+                if ($uploaded !== false && trim($uploaded) !== '') {
+                    $template = $uploaded;
+                }
             }
-            if ($isDefault) {
-                $pdo->prepare('UPDATE print_formats SET is_default = 0 WHERE doctype = ?')->execute([$doctype]);
-                $pdo->prepare('UPDATE print_formats SET is_default = 1 WHERE id = ?')->execute([$formatId]);
-            }
-            $pdo->commit();
-            flash('success', $id ? 'Print format updated.' : 'Print format created.');
-            redirect('/print_formats/form.php?id=' . $formatId);
-        } catch (Exception $e) {
-            $pdo->rollBack();
-            $error = 'Could not save print format.';
         }
+
+        $isDefault = input('is_default') === '1' ? 1 : 0;
+
+        if ($uploadError) {
+            $error = $uploadError;
+        } elseif ($name === '' || !isset($doctypes[$doctype]) || trim($template) === '') {
+            $error = 'Name, a valid document type, and a template (pasted or uploaded) are required.';
+        } else {
+            $pdo = db();
+            $pdo->beginTransaction();
+            try {
+                if ($id) {
+                    $pdo->prepare('UPDATE print_formats SET name=?, doctype=?, html_template=?, updated_at=NOW() WHERE id=?')
+                        ->execute([$name, $doctype, $template, $id]);
+                    $formatId = $id;
+                } else {
+                    $pdo->prepare('INSERT INTO print_formats (name, doctype, html_template, created_by) VALUES (?,?,?,?)')
+                        ->execute([$name, $doctype, $template, current_user()['id']]);
+                    $formatId = (int)$pdo->lastInsertId();
+                }
+                if ($isDefault) {
+                    $pdo->prepare('UPDATE print_formats SET is_default = 0 WHERE doctype = ?')->execute([$doctype]);
+                    $pdo->prepare('UPDATE print_formats SET is_default = 1 WHERE id = ?')->execute([$formatId]);
+                }
+                $pdo->commit();
+                flash('success', ($id ? 'Print format updated' : 'Print format created') . ' — ' . number_format(strlen($template)) . ' characters saved.');
+                redirect('/print_formats/form.php?id=' . $formatId);
+            } catch (Exception $e) {
+                $pdo->rollBack();
+                $error = 'Could not save print format.';
+            }
+        }
+        $format = ['id' => $id, 'name' => $name, 'doctype' => $doctype, 'html_template' => $template, 'is_default' => $isDefault];
     }
-    $format = ['id' => $id, 'name' => $name, 'doctype' => $doctype, 'html_template' => $template, 'is_default' => $isDefault];
 }
 
 $sampleRecords = $id ? pf_sample_records($format['doctype']) : [];
@@ -71,7 +101,7 @@ $page_title = $id ? 'Edit Print Format' : 'New Print Format';
 require __DIR__ . '/../includes/header.php';
 ?>
 <?php if ($error): ?><div class="alert alert-danger"><?= e($error) ?></div><?php endif; ?>
-<form method="post" id="pfForm">
+<form method="post" id="pfForm" enctype="multipart/form-data">
   <?= csrf_field() ?>
   <div class="row g-3">
     <div class="col-lg-8">
@@ -95,7 +125,15 @@ require __DIR__ . '/../includes/header.php';
           <label class="form-label mb-0">HTML Template</label>
           <button type="button" id="loadDefaultBtn" class="btn btn-sm btn-outline-secondary">Load built-in default as starting point</button>
         </div>
-        <textarea name="html_template" id="templateTextarea" class="form-control" rows="18" style="font-family:ui-monospace,monospace;font-size:.85rem" required><?= e($format['html_template']) ?></textarea>
+        <textarea name="html_template" id="templateTextarea" class="form-control" rows="18" style="font-family:ui-monospace,monospace;font-size:.85rem"><?= e($format['html_template']) ?></textarea>
+        <div class="d-flex justify-content-between mt-1">
+          <span class="small text-muted">Pasted content is <span id="charCount">0</span> characters. If a large paste gets cut off with no error, use the upload option below instead — it isn't affected by the same limit.</span>
+        </div>
+        <div class="mt-2">
+          <label class="form-label small mb-1">Or upload a .html file instead of pasting</label>
+          <input type="file" name="template_file" accept=".html,.htm,.txt" class="form-control form-control-sm">
+          <div class="form-text">If both a paste and a file are provided, the uploaded file wins.</div>
+        </div>
         <div class="form-check mt-3">
           <input type="checkbox" class="form-check-input" id="isDefaultCheck" name="is_default" value="1" <?= $format['is_default'] ? 'checked' : '' ?>>
           <label class="form-check-label" for="isDefaultCheck">Make this the default format for <span id="doctypeLabelInline"><?= e($doctypes[$format['doctype']]['label']) ?></span></label>
@@ -139,6 +177,13 @@ require __DIR__ . '/../includes/header.php';
 <?php
 $extra_js_inline = "
 var PF_DOCTYPES = " . json_encode($jsDoctypes) . ";
+
+var templateTa = document.getElementById('templateTextarea');
+var charCountEl = document.getElementById('charCount');
+function updateCharCount() { charCountEl.textContent = templateTa.value.length.toLocaleString(); }
+templateTa.addEventListener('input', updateCharCount);
+templateTa.addEventListener('paste', function () { setTimeout(updateCharCount, 0); });
+updateCharCount();
 
 function renderTokenList(doctype) {
   var cfg = PF_DOCTYPES[doctype];
