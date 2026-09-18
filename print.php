@@ -61,7 +61,7 @@ $currentFormatId = $selectedFormat['id'] ?? 0;
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
 <style>
-  body { padding: 40px; color: #1f2937; }
+  body { padding: 40px; background: #eef0f3; color: #1f2937; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .pf-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
   .pf-brand { font-size: 1.4rem; font-weight: 700; }
   .pf-subtitle { color: #6b7280; }
@@ -77,6 +77,20 @@ $currentFormatId = $selectedFormat['id'] ?? 0;
   .pf-totals .pf-highlight { background: #fff3cd; font-weight: 700; font-size: 1.1rem; }
   .pf-toolbar { max-width: 800px; margin: 0 auto 24px; }
   .pf-content { max-width: 800px; margin: 0 auto; }
+
+  /* Bordered "letterhead" card that wraps the redesigned Standard templates */
+  .pf-doc-card { background: #fff; border: 1px solid #dfe3e8; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 4px rgba(15, 23, 42, .06); }
+  .pf-doc-body { padding: 28px 32px 32px; }
+
+  /* Colored accent header band used at the top of the doc card */
+  .pf-band-header { background: #eef2ff; border-bottom: 3px solid #4338ca; padding: 26px 32px; }
+  .pf-band-header .pf-brand { color: #312e81; }
+  .pf-band-header .pf-subtitle { color: #312e81; }
+  .pf-band-header .pf-company-meta { color: #4c4f8a; }
+  .pf-band-header .pf-meta-table th { color: #4c4f8a; }
+  .pf-band-header .pf-meta-table td { color: #1e1b4b; }
+  .pf-band-header.pf-center { text-align: center; }
+  .pf-band-header.pf-header { margin-bottom: 0; }
 
   /* Company / document header block used by the redesigned invoice & PO templates */
   .pf-company-block .pf-brand { font-size: 1.5rem; }
@@ -113,7 +127,7 @@ $currentFormatId = $selectedFormat['id'] ?? 0;
   .pf-footer-note { text-align: center; color: #9ca3af; font-size: .78rem; margin-top: 24px; }
 
   /* Compact product tag / shelf-label card */
-  .pf-tag-card { max-width: 340px; margin: 0 auto; border: 2px dashed #cbd5e1; border-radius: 10px; padding: 22px; text-align: center; }
+  .pf-tag-card { max-width: 340px; margin: 0 auto; background: #fff; border: 1px solid #dfe3e8; border-top: 4px solid #4338ca; border-radius: 10px; padding: 24px; text-align: center; box-shadow: 0 1px 4px rgba(15, 23, 42, .06); }
   .pf-tag-card .pf-brand { font-size: .95rem; color: #6b7280; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
   .pf-tag-card .pf-tag-name { font-size: 1.3rem; font-weight: 700; margin: 8px 0 2px; }
   .pf-tag-card .pf-tag-sku { font-family: ui-monospace, monospace; letter-spacing: .1em; color: #6b7280; font-size: .85rem; }

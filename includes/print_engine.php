@@ -448,37 +448,41 @@ function pf_doctypes(): array
 function pf_default_invoice_template(): string
 {
     return <<<HTML
-<div class="pf-header">
-  <div class="pf-company-block">
-    <div class="pf-brand">{{company_name}}</div>
-    <div class="pf-company-meta">{{company_address}}<br>{{company_phone}} &middot; {{company_email}}<br>{{company_tax_id}}</div>
+<div class="pf-doc-card">
+  <div class="pf-header pf-band-header">
+    <div class="pf-company-block">
+      <div class="pf-brand">{{company_name}}</div>
+      <div class="pf-company-meta">{{company_address}}<br>{{company_phone}} &middot; {{company_email}}<br>{{company_tax_id}}</div>
+    </div>
+    <div class="pf-right">
+      <div class="pf-subtitle" style="font-size:1.3rem;font-weight:800;letter-spacing:.06em">INVOICE</div>
+      <table class="pf-meta-table">
+        <tr><th>Invoice #</th><td>{{invoice_no}}</td></tr>
+        <tr><th>Date</th><td>{{invoice_date}}</td></tr>
+        <tr><th>Due Date</th><td>{{due_date}}</td></tr>
+        <tr><th>Order Ref</th><td>{{reference_order_no}}</td></tr>
+        <tr><th>Status</th><td>{{status}}</td></tr>
+      </table>
+    </div>
   </div>
-  <div class="pf-right">
-    <div class="pf-subtitle" style="font-size:1.2rem;font-weight:700;letter-spacing:.06em;color:#111827">INVOICE</div>
-    <table class="pf-meta-table">
-      <tr><th>Invoice #</th><td>{{invoice_no}}</td></tr>
-      <tr><th>Date</th><td>{{invoice_date}}</td></tr>
-      <tr><th>Due Date</th><td>{{due_date}}</td></tr>
-      <tr><th>Order Ref</th><td>{{reference_order_no}}</td></tr>
-      <tr><th>Status</th><td>{{status}}</td></tr>
+  <div class="pf-doc-body">
+    <div class="pf-section"><strong>Bill To</strong><br>{{customer_name}}<br>{{customer_address}}<br>{{customer_email}} {{customer_phone}}</div>
+    {{items_table}}
+    <table class="pf-totals">
+      <tr><th>Subtotal</th><td>{{subtotal}}</td></tr>
+      <tr><th>Tax</th><td>{{tax}}</td></tr>
+      <tr class="pf-highlight"><th>Total</th><td>{{total}}</td></tr>
+      <tr><th>Amount Paid</th><td>{{amount_paid}}</td></tr>
+      <tr><th>Balance Due</th><td>{{balance_due}}</td></tr>
     </table>
+    <div class="pf-section">{{notes}}</div>
+    <div class="pf-signature">
+      <div></div>
+      <div class="pf-sign-box">Authorized Signature</div>
+    </div>
+    <div class="pf-footer-note">Thank you for your business &middot; {{company_name}}</div>
   </div>
 </div>
-<div class="pf-section"><strong>Bill To</strong><br>{{customer_name}}<br>{{customer_address}}<br>{{customer_email}} {{customer_phone}}</div>
-{{items_table}}
-<table class="pf-totals">
-  <tr><th>Subtotal</th><td>{{subtotal}}</td></tr>
-  <tr><th>Tax</th><td>{{tax}}</td></tr>
-  <tr class="pf-highlight"><th>Total</th><td>{{total}}</td></tr>
-  <tr><th>Amount Paid</th><td>{{amount_paid}}</td></tr>
-  <tr><th>Balance Due</th><td>{{balance_due}}</td></tr>
-</table>
-<div class="pf-section">{{notes}}</div>
-<div class="pf-signature">
-  <div></div>
-  <div class="pf-sign-box">Authorized Signature</div>
-</div>
-<div class="pf-footer-note">Thank you for your business &middot; {{company_name}}</div>
 HTML;
 }
 
@@ -519,29 +523,33 @@ HTML;
 function pf_default_purchase_order_template(): string
 {
     return <<<HTML
-<div class="pf-header">
-  <div class="pf-company-block">
-    <div class="pf-brand">{{company_name}}</div>
-    <div class="pf-company-meta">{{company_address}}<br>{{company_phone}} &middot; {{company_email}}<br>{{company_tax_id}}</div>
+<div class="pf-doc-card">
+  <div class="pf-header pf-band-header">
+    <div class="pf-company-block">
+      <div class="pf-brand">{{company_name}}</div>
+      <div class="pf-company-meta">{{company_address}}<br>{{company_phone}} &middot; {{company_email}}<br>{{company_tax_id}}</div>
+    </div>
+    <div class="pf-right">
+      <div class="pf-subtitle" style="font-size:1.3rem;font-weight:800;letter-spacing:.06em">PURCHASE ORDER</div>
+      <table class="pf-meta-table">
+        <tr><th>PO #</th><td>{{order_no}}</td></tr>
+        <tr><th>Date</th><td>{{order_date}}</td></tr>
+        <tr><th>Status</th><td>{{status}}</td></tr>
+      </table>
+    </div>
   </div>
-  <div class="pf-right">
-    <div class="pf-subtitle" style="font-size:1.2rem;font-weight:700;letter-spacing:.06em;color:#111827">PURCHASE ORDER</div>
-    <table class="pf-meta-table">
-      <tr><th>PO #</th><td>{{order_no}}</td></tr>
-      <tr><th>Date</th><td>{{order_date}}</td></tr>
-      <tr><th>Status</th><td>{{status}}</td></tr>
-    </table>
+  <div class="pf-doc-body">
+    <div class="pf-section"><strong>Vendor</strong><br>{{customer_name}}<br>{{customer_address}}<br>{{customer_email}} {{customer_phone}}</div>
+    {{items_table}}
+    <table class="pf-totals"><tr class="pf-highlight"><th>Total</th><td>{{total}}</td></tr></table>
+    <div class="pf-section">{{notes}}</div>
+    <div class="pf-signature">
+      <div></div>
+      <div class="pf-sign-box">Authorized Signature</div>
+    </div>
+    <div class="pf-footer-note">{{company_name}} &middot; Purchase Order {{order_no}}</div>
   </div>
 </div>
-<div class="pf-section"><strong>Vendor</strong><br>{{customer_name}}<br>{{customer_address}}<br>{{customer_email}} {{customer_phone}}</div>
-{{items_table}}
-<table class="pf-totals"><tr class="pf-highlight"><th>Total</th><td>{{total}}</td></tr></table>
-<div class="pf-section">{{notes}}</div>
-<div class="pf-signature">
-  <div></div>
-  <div class="pf-sign-box">Authorized Signature</div>
-</div>
-<div class="pf-footer-note">{{company_name}} &middot; Purchase Order {{order_no}}</div>
 HTML;
 }
 
@@ -562,38 +570,42 @@ HTML;
 function pf_default_salary_slip_template(): string
 {
     return <<<HTML
-<div class="pf-center pf-section">
-  <div class="pf-brand">{{company_name}}</div>
-  <div class="pf-company-meta">{{company_address}}<br>{{company_phone}} &middot; {{company_email}} &middot; {{company_tax_id}}</div>
-  <div class="pf-badge-period">Pay Slip for {{pay_month}}</div>
-</div>
-<div class="pf-info-grid">
-  <div>
-    <div class="pf-info-row"><span class="pf-info-label">Employee Name</span><span class="pf-info-value">{{employee_name}}</span></div>
-    <div class="pf-info-row"><span class="pf-info-label">Employee Code</span><span class="pf-info-value">{{employee_code}}</span></div>
-    <div class="pf-info-row"><span class="pf-info-label">Designation</span><span class="pf-info-value">{{designation}}</span></div>
+<div class="pf-doc-card">
+  <div class="pf-band-header pf-center">
+    <div class="pf-brand">{{company_name}}</div>
+    <div class="pf-company-meta">{{company_address}}<br>{{company_phone}} &middot; {{company_email}} &middot; {{company_tax_id}}</div>
+    <div class="pf-badge-period">Pay Slip for {{pay_month}}</div>
   </div>
-  <div>
-    <div class="pf-info-row"><span class="pf-info-label">Department</span><span class="pf-info-value">{{department_name}}</span></div>
-    <div class="pf-info-row"><span class="pf-info-label">Pay Period</span><span class="pf-info-value">{{pay_period}}</span></div>
-    <div class="pf-info-row"><span class="pf-info-label">Pay Days</span><span class="pf-info-value">{{pay_days}}</span></div>
+  <div class="pf-doc-body">
+    <div class="pf-info-grid">
+      <div>
+        <div class="pf-info-row"><span class="pf-info-label">Employee Name</span><span class="pf-info-value">{{employee_name}}</span></div>
+        <div class="pf-info-row"><span class="pf-info-label">Employee Code</span><span class="pf-info-value">{{employee_code}}</span></div>
+        <div class="pf-info-row"><span class="pf-info-label">Designation</span><span class="pf-info-value">{{designation}}</span></div>
+      </div>
+      <div>
+        <div class="pf-info-row"><span class="pf-info-label">Department</span><span class="pf-info-value">{{department_name}}</span></div>
+        <div class="pf-info-row"><span class="pf-info-label">Pay Period</span><span class="pf-info-value">{{pay_period}}</span></div>
+        <div class="pf-info-row"><span class="pf-info-label">Pay Days</span><span class="pf-info-value">{{pay_days}}</span></div>
+      </div>
+    </div>
+    <div class="pf-two-col">
+      <div><strong>Earnings</strong>{{earnings_table}}</div>
+      <div><strong>Deductions</strong>{{deductions_table}}</div>
+    </div>
+    <table class="pf-totals">
+      <tr><th>Total Earnings</th><td>{{total_earnings}}</td></tr>
+      <tr><th>Total Deductions</th><td>{{total_deductions}}</td></tr>
+      <tr class="pf-highlight"><th>Net Pay</th><td>{{net_pay}}</td></tr>
+    </table>
+    <div class="pf-words-line">Amount in Words: {{net_pay_words}}</div>
+    <div class="pf-ytd-box">
+      <div><span class="pf-info-label">YTD Gross</span><strong>{{ytd_gross}}</strong></div>
+      <div><span class="pf-info-label">YTD Deductions</span><strong>{{ytd_deductions}}</strong></div>
+      <div><span class="pf-info-label">YTD Net</span><strong>{{ytd_net}}</strong></div>
+    </div>
+    <div class="pf-footer-note">This is a computer-generated payslip — {{slip_no}} &middot; Status: {{status}}</div>
   </div>
 </div>
-<div class="pf-two-col">
-  <div><strong>Earnings</strong>{{earnings_table}}</div>
-  <div><strong>Deductions</strong>{{deductions_table}}</div>
-</div>
-<table class="pf-totals">
-  <tr><th>Total Earnings</th><td>{{total_earnings}}</td></tr>
-  <tr><th>Total Deductions</th><td>{{total_deductions}}</td></tr>
-  <tr class="pf-highlight"><th>Net Pay</th><td>{{net_pay}}</td></tr>
-</table>
-<div class="pf-words-line">Amount in Words: {{net_pay_words}}</div>
-<div class="pf-ytd-box">
-  <div><span class="pf-info-label">YTD Gross</span><strong>{{ytd_gross}}</strong></div>
-  <div><span class="pf-info-label">YTD Deductions</span><strong>{{ytd_deductions}}</strong></div>
-  <div><span class="pf-info-label">YTD Net</span><strong>{{ytd_net}}</strong></div>
-</div>
-<div class="pf-footer-note">This is a computer-generated payslip — {{slip_no}} &middot; Status: {{status}}</div>
 HTML;
 }
