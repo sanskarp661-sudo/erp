@@ -25,6 +25,9 @@ function pf_sample_records(string $doctype, int $limit = 20): array
         'vendor'          => "SELECT id, name label FROM vendors ORDER BY id DESC LIMIT $limit",
         'sales_order'     => "SELECT so.id, CONCAT(so.order_no, ' — ', c.name) label FROM sales_orders so JOIN customers c ON c.id = so.customer_id ORDER BY so.id DESC LIMIT $limit",
         'purchase_order'  => "SELECT po.id, CONCAT(po.po_no, ' — ', v.name) label FROM purchase_orders po JOIN vendors v ON v.id = po.vendor_id ORDER BY po.id DESC LIMIT $limit",
+        'delivery_note'   => "SELECT dn.id, CONCAT(dn.dn_no, ' — ', c.name) label FROM delivery_notes dn JOIN customers c ON c.id = dn.customer_id ORDER BY dn.id DESC LIMIT $limit",
+        'grn'             => "SELECT g.id, CONCAT(g.grn_no, ' — ', v.name) label FROM goods_receipts g JOIN vendors v ON v.id = g.vendor_id ORDER BY g.id DESC LIMIT $limit",
+        'purchase_invoice' => "SELECT pi.id, CONCAT(pi.pi_no, ' — ', v.name) label FROM purchase_invoices pi JOIN vendors v ON v.id = pi.vendor_id ORDER BY pi.id DESC LIMIT $limit",
         'salary_slip'     => "SELECT s.id, CONCAT(s.slip_no, ' — ', e.name) label FROM salary_slips s JOIN employees e ON e.id = s.employee_id ORDER BY s.id DESC LIMIT $limit",
     ];
     if (!isset($queries[$doctype])) {
@@ -370,6 +373,141 @@ function pf_doctypes(): array
             'default' => pf_default_purchase_order_template(),
         ],
 
+        'delivery_note' => [
+            'label' => 'Delivery Note',
+            'roles' => null,
+            'fetch' => function (int $id): ?array {
+                $stmt = db()->prepare('SELECT dn.*, c.name customer_name, c.email customer_email, c.phone customer_phone, c.address customer_address, w.name warehouse_name FROM delivery_notes dn JOIN customers c ON c.id = dn.customer_id JOIN warehouses w ON w.id = dn.warehouse_id WHERE dn.id = ?');
+                $stmt->execute([$id]);
+                $o = $stmt->fetch();
+                if (!$o) return null;
+
+                $items = db()->prepare('SELECT dni.*, p.name product_name, p.sku FROM delivery_note_items dni JOIN products p ON p.id = dni.product_id WHERE dn_id = ?');
+                $items->execute([$id]);
+                $rows = array_map(fn($it) => [
+                    'description' => e($it['product_name']) . ' <span style="color:#888">(' . e($it['sku']) . ')</span>',
+                    'quantity' => (int)$it['quantity'],
+                    'unit_price' => money($it['unit_price']),
+                    'subtotal' => money($it['subtotal']),
+                ], $items->fetchAll());
+
+                return pf_common_tokens() + [
+                    'order_no' => e($o['dn_no']),
+                    'order_date' => e($o['posting_date']),
+                    'status' => e(ucfirst($o['status'])),
+                    'warehouse_name' => e($o['warehouse_name']),
+                    'customer_name' => e($o['customer_name']),
+                    'customer_email' => e($o['customer_email'] ?? ''),
+                    'customer_phone' => e($o['customer_phone'] ?? ''),
+                    'customer_address' => nl2br(e($o['customer_address'] ?? '')),
+                    'items_table' => pf_table(
+                        [['key' => 'description', 'label' => 'Product'], ['key' => 'quantity', 'label' => 'Qty', 'align' => 'right'], ['key' => 'unit_price', 'label' => 'Unit Price', 'align' => 'right'], ['key' => 'subtotal', 'label' => 'Subtotal', 'align' => 'right']],
+                        $rows
+                    ),
+                    'total' => money($o['total_amount']),
+                    'notes' => nl2br(e($o['notes'] ?? '')),
+                ];
+            },
+            'tokens' => [
+                'order_no' => 'Delivery note number', 'order_date' => 'Posting date', 'status' => 'Status', 'warehouse_name' => 'Warehouse',
+                'customer_name' => 'Customer name', 'customer_email' => 'Customer email', 'customer_phone' => 'Customer phone', 'customer_address' => 'Customer address',
+                'items_table' => 'Line items table', 'total' => 'Total', 'notes' => 'Notes',
+            ],
+            'default' => pf_default_order_template('Delivery Note', '{{order_no}}', '{{customer_name}}'),
+        ],
+
+        'grn' => [
+            'label' => 'Goods Receipt',
+            'roles' => null,
+            'fetch' => function (int $id): ?array {
+                $stmt = db()->prepare('SELECT g.*, v.name vendor_name, v.email vendor_email, v.phone vendor_phone, v.address vendor_address, w.name warehouse_name FROM goods_receipts g JOIN vendors v ON v.id = g.vendor_id JOIN warehouses w ON w.id = g.warehouse_id WHERE g.id = ?');
+                $stmt->execute([$id]);
+                $o = $stmt->fetch();
+                if (!$o) return null;
+
+                $items = db()->prepare('SELECT gri.*, p.name product_name, p.sku FROM goods_receipt_items gri JOIN products p ON p.id = gri.product_id WHERE grn_id = ?');
+                $items->execute([$id]);
+                $rows = array_map(fn($it) => [
+                    'description' => e($it['product_name']) . ' <span style="color:#888">(' . e($it['sku']) . ')</span>',
+                    'quantity' => (int)$it['quantity'],
+                    'unit_price' => money($it['unit_cost']),
+                    'subtotal' => money($it['subtotal']),
+                ], $items->fetchAll());
+
+                return pf_common_tokens() + [
+                    'order_no' => e($o['grn_no']),
+                    'order_date' => e($o['posting_date']),
+                    'status' => e(ucfirst($o['status'])),
+                    'warehouse_name' => e($o['warehouse_name']),
+                    'customer_name' => e($o['vendor_name']),
+                    'customer_email' => e($o['vendor_email'] ?? ''),
+                    'customer_phone' => e($o['vendor_phone'] ?? ''),
+                    'customer_address' => nl2br(e($o['vendor_address'] ?? '')),
+                    'items_table' => pf_table(
+                        [['key' => 'description', 'label' => 'Product'], ['key' => 'quantity', 'label' => 'Qty', 'align' => 'right'], ['key' => 'unit_price', 'label' => 'Unit Cost', 'align' => 'right'], ['key' => 'subtotal', 'label' => 'Subtotal', 'align' => 'right']],
+                        $rows
+                    ),
+                    'total' => money($o['total_amount']),
+                    'notes' => nl2br(e($o['notes'] ?? '')),
+                ];
+            },
+            'tokens' => [
+                'order_no' => 'GRN number', 'order_date' => 'Posting date', 'status' => 'Status', 'warehouse_name' => 'Warehouse',
+                'customer_name' => 'Vendor name', 'customer_email' => 'Vendor email', 'customer_phone' => 'Vendor phone', 'customer_address' => 'Vendor address',
+                'items_table' => 'Line items table', 'total' => 'Total', 'notes' => 'Notes',
+            ],
+            'default' => pf_default_order_template('Goods Receipt Note', '{{order_no}}', '{{customer_name}}'),
+        ],
+
+        'purchase_invoice' => [
+            'label' => 'Purchase Invoice',
+            'roles' => null,
+            'fetch' => function (int $id): ?array {
+                $stmt = db()->prepare('SELECT pi.*, v.name vendor_name, v.email vendor_email, v.phone vendor_phone, v.address vendor_address FROM purchase_invoices pi JOIN vendors v ON v.id = pi.vendor_id WHERE pi.id = ?');
+                $stmt->execute([$id]);
+                $inv = $stmt->fetch();
+                if (!$inv) return null;
+
+                $items = db()->prepare('SELECT * FROM purchase_invoice_items WHERE purchase_invoice_id = ?');
+                $items->execute([$id]);
+                $rows = array_map(fn($it) => [
+                    'description' => e($it['description']),
+                    'quantity' => (int)$it['quantity'],
+                    'unit_price' => money($it['unit_price']),
+                    'subtotal' => money($it['subtotal']),
+                ], $items->fetchAll());
+
+                return pf_common_tokens() + [
+                    'invoice_no' => e($inv['pi_no']),
+                    'invoice_date' => e($inv['invoice_date']),
+                    'due_date' => e($inv['due_date'] ?? ''),
+                    'status' => e(str_replace('_', ' ', ucfirst($inv['status']))),
+                    'customer_name' => e($inv['vendor_name']),
+                    'customer_email' => e($inv['vendor_email'] ?? ''),
+                    'customer_phone' => e($inv['vendor_phone'] ?? ''),
+                    'customer_address' => nl2br(e($inv['vendor_address'] ?? '')),
+                    'items_table' => pf_table(
+                        [['key' => 'description', 'label' => 'Description'], ['key' => 'quantity', 'label' => 'Qty', 'align' => 'right'], ['key' => 'unit_price', 'label' => 'Unit Price', 'align' => 'right'], ['key' => 'subtotal', 'label' => 'Subtotal', 'align' => 'right']],
+                        $rows
+                    ),
+                    'subtotal' => money($inv['subtotal']),
+                    'tax' => money($inv['tax']),
+                    'total' => money($inv['total']),
+                    'amount_paid' => money($inv['amount_paid']),
+                    'balance_due' => money($inv['total'] - $inv['amount_paid']),
+                    'notes' => nl2br(e($inv['notes'] ?? '')),
+                ];
+            },
+            'tokens' => [
+                'invoice_no' => 'Bill number', 'invoice_date' => 'Bill date', 'due_date' => 'Due date', 'status' => 'Status',
+                'customer_name' => 'Vendor name', 'customer_email' => 'Vendor email', 'customer_phone' => 'Vendor phone', 'customer_address' => 'Vendor address',
+                'items_table' => 'Line items table', 'subtotal' => 'Subtotal', 'tax' => 'Tax', 'total' => 'Total',
+                'amount_paid' => 'Amount paid', 'balance_due' => 'Balance due', 'notes' => 'Notes',
+                'company_address' => 'Company address', 'company_phone' => 'Company phone', 'company_email' => 'Company email', 'company_tax_id' => 'Company tax ID / GSTIN',
+            ],
+            'default' => pf_default_purchase_invoice_template(),
+        ],
+
         'salary_slip' => [
             'label' => 'Salary Slip',
             'roles' => 'hrms_manage',
@@ -548,6 +686,46 @@ function pf_default_purchase_order_template(): string
       <div class="pf-sign-box">Authorized Signature</div>
     </div>
     <div class="pf-footer-note">{{company_name}} &middot; Purchase Order {{order_no}}</div>
+  </div>
+</div>
+HTML;
+}
+
+function pf_default_purchase_invoice_template(): string
+{
+    return <<<HTML
+<div class="pf-doc-card">
+  <div class="pf-header pf-band-header">
+    <div class="pf-company-block">
+      <div class="pf-brand">{{company_name}}</div>
+      <div class="pf-company-meta">{{company_address}}<br>{{company_phone}} &middot; {{company_email}}<br>{{company_tax_id}}</div>
+    </div>
+    <div class="pf-right">
+      <div class="pf-subtitle" style="font-size:1.3rem;font-weight:800;letter-spacing:.06em">PURCHASE INVOICE</div>
+      <table class="pf-meta-table">
+        <tr><th>Bill #</th><td>{{invoice_no}}</td></tr>
+        <tr><th>Date</th><td>{{invoice_date}}</td></tr>
+        <tr><th>Due Date</th><td>{{due_date}}</td></tr>
+        <tr><th>Status</th><td>{{status}}</td></tr>
+      </table>
+    </div>
+  </div>
+  <div class="pf-doc-body">
+    <div class="pf-section"><strong>Vendor</strong><br>{{customer_name}}<br>{{customer_address}}<br>{{customer_email}} {{customer_phone}}</div>
+    {{items_table}}
+    <table class="pf-totals">
+      <tr><th>Subtotal</th><td>{{subtotal}}</td></tr>
+      <tr><th>Tax</th><td>{{tax}}</td></tr>
+      <tr class="pf-highlight"><th>Total</th><td>{{total}}</td></tr>
+      <tr><th>Amount Paid</th><td>{{amount_paid}}</td></tr>
+      <tr><th>Balance Due</th><td>{{balance_due}}</td></tr>
+    </table>
+    <div class="pf-section">{{notes}}</div>
+    <div class="pf-signature">
+      <div></div>
+      <div class="pf-sign-box">Authorized Signature</div>
+    </div>
+    <div class="pf-footer-note">{{company_name}} &middot; Purchase Invoice {{invoice_no}}</div>
   </div>
 </div>
 HTML;

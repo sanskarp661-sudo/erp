@@ -33,8 +33,15 @@ if (is_post()) {
     if (!$lineItems) {
         $error = 'Cart is empty — add at least one product.';
     } else {
+        $posWarehouseId = default_warehouse_id();
+        if (!$posWarehouseId) {
+            $error = 'No warehouse is set up yet — ask an admin to create one under Supply Chain → Warehouses.';
+        }
         $pdo->beginTransaction();
         try {
+            if (!$posWarehouseId) {
+                throw new RuntimeException($error);
+            }
             $subtotal = 0;
             $resolved = [];
             foreach ($lineItems as $pid => $qty) {
@@ -44,8 +51,8 @@ if (is_post()) {
                 if (!$product) {
                     throw new RuntimeException('A product in the cart no longer exists.');
                 }
-                if ($product['quantity'] < $qty) {
-                    throw new RuntimeException('Not enough stock for ' . $product['name'] . ' (only ' . $product['quantity'] . ' left).');
+                if (warehouse_stock($pid, $posWarehouseId) < $qty) {
+                    throw new RuntimeException('Not enough stock for ' . $product['name'] . '.');
                 }
                 $lineTotal = $qty * $product['selling_price'];
                 $subtotal += $lineTotal;
@@ -58,12 +65,9 @@ if (is_post()) {
             $orderId = (int)$pdo->lastInsertId();
 
             $itemStmt = $pdo->prepare('INSERT INTO sales_order_items (order_id, product_id, quantity, unit_price, subtotal) VALUES (?,?,?,?,?)');
-            $stockStmt = $pdo->prepare('UPDATE products SET quantity = quantity - ? WHERE id = ?');
-            $moveStmt = $pdo->prepare("INSERT INTO stock_movements (product_id, type, quantity, reference, notes, created_by) VALUES (?, 'out', ?, ?, 'POS sale', ?)");
             foreach ($resolved as $r) {
                 $itemStmt->execute([$orderId, $r['product']['id'], $r['qty'], $r['unit_price'], $r['subtotal']]);
-                $stockStmt->execute([$r['qty'], $r['product']['id']]);
-                $moveStmt->execute([$r['product']['id'], -$r['qty'], $orderNo, current_user()['id']]);
+                stock_move($r['product']['id'], $posWarehouseId, -$r['qty'], 'out', $orderNo, 'POS sale', current_user()['id']);
             }
 
             $invoiceNo = next_code('INV', 'invoices', 'invoice_no');

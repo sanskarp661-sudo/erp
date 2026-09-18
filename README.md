@@ -21,17 +21,30 @@ module, where the sidebar switches to show just that module's own
 features/doctypes plus a "‹ All Modules" link back to the top level.
 
 - **Inventory** (`inventory/`) — products, categories, inventory valuation.
-- **Supply Chain** (`supply-chain/`) — stock movements / stock entries
-  (the audit trail of goods flowing in, out, or adjusted).
-- **Procurement** (`purchases/`) — vendors, purchase orders with a
-  pending → ordered → received workflow (receiving adds stock).
-- **Sales** (`sales/`) — sales orders with a pending → confirmed →
-  shipped → completed workflow (confirming deducts stock; cancelling a
-  confirmed/shipped order restores it).
+- **Supply Chain** (`supply-chain/`) — warehouses (create a hierarchy of
+  group and leaf warehouses, e.g. "All Warehouses" → "Stores" → "Stores /
+  Shelf A"; only leaf warehouses hold stock), per-warehouse stock levels,
+  manual stock entries/adjustments, and the full stock movement ledger
+  (the audit trail of goods flowing in, out, or adjusted, per warehouse).
+  Stock only ever moves via a Delivery Note, a Goods Receipt, a POS sale,
+  or a manual stock entry here — never by editing an order directly.
+- **Procurement** (`purchases/`) — vendors, and the purchase document
+  flow: a Purchase Order (pending → ordered → received) does **not** by
+  itself move stock; once ordered, you record a **Goods Receipt (GRN)**
+  against it (choosing which warehouse the goods land in), and posting
+  the GRN is what actually adds stock. From a posted GRN you can generate
+  a **Purchase Invoice** (accounts payable) to track what's owed to the
+  vendor and record payments against it.
+- **Sales** (`sales/`) — customers' orders and the sales document flow: a
+  Sales Order (pending → confirmed → shipped → completed) does **not**
+  by itself move stock; once confirmed, you record a **Delivery Note**
+  against it (choosing which warehouse it ships from), and posting the
+  delivery note is what actually deducts stock. From a posted delivery
+  note you can generate a **Sales Invoice** to bill the customer.
 - **POS** (`pos/`) — a point-of-sale checkout screen: tap products to
   build a cart, charge a customer (defaults to an auto-created "Walk-in
-  Customer"), and it completes the sale, deducts stock, generates a paid
-  invoice, and prints a receipt in one step.
+  Customer"), and it completes the sale, deducts stock from the default
+  warehouse, generates a paid invoice, and prints a receipt in one step.
 - **HRMS** (`hr/`) — departments, employees, daily attendance, leave
   requests with approval, and salary slips (visible to whoever can manage
   the HRMS module — System Admin, Admin, or the HR role):
@@ -39,9 +52,10 @@ features/doctypes plus a "‹ All Modules" link back to the top level.
   deductions, mark it paid (which also records the net pay as a
   "Payroll" expense under Finance), and print it.
 - **CRM** (`crm/`) — customers.
-- **Finance** (`accounting/`) — invoices (standalone or generated from a
-  sales order), printable invoice view, payments with automatic
-  unpaid → partially paid → paid status, and expense tracking.
+- **Finance** (`accounting/`) — sales invoices (standalone or generated
+  from a delivery note) with payments and automatic unpaid → partially
+  paid → paid status; purchase invoices (accounts payable, generated from
+  a goods receipt) with the same payment tracking; expense tracking.
 
 Each module has its own dashboard (KPIs + recent activity) as its landing
 page. Reports live under `reports/` and are linked from their relevant
@@ -54,9 +68,10 @@ module list, since they aren't a business module.
 
 Admin users can design custom print layouts under **Print Formats**
 (account menu, top right). A print format is scoped to one document type
-(Sales Invoice, Item Master, Customer, Supplier, Sales Order, Purchase
-Order, or Salary Slip) — a format you create for Sales Invoice only ever
-shows up when printing an invoice, never elsewhere. The editor is an HTML
+(Sales Invoice, Purchase Invoice, Item Master, Customer, Supplier, Sales
+Order, Delivery Note, Purchase Order, Goods Receipt, or Salary Slip) — a
+format you create for Sales Invoice only ever shows up when printing an
+invoice, never elsewhere. The editor is an HTML
 template with `{{token}}` placeholders (click any token in the sidebar to
 insert it) that get replaced with that record's real data at print time;
 `{{items_table}}` (or `{{earnings_table}}`/`{{deductions_table}}` for

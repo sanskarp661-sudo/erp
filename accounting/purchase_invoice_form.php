@@ -4,48 +4,48 @@ require_module_edit('finance');
 
 $id = (int)input('id');
 $fromOrder = (int)input('from_order');
-$fromDn = (int)input('from_dn');
-$invoice = ['id' => 0, 'customer_id' => '', 'sales_order_id' => $fromOrder ?: null, 'delivery_note_id' => $fromDn ?: null, 'invoice_date' => today(), 'due_date' => date('Y-m-d', strtotime('+14 days')), 'tax' => '0', 'notes' => ''];
+$fromGrn = (int)input('from_grn');
+$invoice = ['id' => 0, 'vendor_id' => '', 'purchase_order_id' => $fromOrder ?: null, 'goods_receipt_id' => $fromGrn ?: null, 'invoice_date' => today(), 'due_date' => date('Y-m-d', strtotime('+14 days')), 'tax' => '0', 'notes' => ''];
 $items = [];
 
 if ($id) {
-    $stmt = db()->prepare('SELECT * FROM invoices WHERE id = ?');
+    $stmt = db()->prepare('SELECT * FROM purchase_invoices WHERE id = ?');
     $stmt->execute([$id]);
     $invoice = $stmt->fetch();
     if (!$invoice) {
-        flash('danger', 'Invoice not found.');
-        redirect('/accounting/invoices.php');
+        flash('danger', 'Purchase invoice not found.');
+        redirect('/accounting/purchase_invoices.php');
     }
     if ($invoice['amount_paid'] > 0 || $invoice['status'] !== 'unpaid') {
-        flash('danger', 'This invoice already has activity and can no longer be edited.');
-        redirect('/accounting/invoice_view.php?id=' . $id);
+        flash('danger', 'This purchase invoice already has activity and can no longer be edited.');
+        redirect('/accounting/purchase_invoice_view.php?id=' . $id);
     }
-    $stmt = db()->prepare('SELECT * FROM invoice_items WHERE invoice_id = ?');
+    $stmt = db()->prepare('SELECT * FROM purchase_invoice_items WHERE purchase_invoice_id = ?');
     $stmt->execute([$id]);
     $items = $stmt->fetchAll();
-} elseif ($fromDn) {
-    $stmt = db()->prepare('SELECT * FROM delivery_notes WHERE id = ?');
-    $stmt->execute([$fromDn]);
-    $dn = $stmt->fetch();
-    if ($dn) {
-        $invoice['customer_id'] = $dn['customer_id'];
-        $invoice['sales_order_id'] = $dn['sales_order_id'];
-        $stmt = db()->prepare('SELECT dni.*, p.name product_name FROM delivery_note_items dni JOIN products p ON p.id = dni.product_id WHERE dn_id = ?');
-        $stmt->execute([$fromDn]);
-        foreach ($stmt->fetchAll() as $oi) {
-            $items[] = ['product_id' => $oi['product_id'], 'description' => $oi['product_name'], 'quantity' => $oi['quantity'], 'unit_price' => $oi['unit_price']];
+} elseif ($fromGrn) {
+    $stmt = db()->prepare('SELECT * FROM goods_receipts WHERE id = ?');
+    $stmt->execute([$fromGrn]);
+    $grn = $stmt->fetch();
+    if ($grn) {
+        $invoice['vendor_id'] = $grn['vendor_id'];
+        $invoice['purchase_order_id'] = $grn['purchase_order_id'];
+        $stmt = db()->prepare('SELECT gri.*, p.name product_name FROM goods_receipt_items gri JOIN products p ON p.id = gri.product_id WHERE grn_id = ?');
+        $stmt->execute([$fromGrn]);
+        foreach ($stmt->fetchAll() as $gi) {
+            $items[] = ['product_id' => $gi['product_id'], 'description' => $gi['product_name'], 'quantity' => $gi['quantity'], 'unit_price' => $gi['unit_cost']];
         }
     }
 } elseif ($fromOrder) {
-    $stmt = db()->prepare('SELECT * FROM sales_orders WHERE id = ?');
+    $stmt = db()->prepare('SELECT * FROM purchase_orders WHERE id = ?');
     $stmt->execute([$fromOrder]);
     $order = $stmt->fetch();
     if ($order) {
-        $invoice['customer_id'] = $order['customer_id'];
-        $stmt = db()->prepare('SELECT soi.*, p.name product_name FROM sales_order_items soi JOIN products p ON p.id = soi.product_id WHERE order_id = ?');
+        $invoice['vendor_id'] = $order['vendor_id'];
+        $stmt = db()->prepare('SELECT poi.*, p.name product_name FROM purchase_order_items poi JOIN products p ON p.id = poi.product_id WHERE po_id = ?');
         $stmt->execute([$fromOrder]);
         foreach ($stmt->fetchAll() as $oi) {
-            $items[] = ['product_id' => $oi['product_id'], 'description' => $oi['product_name'], 'quantity' => $oi['quantity'], 'unit_price' => $oi['unit_price']];
+            $items[] = ['product_id' => $oi['product_id'], 'description' => $oi['product_name'], 'quantity' => $oi['quantity'], 'unit_price' => $oi['unit_cost']];
         }
     }
 }
@@ -54,9 +54,9 @@ $error = '';
 
 if (is_post()) {
     csrf_verify();
-    $customerId = (int)input('customer_id');
-    $salesOrderId = input('sales_order_id') ?: null;
-    $deliveryNoteId = input('delivery_note_id') ?: null;
+    $vendorId = (int)input('vendor_id');
+    $purchaseOrderId = input('purchase_order_id') ?: null;
+    $goodsReceiptId = input('goods_receipt_id') ?: null;
     $invoiceDate = input('invoice_date') ?: today();
     $dueDate = input('due_date') ?: null;
     $tax = (float)input('tax');
@@ -81,8 +81,8 @@ if (is_post()) {
     }
     $total = $subtotal + $tax;
 
-    if (!$customerId) {
-        $error = 'Please select a customer.';
+    if (!$vendorId) {
+        $error = 'Please select a vendor.';
     } elseif (!$lineItems) {
         $error = 'Please add at least one valid line item.';
     } else {
@@ -90,52 +90,52 @@ if (is_post()) {
         $pdo->beginTransaction();
         try {
             if ($id) {
-                $pdo->prepare('UPDATE invoices SET customer_id=?, sales_order_id=?, delivery_note_id=?, invoice_date=?, due_date=?, subtotal=?, tax=?, total=?, notes=? WHERE id=?')
-                    ->execute([$customerId, $salesOrderId, $deliveryNoteId, $invoiceDate, $dueDate, $subtotal, $tax, $total, $notes, $id]);
-                $pdo->prepare('DELETE FROM invoice_items WHERE invoice_id=?')->execute([$id]);
-                $invId = $id;
+                $pdo->prepare('UPDATE purchase_invoices SET vendor_id=?, purchase_order_id=?, goods_receipt_id=?, invoice_date=?, due_date=?, subtotal=?, tax=?, total=?, notes=? WHERE id=?')
+                    ->execute([$vendorId, $purchaseOrderId, $goodsReceiptId, $invoiceDate, $dueDate, $subtotal, $tax, $total, $notes, $id]);
+                $pdo->prepare('DELETE FROM purchase_invoice_items WHERE purchase_invoice_id=?')->execute([$id]);
+                $piId = $id;
             } else {
-                $invNo = next_code('INV', 'invoices', 'invoice_no');
-                $pdo->prepare('INSERT INTO invoices (invoice_no, sales_order_id, delivery_note_id, customer_id, invoice_date, due_date, status, subtotal, tax, total, amount_paid, notes, created_by) VALUES (?,?,?,?,?,?,?,?,?,?,0,?,?)')
-                    ->execute([$invNo, $salesOrderId, $deliveryNoteId, $customerId, $invoiceDate, $dueDate, 'unpaid', $subtotal, $tax, $total, $notes, current_user()['id']]);
-                $invId = (int)$pdo->lastInsertId();
+                $piNo = next_code('PI', 'purchase_invoices', 'pi_no');
+                $pdo->prepare('INSERT INTO purchase_invoices (pi_no, purchase_order_id, goods_receipt_id, vendor_id, invoice_date, due_date, status, subtotal, tax, total, amount_paid, notes, created_by) VALUES (?,?,?,?,?,?,?,?,?,?,0,?,?)')
+                    ->execute([$piNo, $purchaseOrderId, $goodsReceiptId, $vendorId, $invoiceDate, $dueDate, 'unpaid', $subtotal, $tax, $total, $notes, current_user()['id']]);
+                $piId = (int)$pdo->lastInsertId();
             }
-            $itemStmt = $pdo->prepare('INSERT INTO invoice_items (invoice_id, product_id, description, quantity, unit_price, subtotal) VALUES (?,?,?,?,?,?)');
+            $itemStmt = $pdo->prepare('INSERT INTO purchase_invoice_items (purchase_invoice_id, product_id, description, quantity, unit_price, subtotal) VALUES (?,?,?,?,?,?)');
             foreach ($lineItems as $li) {
-                $itemStmt->execute([$invId, $li['product_id'], $li['description'], $li['quantity'], $li['unit_price'], $li['subtotal']]);
+                $itemStmt->execute([$piId, $li['product_id'], $li['description'], $li['quantity'], $li['unit_price'], $li['subtotal']]);
             }
             $pdo->commit();
-            flash('success', $id ? 'Invoice updated.' : 'Invoice created.');
-            redirect('/accounting/invoice_view.php?id=' . $invId);
+            flash('success', $id ? 'Purchase invoice updated.' : 'Purchase invoice created.');
+            redirect('/accounting/purchase_invoice_view.php?id=' . $piId);
         } catch (Exception $e) {
             $pdo->rollBack();
-            $error = 'Could not save invoice.';
+            $error = 'Could not save purchase invoice.';
         }
     }
 
-    $invoice = ['id' => $id, 'customer_id' => $customerId, 'sales_order_id' => $salesOrderId, 'delivery_note_id' => $deliveryNoteId, 'invoice_date' => $invoiceDate, 'due_date' => $dueDate, 'tax' => $tax, 'notes' => $notes];
+    $invoice = ['id' => $id, 'vendor_id' => $vendorId, 'purchase_order_id' => $purchaseOrderId, 'goods_receipt_id' => $goodsReceiptId, 'invoice_date' => $invoiceDate, 'due_date' => $dueDate, 'tax' => $tax, 'notes' => $notes];
     $items = $lineItems;
 }
 
-$customers = db()->query('SELECT id, name FROM customers ORDER BY name')->fetchAll();
-$products = db()->query("SELECT id, sku, name, selling_price FROM products WHERE status='active' ORDER BY name")->fetchAll();
+$vendors = db()->query('SELECT id, name FROM vendors ORDER BY name')->fetchAll();
+$products = db()->query("SELECT id, sku, name, cost_price FROM products WHERE status='active' ORDER BY name")->fetchAll();
 
-$page_title = $id ? 'Edit Invoice' : 'New Invoice';
+$page_title = $id ? 'Edit Purchase Invoice' : 'New Purchase Invoice';
 require __DIR__ . '/../includes/header.php';
 ?>
 <div class="card p-4">
   <?php if ($error): ?><div class="alert alert-danger"><?= e($error) ?></div><?php endif; ?>
   <form method="post">
     <?= csrf_field() ?>
-    <input type="hidden" name="sales_order_id" value="<?= e($invoice['sales_order_id'] ?? '') ?>">
-    <input type="hidden" name="delivery_note_id" value="<?= e($invoice['delivery_note_id'] ?? '') ?>">
+    <input type="hidden" name="purchase_order_id" value="<?= e($invoice['purchase_order_id'] ?? '') ?>">
+    <input type="hidden" name="goods_receipt_id" value="<?= e($invoice['goods_receipt_id'] ?? '') ?>">
     <div class="row g-3 mb-3">
       <div class="col-sm-4">
-        <label class="form-label">Customer</label>
-        <select name="customer_id" class="form-select" required>
-          <option value="">— Select customer —</option>
-          <?php foreach ($customers as $c): ?>
-            <option value="<?= (int)$c['id'] ?>" <?= (string)$invoice['customer_id'] === (string)$c['id'] ? 'selected' : '' ?>><?= e($c['name']) ?></option>
+        <label class="form-label">Vendor</label>
+        <select name="vendor_id" class="form-select" required>
+          <option value="">— Select vendor —</option>
+          <?php foreach ($vendors as $v): ?>
+            <option value="<?= (int)$v['id'] ?>" <?= (string)$invoice['vendor_id'] === (string)$v['id'] ? 'selected' : '' ?>><?= e($v['name']) ?></option>
           <?php endforeach; ?>
         </select>
       </div>
@@ -165,7 +165,7 @@ require __DIR__ . '/../includes/header.php';
                 <select class="form-select js-product js-fill-desc">
                   <option value="">— None —</option>
                   <?php foreach ($products as $p): ?>
-                    <option value="<?= (int)$p['id'] ?>" data-price="<?= e($p['selling_price']) ?>" data-name="<?= e($p['name']) ?>" <?= (string)($it['product_id'] ?? '') === (string)$p['id'] ? 'selected' : '' ?>><?= e($p['name']) ?> (<?= e($p['sku']) ?>)</option>
+                    <option value="<?= (int)$p['id'] ?>" data-price="<?= e($p['cost_price']) ?>" data-name="<?= e($p['name']) ?>" <?= (string)($it['product_id'] ?? '') === (string)$p['id'] ? 'selected' : '' ?>><?= e($p['name']) ?> (<?= e($p['sku']) ?>)</option>
                   <?php endforeach; ?>
                 </select>
                 <input type="hidden" class="js-product-id" name="product_id[]" value="<?= e($it['product_id'] ?? '') ?>">
@@ -192,8 +192,8 @@ require __DIR__ . '/../includes/header.php';
     </div>
 
     <div class="page-actions">
-      <button type="submit" class="btn btn-brand">Save Invoice</button>
-      <a href="invoices.php" class="btn btn-outline-secondary">Cancel</a>
+      <button type="submit" class="btn btn-brand">Save Purchase Invoice</button>
+      <a href="purchase_invoices.php" class="btn btn-outline-secondary">Cancel</a>
     </div>
   </form>
 </div>

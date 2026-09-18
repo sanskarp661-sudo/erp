@@ -31,25 +31,12 @@ if (is_post() && input('action') === 'transition') {
         redirect('/purchases/order_view.php?id=' . $id);
     }
 
-    $itemsStmt = db()->prepare('SELECT * FROM purchase_order_items WHERE po_id = ?');
-    $itemsStmt->execute([$id]);
-    $orderItems = $itemsStmt->fetchAll();
-
-    $pdo = db();
-    $pdo->beginTransaction();
+    // Purchase orders no longer touch stock directly — only a Goods
+    // Receipt (created separately, once ordered) actually adds it.
     try {
-        if ($newStatus === 'received') {
-            foreach ($orderItems as $it) {
-                $pdo->prepare('UPDATE products SET quantity = quantity + ? WHERE id = ?')->execute([$it['quantity'], $it['product_id']]);
-                $pdo->prepare("INSERT INTO stock_movements (product_id, type, quantity, reference, notes, created_by) VALUES (?, 'in', ?, ?, 'Purchase order received', ?)")
-                    ->execute([$it['product_id'], $it['quantity'], $order['po_no'], current_user()['id']]);
-            }
-        }
-        $pdo->prepare('UPDATE purchase_orders SET status = ? WHERE id = ?')->execute([$newStatus, $id]);
-        $pdo->commit();
+        db()->prepare('UPDATE purchase_orders SET status = ? WHERE id = ?')->execute([$newStatus, $id]);
         flash('success', 'Purchase order status updated to "' . $newStatus . '".');
     } catch (Exception $e) {
-        $pdo->rollBack();
         flash('danger', 'Could not update purchase order status.');
     }
     redirect('/purchases/order_view.php?id=' . $id);
@@ -58,6 +45,10 @@ if (is_post() && input('action') === 'transition') {
 $items = db()->prepare('SELECT poi.*, p.name product_name, p.sku FROM purchase_order_items poi JOIN products p ON p.id = poi.product_id WHERE po_id = ?');
 $items->execute([$id]);
 $items = $items->fetchAll();
+
+$grnStmt = db()->prepare('SELECT id, grn_no, status FROM goods_receipts WHERE purchase_order_id = ? LIMIT 1');
+$grnStmt->execute([$id]);
+$existingGrn = $grnStmt->fetch();
 
 $badge = ['pending' => 'secondary', 'ordered' => 'info', 'received' => 'success', 'cancelled' => 'danger'];
 
@@ -86,7 +77,7 @@ require __DIR__ . '/../includes/header.php';
       <?php endif; ?>
     <?php elseif ($order['status'] === 'ordered'): ?>
       <?php if ($canEdit): ?>
-      <form method="post" class="d-inline" data-confirm="Receive this order? Stock will be added.">
+      <form method="post" class="d-inline" data-confirm="Mark this order as received? (Receiving stock happens separately via a Goods Receipt.)">
         <?= csrf_field() ?><input type="hidden" name="action" value="transition"><input type="hidden" name="status" value="received">
         <button class="btn btn-brand btn-sm" type="submit"><i class="fa-solid fa-box-open"></i> Mark Received</button>
       </form>
@@ -96,6 +87,14 @@ require __DIR__ . '/../includes/header.php';
         <?= csrf_field() ?><input type="hidden" name="action" value="transition"><input type="hidden" name="status" value="cancelled">
         <button class="btn btn-outline-danger btn-sm" type="submit"><i class="fa-solid fa-ban"></i> Cancel</button>
       </form>
+      <?php endif; ?>
+    <?php endif; ?>
+
+    <?php if (in_array($order['status'], ['ordered', 'received'], true)): ?>
+      <?php if ($existingGrn): ?>
+        <a href="<?= base_url('purchases/grn_view.php?id=' . $existingGrn['id']) ?>" class="btn btn-outline-brand btn-sm"><i class="fa-solid fa-box-open"></i> View Goods Receipt <?= e($existingGrn['grn_no']) ?></a>
+      <?php elseif ($canEdit): ?>
+        <a href="<?= base_url('purchases/grn_form.php?from_order=' . $id) ?>" class="btn btn-outline-brand btn-sm"><i class="fa-solid fa-box-open"></i> Create Goods Receipt</a>
       <?php endif; ?>
     <?php endif; ?>
     <a href="<?= base_url('print.php?doctype=purchase_order&id=' . $id) ?>" target="_blank" class="btn btn-outline-brand btn-sm"><i class="fa-solid fa-print"></i> Print</a>

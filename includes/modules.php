@@ -35,6 +35,7 @@ $MODULES = [
         'match' => '/supply-chain/',
         'items' => [
             ['label' => 'Dashboard',        'icon' => 'fa-solid fa-gauge',                  'url' => 'supply-chain/index.php',          'match' => 'supply-chain/index.php'],
+            ['label' => 'Warehouses',       'icon' => 'fa-solid fa-warehouse',              'url' => 'supply-chain/warehouses.php',      'match' => 'supply-chain/warehouse'],
             ['label' => 'Stock Movements',  'icon' => 'fa-solid fa-arrow-right-arrow-left', 'url' => 'supply-chain/stock_movements.php', 'match' => 'supply-chain/stock_movements'],
             ['label' => 'New Stock Entry',  'icon' => 'fa-solid fa-plus',                   'url' => 'supply-chain/stock_adjust.php',    'match' => 'supply-chain/stock_adjust'],
         ],
@@ -48,6 +49,7 @@ $MODULES = [
         'items' => [
             ['label' => 'Dashboard',        'icon' => 'fa-solid fa-gauge',   'url' => 'purchases/index.php',  'match' => 'purchases/index.php'],
             ['label' => 'Purchase Orders',  'icon' => 'fa-solid fa-file-invoice', 'url' => 'purchases/orders.php', 'match' => 'purchases/order'],
+            ['label' => 'Goods Receipts',   'icon' => 'fa-solid fa-box-open', 'url' => 'purchases/grns.php', 'match' => 'purchases/grn'],
             ['label' => 'Vendors',          'icon' => 'fa-solid fa-handshake', 'url' => 'purchases/vendors.php', 'match' => 'purchases/vendor'],
             ['label' => 'Purchase Report',  'icon' => 'fa-solid fa-chart-line', 'url' => 'reports/purchase_report.php', 'match' => 'reports/purchase'],
         ],
@@ -61,6 +63,7 @@ $MODULES = [
         'items' => [
             ['label' => 'Dashboard',      'icon' => 'fa-solid fa-gauge',      'url' => 'sales/index.php',  'match' => 'sales/index.php'],
             ['label' => 'Sales Orders',   'icon' => 'fa-solid fa-cart-shopping', 'url' => 'sales/orders.php', 'match' => 'sales/order'],
+            ['label' => 'Delivery Notes', 'icon' => 'fa-solid fa-truck',      'url' => 'sales/delivery_notes.php', 'match' => 'sales/delivery_note'],
             ['label' => 'Sales Report',   'icon' => 'fa-solid fa-chart-line', 'url' => 'reports/sales_report.php', 'match' => 'reports/sales'],
         ],
     ],
@@ -110,6 +113,7 @@ $MODULES = [
         'items' => [
             ['label' => 'Dashboard',        'icon' => 'fa-solid fa-gauge',              'url' => 'accounting/index.php',  'match' => 'accounting/index.php'],
             ['label' => 'Invoices',         'icon' => 'fa-solid fa-file-invoice-dollar', 'url' => 'accounting/invoices.php', 'match' => 'accounting/invoice'],
+            ['label' => 'Purchase Invoices','icon' => 'fa-solid fa-file-invoice',       'url' => 'accounting/purchase_invoices.php', 'match' => 'accounting/purchase_invoice'],
             ['label' => 'Payments',         'icon' => 'fa-solid fa-money-check-dollar',  'url' => 'accounting/payments.php', 'match' => 'accounting/payment'],
             ['label' => 'Expenses',         'icon' => 'fa-solid fa-receipt',             'url' => 'accounting/expenses.php', 'match' => 'accounting/expense'],
             ['label' => 'Financial Report', 'icon' => 'fa-solid fa-chart-line',          'url' => 'reports/financial_report.php', 'match' => 'reports/financial'],

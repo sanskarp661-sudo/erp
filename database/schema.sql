@@ -100,9 +100,35 @@ CREATE TABLE IF NOT EXISTS products (
   FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Warehouses form a tree (self-referencing parent_id). A "Group" warehouse
+-- is organizational only (e.g. "All Warehouses") and can't hold stock
+-- itself — only its non-group descendants can.
+CREATE TABLE IF NOT EXISTS warehouses (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(120) NOT NULL,
+  parent_id INT UNSIGNED DEFAULT NULL,
+  is_group TINYINT(1) NOT NULL DEFAULT 0,
+  status ENUM('active','inactive') NOT NULL DEFAULT 'active',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (parent_id) REFERENCES warehouses(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Per-(product, warehouse) stock balance. products.quantity is kept as a
+-- maintained total across all warehouses — see includes/stock.php.
+CREATE TABLE IF NOT EXISTS stock_bins (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  product_id INT UNSIGNED NOT NULL,
+  warehouse_id INT UNSIGNED NOT NULL,
+  quantity INT NOT NULL DEFAULT 0,
+  UNIQUE KEY uniq_product_warehouse (product_id, warehouse_id),
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+  FOREIGN KEY (warehouse_id) REFERENCES warehouses(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE IF NOT EXISTS stock_movements (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   product_id INT UNSIGNED NOT NULL,
+  warehouse_id INT UNSIGNED DEFAULT NULL,
   type ENUM('in','out','adjustment') NOT NULL,
   quantity INT NOT NULL,
   reference VARCHAR(120) DEFAULT NULL,
@@ -110,6 +136,7 @@ CREATE TABLE IF NOT EXISTS stock_movements (
   created_by INT UNSIGNED DEFAULT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+  FOREIGN KEY (warehouse_id) REFERENCES warehouses(id) ON DELETE SET NULL,
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -151,6 +178,38 @@ CREATE TABLE IF NOT EXISTS sales_order_items (
   FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- A Delivery Note is what actually deducts stock for a sale (Sales Orders
+-- themselves no longer touch stock). draft = not yet processed, delivered
+-- = stock has been deducted, cancelled = reversed (only from delivered).
+CREATE TABLE IF NOT EXISTS delivery_notes (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  dn_no VARCHAR(30) NOT NULL UNIQUE,
+  sales_order_id INT UNSIGNED DEFAULT NULL,
+  customer_id INT UNSIGNED NOT NULL,
+  warehouse_id INT UNSIGNED NOT NULL,
+  posting_date DATE NOT NULL,
+  status ENUM('draft','delivered','cancelled') NOT NULL DEFAULT 'draft',
+  notes VARCHAR(255) DEFAULT NULL,
+  total_amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+  created_by INT UNSIGNED DEFAULT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (sales_order_id) REFERENCES sales_orders(id) ON DELETE SET NULL,
+  FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
+  FOREIGN KEY (warehouse_id) REFERENCES warehouses(id) ON DELETE RESTRICT,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS delivery_note_items (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  dn_id INT UNSIGNED NOT NULL,
+  product_id INT UNSIGNED NOT NULL,
+  quantity INT NOT NULL,
+  unit_price DECIMAL(14,2) NOT NULL,
+  subtotal DECIMAL(14,2) NOT NULL,
+  FOREIGN KEY (dn_id) REFERENCES delivery_notes(id) ON DELETE CASCADE,
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- ---------------------------------------------------------------------
 -- Purchases
 -- ---------------------------------------------------------------------
@@ -189,6 +248,39 @@ CREATE TABLE IF NOT EXISTS purchase_order_items (
   FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- A Goods Receipt Note (GRN) is what actually adds stock for a purchase
+-- (Purchase Orders themselves no longer touch stock). draft = not yet
+-- processed, received = stock has been added, cancelled = reversed (only
+-- from received).
+CREATE TABLE IF NOT EXISTS goods_receipts (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  grn_no VARCHAR(30) NOT NULL UNIQUE,
+  purchase_order_id INT UNSIGNED DEFAULT NULL,
+  vendor_id INT UNSIGNED NOT NULL,
+  warehouse_id INT UNSIGNED NOT NULL,
+  posting_date DATE NOT NULL,
+  status ENUM('draft','received','cancelled') NOT NULL DEFAULT 'draft',
+  notes VARCHAR(255) DEFAULT NULL,
+  total_amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+  created_by INT UNSIGNED DEFAULT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (purchase_order_id) REFERENCES purchase_orders(id) ON DELETE SET NULL,
+  FOREIGN KEY (vendor_id) REFERENCES vendors(id) ON DELETE CASCADE,
+  FOREIGN KEY (warehouse_id) REFERENCES warehouses(id) ON DELETE RESTRICT,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS goods_receipt_items (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  grn_id INT UNSIGNED NOT NULL,
+  product_id INT UNSIGNED NOT NULL,
+  quantity INT NOT NULL,
+  unit_cost DECIMAL(14,2) NOT NULL,
+  subtotal DECIMAL(14,2) NOT NULL,
+  FOREIGN KEY (grn_id) REFERENCES goods_receipts(id) ON DELETE CASCADE,
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- ---------------------------------------------------------------------
 -- Accounting
 -- ---------------------------------------------------------------------
@@ -196,6 +288,7 @@ CREATE TABLE IF NOT EXISTS invoices (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   invoice_no VARCHAR(30) NOT NULL UNIQUE,
   sales_order_id INT UNSIGNED DEFAULT NULL,
+  delivery_note_id INT UNSIGNED DEFAULT NULL,
   customer_id INT UNSIGNED NOT NULL,
   invoice_date DATE NOT NULL,
   due_date DATE DEFAULT NULL,
@@ -208,6 +301,7 @@ CREATE TABLE IF NOT EXISTS invoices (
   created_by INT UNSIGNED DEFAULT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (sales_order_id) REFERENCES sales_orders(id) ON DELETE SET NULL,
+  FOREIGN KEY (delivery_note_id) REFERENCES delivery_notes(id) ON DELETE SET NULL,
   FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -235,6 +329,57 @@ CREATE TABLE IF NOT EXISTS payments (
   created_by INT UNSIGNED DEFAULT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- A vendor bill — billing counterpart to a GRN, mirrors invoices/payments
+-- but for money owed to a vendor (accounts payable) rather than money owed
+-- by a customer.
+CREATE TABLE IF NOT EXISTS purchase_invoices (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  pi_no VARCHAR(30) NOT NULL UNIQUE,
+  purchase_order_id INT UNSIGNED DEFAULT NULL,
+  goods_receipt_id INT UNSIGNED DEFAULT NULL,
+  vendor_id INT UNSIGNED NOT NULL,
+  invoice_date DATE NOT NULL,
+  due_date DATE DEFAULT NULL,
+  status ENUM('unpaid','partially_paid','paid','cancelled') NOT NULL DEFAULT 'unpaid',
+  subtotal DECIMAL(14,2) NOT NULL DEFAULT 0,
+  tax DECIMAL(14,2) NOT NULL DEFAULT 0,
+  total DECIMAL(14,2) NOT NULL DEFAULT 0,
+  amount_paid DECIMAL(14,2) NOT NULL DEFAULT 0,
+  notes VARCHAR(255) DEFAULT NULL,
+  created_by INT UNSIGNED DEFAULT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (purchase_order_id) REFERENCES purchase_orders(id) ON DELETE SET NULL,
+  FOREIGN KEY (goods_receipt_id) REFERENCES goods_receipts(id) ON DELETE SET NULL,
+  FOREIGN KEY (vendor_id) REFERENCES vendors(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS purchase_invoice_items (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  purchase_invoice_id INT UNSIGNED NOT NULL,
+  product_id INT UNSIGNED DEFAULT NULL,
+  description VARCHAR(255) NOT NULL,
+  quantity INT NOT NULL DEFAULT 1,
+  unit_price DECIMAL(14,2) NOT NULL,
+  subtotal DECIMAL(14,2) NOT NULL,
+  FOREIGN KEY (purchase_invoice_id) REFERENCES purchase_invoices(id) ON DELETE CASCADE,
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS purchase_payments (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  purchase_invoice_id INT UNSIGNED NOT NULL,
+  amount DECIMAL(14,2) NOT NULL,
+  payment_date DATE NOT NULL,
+  method ENUM('cash','bank_transfer','card','cheque','other') NOT NULL DEFAULT 'cash',
+  reference VARCHAR(120) DEFAULT NULL,
+  notes VARCHAR(255) DEFAULT NULL,
+  created_by INT UNSIGNED DEFAULT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (purchase_invoice_id) REFERENCES purchase_invoices(id) ON DELETE CASCADE,
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -372,3 +517,10 @@ INSERT INTO departments (name, description) VALUES
 
 INSERT INTO categories (name, description) VALUES
 ('General', 'Default category');
+
+-- Default warehouse hierarchy: an organizational root plus one leaf
+-- warehouse that actually holds stock. Add more under "All Warehouses"
+-- from Supply Chain → Warehouses as needed.
+INSERT INTO warehouses (id, name, parent_id, is_group) VALUES
+(1, 'All Warehouses', NULL, 1),
+(2, 'Stores', 1, 0);

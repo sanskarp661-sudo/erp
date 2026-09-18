@@ -3,7 +3,6 @@ require_once __DIR__ . '/../includes/auth.php';
 require_login();
 $canEdit = can_edit_module('sales');
 $canManage = can_manage_module('sales');
-$canEditFinance = can_edit_module('finance');
 
 $id = (int)input('id');
 $stmt = db()->prepare('SELECT so.*, c.name customer_name, c.email customer_email, c.phone customer_phone FROM sales_orders so JOIN customers c ON c.id = so.customer_id WHERE so.id = ?');
@@ -33,43 +32,13 @@ if (is_post() && input('action') === 'transition') {
         redirect('/sales/order_view.php?id=' . $id);
     }
 
-    $itemsStmt = db()->prepare('SELECT * FROM sales_order_items WHERE order_id = ?');
-    $itemsStmt->execute([$id]);
-    $orderItems = $itemsStmt->fetchAll();
-
-    $pdo = db();
-    $pdo->beginTransaction();
+    // Sales orders no longer touch stock directly — only a Delivery Note
+    // (created separately, once confirmed/shipped) actually deducts it.
     try {
-        if ($newStatus === 'confirmed') {
-            // Deduct stock now that the order is confirmed.
-            foreach ($orderItems as $it) {
-                $p = $pdo->prepare('SELECT quantity, name, unit FROM products WHERE id = ? FOR UPDATE');
-                $p->execute([$it['product_id']]);
-                $prod = $p->fetch();
-                if (!$prod || $prod['quantity'] < $it['quantity']) {
-                    throw new RuntimeException('Insufficient stock for ' . ($prod['name'] ?? 'a product') . '.');
-                }
-            }
-            foreach ($orderItems as $it) {
-                $pdo->prepare('UPDATE products SET quantity = quantity - ? WHERE id = ?')->execute([$it['quantity'], $it['product_id']]);
-                $pdo->prepare("INSERT INTO stock_movements (product_id, type, quantity, reference, notes, created_by) VALUES (?, 'out', ?, ?, 'Sales order confirmed', ?)")
-                    ->execute([$it['product_id'], -$it['quantity'], $order['order_no'], current_user()['id']]);
-            }
-        } elseif ($newStatus === 'cancelled' && in_array($order['status'], ['confirmed', 'shipped'], true)) {
-            // Restock: stock was already deducted when confirmed.
-            foreach ($orderItems as $it) {
-                $pdo->prepare('UPDATE products SET quantity = quantity + ? WHERE id = ?')->execute([$it['quantity'], $it['product_id']]);
-                $pdo->prepare("INSERT INTO stock_movements (product_id, type, quantity, reference, notes, created_by) VALUES (?, 'in', ?, ?, 'Sales order cancelled', ?)")
-                    ->execute([$it['product_id'], $it['quantity'], $order['order_no'], current_user()['id']]);
-            }
-        }
-
-        $pdo->prepare('UPDATE sales_orders SET status = ? WHERE id = ?')->execute([$newStatus, $id]);
-        $pdo->commit();
+        db()->prepare('UPDATE sales_orders SET status = ? WHERE id = ?')->execute([$newStatus, $id]);
         flash('success', 'Order status updated to "' . $newStatus . '".');
     } catch (Exception $e) {
-        $pdo->rollBack();
-        flash('danger', $e->getMessage() ?: 'Could not update order status.');
+        flash('danger', 'Could not update order status.');
     }
     redirect('/sales/order_view.php?id=' . $id);
 }
@@ -78,9 +47,9 @@ $items = db()->prepare('SELECT soi.*, p.name product_name, p.sku FROM sales_orde
 $items->execute([$id]);
 $items = $items->fetchAll();
 
-$invoiceStmt = db()->prepare('SELECT id, invoice_no FROM invoices WHERE sales_order_id = ? LIMIT 1');
-$invoiceStmt->execute([$id]);
-$existingInvoice = $invoiceStmt->fetch();
+$dnStmt = db()->prepare('SELECT id, dn_no, status FROM delivery_notes WHERE sales_order_id = ? LIMIT 1');
+$dnStmt->execute([$id]);
+$existingDn = $dnStmt->fetch();
 
 $badge = ['pending' => 'secondary', 'confirmed' => 'info', 'shipped' => 'primary', 'completed' => 'success', 'cancelled' => 'danger'];
 
@@ -96,7 +65,7 @@ require __DIR__ . '/../includes/header.php';
     <?php if ($order['status'] === 'pending'): ?>
       <?php if ($canEdit): ?>
       <a href="order_form.php?id=<?= $id ?>" class="btn btn-outline-secondary btn-sm"><i class="fa-solid fa-pen"></i> Edit</a>
-      <form method="post" class="d-inline" data-confirm="Confirm this order? Stock will be deducted.">
+      <form method="post" class="d-inline" data-confirm="Confirm this order?">
         <?= csrf_field() ?><input type="hidden" name="action" value="transition"><input type="hidden" name="status" value="confirmed">
         <button class="btn btn-brand btn-sm" type="submit"><i class="fa-solid fa-check"></i> Confirm Order</button>
       </form>
@@ -115,7 +84,7 @@ require __DIR__ . '/../includes/header.php';
       </form>
       <?php endif; ?>
       <?php if ($canManage): ?>
-      <form method="post" class="d-inline" data-confirm="Cancel this order? Stock will be restored.">
+      <form method="post" class="d-inline" data-confirm="Cancel this order?">
         <?= csrf_field() ?><input type="hidden" name="action" value="transition"><input type="hidden" name="status" value="cancelled">
         <button class="btn btn-outline-danger btn-sm" type="submit"><i class="fa-solid fa-ban"></i> Cancel</button>
       </form>
@@ -128,18 +97,18 @@ require __DIR__ . '/../includes/header.php';
       </form>
       <?php endif; ?>
       <?php if ($canManage): ?>
-      <form method="post" class="d-inline" data-confirm="Cancel this order? Stock will be restored.">
+      <form method="post" class="d-inline" data-confirm="Cancel this order?">
         <?= csrf_field() ?><input type="hidden" name="action" value="transition"><input type="hidden" name="status" value="cancelled">
         <button class="btn btn-outline-danger btn-sm" type="submit"><i class="fa-solid fa-ban"></i> Cancel</button>
       </form>
       <?php endif; ?>
     <?php endif; ?>
 
-    <?php if (in_array($order['status'], ['confirmed', 'shipped', 'completed'], true)): ?>
-      <?php if ($existingInvoice): ?>
-        <a href="<?= base_url('accounting/invoice_view.php?id=' . $existingInvoice['id']) ?>" class="btn btn-outline-brand btn-sm"><i class="fa-solid fa-file-invoice-dollar"></i> View Invoice <?= e($existingInvoice['invoice_no']) ?></a>
-      <?php elseif ($canEditFinance): ?>
-        <a href="<?= base_url('accounting/invoice_form.php?from_order=' . $id) ?>" class="btn btn-outline-brand btn-sm"><i class="fa-solid fa-file-invoice-dollar"></i> Create Invoice</a>
+    <?php if (in_array($order['status'], ['confirmed', 'shipped'], true)): ?>
+      <?php if ($existingDn): ?>
+        <a href="<?= base_url('sales/delivery_note_view.php?id=' . $existingDn['id']) ?>" class="btn btn-outline-brand btn-sm"><i class="fa-solid fa-truck"></i> View Delivery Note <?= e($existingDn['dn_no']) ?></a>
+      <?php elseif ($canEdit): ?>
+        <a href="<?= base_url('sales/delivery_note_form.php?from_order=' . $id) ?>" class="btn btn-outline-brand btn-sm"><i class="fa-solid fa-truck"></i> Create Delivery Note</a>
       <?php endif; ?>
     <?php endif; ?>
     <a href="<?= base_url('print.php?doctype=sales_order&id=' . $id) ?>" target="_blank" class="btn btn-outline-brand btn-sm"><i class="fa-solid fa-print"></i> Print</a>

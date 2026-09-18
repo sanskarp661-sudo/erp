@@ -40,6 +40,7 @@ require __DIR__ . '/../includes/header.php';
 
 <div class="d-flex gap-2 mb-3">
   <a href="order_form.php" class="btn btn-brand"><i class="fa-solid fa-plus"></i> New Purchase Order</a>
+  <a href="grns.php" class="btn btn-outline-brand">Goods Receipts</a>
   <a href="vendors.php" class="btn btn-outline-brand">Manage Vendors</a>
   <a href="<?= base_url('reports/purchase_report.php') ?>" class="btn btn-outline-secondary">Full Report</a>
 </div>

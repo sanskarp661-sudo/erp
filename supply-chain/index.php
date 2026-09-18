@@ -39,6 +39,7 @@ require __DIR__ . '/../includes/header.php';
 
 <div class="d-flex gap-2 mb-3">
   <a href="stock_adjust.php" class="btn btn-brand"><i class="fa-solid fa-plus"></i> New Stock Entry</a>
+  <a href="warehouses.php" class="btn btn-outline-brand">Manage Warehouses</a>
   <a href="stock_movements.php" class="btn btn-outline-secondary">View All Movements</a>
 </div>
 

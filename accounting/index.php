@@ -42,6 +42,7 @@ require __DIR__ . '/../includes/header.php';
 
 <div class="d-flex gap-2 mb-3">
   <a href="invoice_form.php" class="btn btn-brand"><i class="fa-solid fa-plus"></i> New Invoice</a>
+  <a href="purchase_invoices.php" class="btn btn-outline-brand">Purchase Invoices</a>
   <a href="expense_form.php" class="btn btn-outline-brand">Add Expense</a>
   <a href="<?= base_url('reports/financial_report.php') ?>" class="btn btn-outline-secondary">Full Report</a>
 </div>
