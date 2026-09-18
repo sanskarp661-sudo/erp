@@ -1,6 +1,6 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
-require_login();
+require_module_edit('crm');
 
 $id = (int)input('id');
 $customer = ['id' => 0, 'name' => '', 'company' => '', 'email' => '', 'phone' => '', 'address' => ''];

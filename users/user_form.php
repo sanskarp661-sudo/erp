@@ -1,22 +1,28 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
-require_role(['admin']);
+require_admin_section();
 
 $id = (int)input('id');
 $isNew = !$id;
 $me = current_user();
 $isSelf = !$isNew && $id === $me['id'];
+$canManage = can_manage_users();
+
+if ($isNew) {
+    require_manage_users();
+}
 
 $defaults = [
     'id' => 0, 'name' => '', 'first_name' => '', 'middle_name' => '', 'last_name' => '',
     'username' => '', 'language' => 'en', 'time_zone' => 'UTC', 'mobile_no' => '', 'phone' => '',
-    'address' => '', 'bio' => '', 'must_change_password' => 0, 'email' => '', 'role' => 'staff', 'status' => 'active',
+    'address' => '', 'bio' => '', 'must_change_password' => 0, 'email' => '', 'status' => 'active',
 ];
 
 // Named $editUser (not $user) because includes/header.php sets $user =
 // current_user() for the logged-in viewer — reusing $user here would get
 // clobbered on include.
 $editUser = $defaults;
+$editUserRoles = [];
 
 if (!$isNew) {
     $stmt = db()->prepare('SELECT * FROM users WHERE id = ?');
@@ -26,6 +32,9 @@ if (!$isNew) {
         flash('danger', 'User not found.');
         redirect('/users/users.php');
     }
+    $rolesStmt = db()->prepare('SELECT role_key FROM user_roles WHERE user_id = ?');
+    $rolesStmt->execute([$id]);
+    $editUserRoles = $rolesStmt->fetchAll(PDO::FETCH_COLUMN);
 }
 
 $LANGUAGES = ['en' => 'English', 'hi' => 'Hindi', 'es' => 'Spanish', 'fr' => 'French', 'de' => 'German', 'zh' => 'Chinese', 'ar' => 'Arabic', 'pt' => 'Portuguese'];
@@ -40,11 +49,19 @@ function compute_full_name(string $first, string $middle, string $last): string
     return trim(preg_replace('/\s+/', ' ', "$first $middle $last"));
 }
 
+/** Selected role keys from a $_POST['roles'][] checkbox list, filtered to known roles. */
+function selected_roles_from_post(): array
+{
+    $posted = $_POST['roles'] ?? [];
+    return array_values(array_intersect(is_array($posted) ? $posted : [], array_keys(ROLE_DEFS)));
+}
+
 // ---------------------------------------------------------------------
 // POST handlers
 // ---------------------------------------------------------------------
 
 if (is_post() && input('form_action') === 'create') {
+    require_manage_users();
     csrf_verify();
     $first = input('first_name');
     $middle = input('middle_name');
@@ -57,7 +74,7 @@ if (is_post() && input('form_action') === 'create') {
     $phone = input('phone');
     $address = input('address');
     $bio = input('bio');
-    $role = in_array(input('role'), ['admin', 'manager', 'staff'], true) ? input('role') : 'staff';
+    $roles = selected_roles_from_post();
     $status = in_array(input('status'), ['active', 'inactive'], true) ? input('status') : 'active';
     $password = input('password');
     $name = compute_full_name($first, $middle, $last);
@@ -68,20 +85,30 @@ if (is_post() && input('form_action') === 'create') {
         $error = 'Password is required for a new user.';
     } else {
         try {
-            $stmt = db()->prepare('INSERT INTO users (name, first_name, middle_name, last_name, username, language, time_zone, mobile_no, phone, address, bio, email, password_hash, role, status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
-            $stmt->execute([$name, $first, $middle ?: null, $last ?: null, $username, $language, $timeZone, $mobile ?: null, $phone ?: null, $address ?: null, $bio ?: null, $email, password_hash($password, PASSWORD_BCRYPT), $role, $status]);
-            $newId = (int)db()->lastInsertId();
+            $pdo = db();
+            $pdo->beginTransaction();
+            $stmt = $pdo->prepare('INSERT INTO users (name, first_name, middle_name, last_name, username, language, time_zone, mobile_no, phone, address, bio, email, password_hash, status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+            $stmt->execute([$name, $first, $middle ?: null, $last ?: null, $username, $language, $timeZone, $mobile ?: null, $phone ?: null, $address ?: null, $bio ?: null, $email, password_hash($password, PASSWORD_BCRYPT), $status]);
+            $newId = (int)$pdo->lastInsertId();
+            $roleStmt = $pdo->prepare('INSERT INTO user_roles (user_id, role_key) VALUES (?, ?)');
+            foreach ($roles as $r) {
+                $roleStmt->execute([$newId, $r]);
+            }
+            $pdo->commit();
             log_activity('user', $newId, 'created');
             flash('success', 'User created.');
             redirect('/users/user_form.php?id=' . $newId);
         } catch (PDOException $e) {
+            if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
             $error = str_contains($e->getMessage(), 'Duplicate') ? 'A user with this email or username already exists.' : 'Could not create user.';
         }
     }
-    $editUser = array_merge($defaults, ['first_name' => $first, 'middle_name' => $middle, 'last_name' => $last, 'email' => $email, 'username' => $username, 'language' => $language, 'time_zone' => $timeZone, 'mobile_no' => $mobile, 'phone' => $phone, 'address' => $address, 'bio' => $bio, 'role' => $role, 'status' => $status]);
+    $editUser = array_merge($defaults, ['first_name' => $first, 'middle_name' => $middle, 'last_name' => $last, 'email' => $email, 'username' => $username, 'language' => $language, 'time_zone' => $timeZone, 'mobile_no' => $mobile, 'phone' => $phone, 'address' => $address, 'bio' => $bio, 'status' => $status]);
+    $editUserRoles = $roles;
 }
 
 if (is_post() && input('form_action') === 'save_details' && !$isNew) {
+    require_manage_users();
     csrf_verify();
     $first = input('first_name');
     $middle = input('middle_name');
@@ -117,17 +144,33 @@ if (is_post() && input('form_action') === 'save_details' && !$isNew) {
     }
 }
 
-if (is_post() && input('form_action') === 'save_role' && !$isNew) {
+if (is_post() && input('form_action') === 'save_roles' && !$isNew) {
+    require_manage_users();
     csrf_verify();
-    $role = $isSelf ? $editUser['role'] : (in_array(input('role'), ['admin', 'manager', 'staff'], true) ? input('role') : 'staff');
-    $old = $editUser['role'];
-    db()->prepare('UPDATE users SET role=?, updated_at=NOW() WHERE id=?')->execute([$role, $id]);
-    log_field_changes('user', $id, ['role' => $old], ['role' => $role], ['role' => 'Role']);
-    flash('success', 'Role updated.');
+    if ($isSelf) {
+        flash('danger', 'You cannot change your own roles.');
+    } else {
+        $roles = selected_roles_from_post();
+        $pdo = db();
+        $pdo->beginTransaction();
+        $pdo->prepare('DELETE FROM user_roles WHERE user_id = ?')->execute([$id]);
+        $roleStmt = $pdo->prepare('INSERT INTO user_roles (user_id, role_key) VALUES (?, ?)');
+        foreach ($roles as $r) {
+            $roleStmt->execute([$id, $r]);
+        }
+        $pdo->commit();
+        log_field_changes('user', $id,
+            ['roles' => implode(', ', array_map('role_label', $editUserRoles)) ?: '(none)'],
+            ['roles' => implode(', ', array_map('role_label', $roles)) ?: '(none)'],
+            ['roles' => 'Roles']
+        );
+        flash('success', 'Roles updated.');
+    }
     redirect('/users/user_form.php?id=' . $id . '&tab=roles');
 }
 
 if (is_post() && input('form_action') === 'save_more' && !$isNew) {
+    require_manage_users();
     csrf_verify();
     $mobile = input('mobile_no');
     $phone = input('phone');
@@ -147,6 +190,7 @@ if (is_post() && input('form_action') === 'save_more' && !$isNew) {
 }
 
 if (is_post() && input('form_action') === 'change_password' && !$isNew) {
+    require_manage_users();
     csrf_verify();
     $newPassword = input('new_password');
     $confirmPassword = input('confirm_password');
@@ -165,6 +209,7 @@ if (is_post() && input('form_action') === 'change_password' && !$isNew) {
 }
 
 if (is_post() && input('form_action') === 'save_security' && !$isNew) {
+    require_manage_users();
     csrf_verify();
     $mustChange = input('must_change_password') === '1' ? 1 : 0;
     $old = (int)$editUser['must_change_password'];
@@ -175,6 +220,7 @@ if (is_post() && input('form_action') === 'save_security' && !$isNew) {
 }
 
 if (is_post() && input('form_action') === 'add_comment' && !$isNew) {
+    require_manage_users();
     csrf_verify();
     $body = input('body');
     if ($body !== '') {
@@ -191,6 +237,9 @@ if (!$isNew) {
     $stmt = db()->prepare('SELECT * FROM users WHERE id = ?');
     $stmt->execute([$id]);
     $editUser = $stmt->fetch() ?: $editUser;
+    $rolesStmt = db()->prepare('SELECT role_key FROM user_roles WHERE user_id = ?');
+    $rolesStmt->execute([$id]);
+    $editUserRoles = $rolesStmt->fetchAll(PDO::FETCH_COLUMN);
 }
 
 $connections = [];
@@ -217,6 +266,8 @@ if (!$isNew) {
 
 $page_title = $isNew ? 'New User' : $editUser['name'];
 require __DIR__ . '/../includes/header.php';
+
+$disabled = $canManage ? '' : 'disabled';
 ?>
 <div class="d-flex align-items-center gap-2 mb-2 text-muted small">
   <a href="<?= base_url('dashboard.php') ?>" class="text-muted"><i class="fa-solid fa-house"></i></a>
@@ -231,8 +282,9 @@ require __DIR__ . '/../includes/header.php';
     <?php if (!$isNew): ?>
       <span class="badge text-bg-<?= $editUser['status'] === 'active' ? 'success' : 'secondary' ?>"><?= $editUser['status'] === 'active' ? 'Active' : 'Inactive' ?></span>
     <?php endif; ?>
+    <?php if (!$canManage): ?><span class="badge text-bg-light"><i class="fa-solid fa-eye"></i> View only</span><?php endif; ?>
   </h4>
-  <?php if (!$isNew): ?>
+  <?php if (!$isNew && $canManage): ?>
   <div class="page-actions">
     <div class="dropdown d-inline-block">
       <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">Permissions</button>
@@ -251,6 +303,27 @@ require __DIR__ . '/../includes/header.php';
 </div>
 
 <?php if ($error): ?><div class="alert alert-danger"><?= e($error) ?></div><?php endif; ?>
+
+<?php
+/** Renders the Roles checkbox grid shared by the New User and Existing User forms. */
+function render_role_checkboxes(array $selected, bool $disabled, string $emptyNote = ''): void
+{
+    if ($emptyNote !== '') {
+        echo '<div class="form-text mb-2">' . e($emptyNote) . '</div>';
+    }
+    echo '<div class="row g-2">';
+    foreach (ROLE_DEFS as $key => $def) {
+        $checked = in_array($key, $selected, true) ? 'checked' : '';
+        $dis = $disabled ? 'disabled' : '';
+        echo '<div class="col-sm-6 col-lg-4">';
+        echo '<div class="form-check">';
+        echo '<input type="checkbox" class="form-check-input" id="role_' . e($key) . '" name="roles[]" value="' . e($key) . '" ' . $checked . ' ' . $dis . '>';
+        echo '<label class="form-check-label" for="role_' . e($key) . '">' . e($def['label']) . '</label>';
+        echo '</div></div>';
+    }
+    echo '</div>';
+}
+?>
 
 <?php if ($isNew): ?>
 <!-- ===================== NEW USER: single condensed form ===================== -->
@@ -283,12 +356,8 @@ require __DIR__ . '/../includes/header.php';
       </div>
     </div>
     <div class="tab-pane fade card p-4" id="pane-roles">
-      <label class="form-label">Role</label>
-      <select name="role" class="form-select" style="max-width:280px">
-        <option value="admin" <?= $editUser['role'] === 'admin' ? 'selected' : '' ?>>Admin</option>
-        <option value="manager" <?= $editUser['role'] === 'manager' ? 'selected' : '' ?>>Manager</option>
-        <option value="staff" <?= $editUser['role'] === 'staff' ? 'selected' : '' ?>>Staff</option>
-      </select>
+      <label class="form-label">Roles (a user can hold several)</label>
+      <?php render_role_checkboxes($editUserRoles, false); ?>
     </div>
     <div class="tab-pane fade card p-4" id="pane-more">
       <div class="row g-3">
@@ -332,26 +401,26 @@ require __DIR__ . '/../includes/header.php';
                checkbox's "active" (only sent when checked) wins when it's checked. -->
           <input type="hidden" name="status" value="inactive">
         <?php endif; ?>
-        <input type="checkbox" class="form-check-input" id="enabledCheck" name="status" value="active" <?= $editUser['status'] === 'active' ? 'checked' : '' ?> <?= $isSelf ? 'disabled' : '' ?>>
+        <input type="checkbox" class="form-check-input" id="enabledCheck" name="status" value="active" <?= $editUser['status'] === 'active' ? 'checked' : '' ?> <?= ($isSelf || !$canManage) ? 'disabled' : '' ?>>
         <label class="form-check-label" for="enabledCheck">Enabled</label>
       </div>
       <div class="row g-3">
-        <div class="col-sm-4"><label class="form-label">Email *</label><input type="email" name="email" class="form-control" required value="<?= e($editUser['email']) ?>"></div>
+        <div class="col-sm-4"><label class="form-label">Email *</label><input type="email" name="email" class="form-control" required value="<?= e($editUser['email']) ?>" <?= $disabled ?>></div>
         <div class="col-sm-4"><label class="form-label">Full Name</label><input type="text" class="form-control" value="<?= e($editUser['name']) ?>" readonly></div>
         <div class="col-sm-4"><label class="form-label">Language</label>
-          <select name="language" class="form-select"><?php foreach ($LANGUAGES as $code => $label): ?><option value="<?= $code ?>" <?= $editUser['language'] === $code ? 'selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?></select>
+          <select name="language" class="form-select" <?= $disabled ?>><?php foreach ($LANGUAGES as $code => $label): ?><option value="<?= $code ?>" <?= $editUser['language'] === $code ? 'selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?></select>
         </div>
-        <div class="col-sm-4"><label class="form-label">First Name *</label><input type="text" name="first_name" class="form-control" required value="<?= e($editUser['first_name']) ?>"></div>
-        <div class="col-sm-4"><label class="form-label">Username</label><input type="text" name="username" class="form-control" value="<?= e($editUser['username']) ?>"></div>
+        <div class="col-sm-4"><label class="form-label">First Name *</label><input type="text" name="first_name" class="form-control" required value="<?= e($editUser['first_name']) ?>" <?= $disabled ?>></div>
+        <div class="col-sm-4"><label class="form-label">Username</label><input type="text" name="username" class="form-control" value="<?= e($editUser['username']) ?>" <?= $disabled ?>></div>
         <div class="col-sm-4"><label class="form-label">Time Zone</label>
-          <select name="time_zone" class="form-select"><?php foreach ($TIMEZONES as $tz): ?><option value="<?= e($tz) ?>" <?= $editUser['time_zone'] === $tz ? 'selected' : '' ?>><?= e($tz) ?></option><?php endforeach; ?></select>
+          <select name="time_zone" class="form-select" <?= $disabled ?>><?php foreach ($TIMEZONES as $tz): ?><option value="<?= e($tz) ?>" <?= $editUser['time_zone'] === $tz ? 'selected' : '' ?>><?= e($tz) ?></option><?php endforeach; ?></select>
         </div>
-        <div class="col-sm-4"><label class="form-label">Middle Name</label><input type="text" name="middle_name" class="form-control" value="<?= e($editUser['middle_name']) ?>"></div>
+        <div class="col-sm-4"><label class="form-label">Middle Name</label><input type="text" name="middle_name" class="form-control" value="<?= e($editUser['middle_name']) ?>" <?= $disabled ?>></div>
         <div class="col-sm-4"></div>
         <div class="col-sm-4"></div>
-        <div class="col-sm-4"><label class="form-label">Last Name</label><input type="text" name="last_name" class="form-control" value="<?= e($editUser['last_name']) ?>"></div>
+        <div class="col-sm-4"><label class="form-label">Last Name</label><input type="text" name="last_name" class="form-control" value="<?= e($editUser['last_name']) ?>" <?= $disabled ?>></div>
       </div>
-      <div class="page-actions mt-4"><button type="submit" class="btn btn-brand">Save</button></div>
+      <?php if ($canManage): ?><div class="page-actions mt-4"><button type="submit" class="btn btn-brand">Save</button></div><?php endif; ?>
     </form>
   </div>
 
@@ -359,33 +428,41 @@ require __DIR__ . '/../includes/header.php';
   <div class="tab-pane fade <?= $activeTab === 'roles' ? 'show active' : '' ?>" id="pane-roles">
     <form method="post" class="card p-4 mb-3">
       <?= csrf_field() ?>
-      <input type="hidden" name="form_action" value="save_role">
+      <input type="hidden" name="form_action" value="save_roles">
       <input type="hidden" name="tab" value="roles">
-      <label class="form-label">Role</label>
-      <select name="role" class="form-select mb-2" style="max-width:280px" <?= $isSelf ? 'disabled' : '' ?>>
-        <option value="admin" <?= $editUser['role'] === 'admin' ? 'selected' : '' ?>>Admin</option>
-        <option value="manager" <?= $editUser['role'] === 'manager' ? 'selected' : '' ?>>Manager</option>
-        <option value="staff" <?= $editUser['role'] === 'staff' ? 'selected' : '' ?>>Staff</option>
-      </select>
+      <label class="form-label">Roles (a user can hold several)</label>
       <?php if ($isSelf): ?>
-        <input type="hidden" name="role" value="<?= e($editUser['role']) ?>">
-        <div class="form-text mb-2">You cannot change your own role.</div>
+        <?php foreach ($editUserRoles as $r): ?><input type="hidden" name="roles[]" value="<?= e($r) ?>"><?php endforeach; ?>
+        <?php render_role_checkboxes($editUserRoles, true, 'You cannot change your own roles.'); ?>
+      <?php else: ?>
+        <?php render_role_checkboxes($editUserRoles, !$canManage); ?>
       <?php endif; ?>
-      <div><button type="submit" class="btn btn-brand">Save</button></div>
+      <?php if ($canManage && !$isSelf): ?><div class="mt-2"><button type="submit" class="btn btn-brand">Save</button></div><?php endif; ?>
     </form>
 
     <div class="card p-4">
       <h6 class="mb-3">What each role can access</h6>
       <div class="table-responsive">
         <table class="table table-sm">
-          <thead><tr><th>Area</th><th class="text-center">Admin</th><th class="text-center">Manager</th><th class="text-center">Staff</th></tr></thead>
+          <thead><tr><th>Role</th><th>Can view</th><th>Can edit</th></tr></thead>
           <tbody>
-            <tr><td>Inventory, Supply Chain, Procurement, Sales, POS, CRM</td><td class="text-center"><i class="fa-solid fa-check text-success"></i></td><td class="text-center"><i class="fa-solid fa-check text-success"></i></td><td class="text-center"><i class="fa-solid fa-check text-success"></i></td></tr>
-            <tr><td>Finance (invoices, payments, expenses)</td><td class="text-center"><i class="fa-solid fa-check text-success"></i></td><td class="text-center"><i class="fa-solid fa-check text-success"></i></td><td class="text-center"><i class="fa-solid fa-check text-success"></i></td></tr>
-            <tr><td>Employee records &amp; attendance</td><td class="text-center"><i class="fa-solid fa-check text-success"></i></td><td class="text-center"><i class="fa-solid fa-check text-success"></i></td><td class="text-center"><i class="fa-solid fa-check text-success"></i></td></tr>
-            <tr><td>Employee salary visibility</td><td class="text-center"><i class="fa-solid fa-check text-success"></i></td><td class="text-center"><i class="fa-solid fa-check text-success"></i></td><td class="text-center text-muted">—</td></tr>
-            <tr><td>Approve/reject leave requests</td><td class="text-center"><i class="fa-solid fa-check text-success"></i></td><td class="text-center"><i class="fa-solid fa-check text-success"></i></td><td class="text-center text-muted">—</td></tr>
-            <tr><td>User management &amp; company settings</td><td class="text-center"><i class="fa-solid fa-check text-success"></i></td><td class="text-center text-muted">—</td><td class="text-center text-muted">—</td></tr>
+            <?php foreach (ROLE_DEFS as $key => $def):
+              if ($def['manage_users']) {
+                  $editScope = 'Everything, including Users';
+              } elseif ($def['edit_all']) {
+                  $editScope = 'Everything except Users';
+              } elseif ($def['edit_module']) {
+                  $editScope = ucfirst(str_replace('-', ' ', $def['edit_module'])) . ($def['manage_module'] ? ' (including delete/cancel)' : ' (create/edit only, no delete/cancel)');
+              } else {
+                  $editScope = 'Nothing — view only';
+              }
+            ?>
+            <tr>
+              <td><?= e($def['label']) ?></td>
+              <td>All modules</td>
+              <td><?= e($editScope) ?></td>
+            </tr>
+            <?php endforeach; ?>
           </tbody>
         </table>
       </div>
@@ -399,17 +476,18 @@ require __DIR__ . '/../includes/header.php';
       <input type="hidden" name="form_action" value="save_more">
       <input type="hidden" name="tab" value="more">
       <div class="row g-3">
-        <div class="col-sm-6"><label class="form-label">Mobile No</label><input type="text" name="mobile_no" class="form-control" value="<?= e($editUser['mobile_no']) ?>"></div>
-        <div class="col-sm-6"><label class="form-label">Phone</label><input type="text" name="phone" class="form-control" value="<?= e($editUser['phone']) ?>"></div>
-        <div class="col-12"><label class="form-label">Address</label><textarea name="address" class="form-control" rows="2"><?= e($editUser['address']) ?></textarea></div>
-        <div class="col-12"><label class="form-label">Bio</label><textarea name="bio" class="form-control" rows="3"><?= e($editUser['bio']) ?></textarea></div>
+        <div class="col-sm-6"><label class="form-label">Mobile No</label><input type="text" name="mobile_no" class="form-control" value="<?= e($editUser['mobile_no']) ?>" <?= $disabled ?>></div>
+        <div class="col-sm-6"><label class="form-label">Phone</label><input type="text" name="phone" class="form-control" value="<?= e($editUser['phone']) ?>" <?= $disabled ?>></div>
+        <div class="col-12"><label class="form-label">Address</label><textarea name="address" class="form-control" rows="2" <?= $disabled ?>><?= e($editUser['address']) ?></textarea></div>
+        <div class="col-12"><label class="form-label">Bio</label><textarea name="bio" class="form-control" rows="3" <?= $disabled ?>><?= e($editUser['bio']) ?></textarea></div>
       </div>
-      <div class="page-actions mt-4"><button type="submit" class="btn btn-brand">Save</button></div>
+      <?php if ($canManage): ?><div class="page-actions mt-4"><button type="submit" class="btn btn-brand">Save</button></div><?php endif; ?>
     </form>
   </div>
 
   <!-- ---- Settings ---- -->
   <div class="tab-pane fade <?= $activeTab === 'settings' ? 'show active' : '' ?>" id="pane-settings">
+    <?php if ($canManage): ?>
     <div class="card p-4 mb-3">
       <h6 class="mb-3">Set New Password</h6>
       <form method="post" class="row g-3">
@@ -434,6 +512,9 @@ require __DIR__ . '/../includes/header.php';
         <button type="submit" class="btn btn-brand">Save</button>
       </form>
     </div>
+    <?php else: ?>
+      <div class="card p-4 text-muted">You don't have permission to manage this user's password or security settings.</div>
+    <?php endif; ?>
   </div>
 
   <!-- ---- Connections ---- -->
@@ -456,6 +537,7 @@ require __DIR__ . '/../includes/header.php';
   <div class="col-lg-7">
     <div class="card p-3">
       <h6 class="mb-3">Comments</h6>
+      <?php if ($canManage): ?>
       <form method="post" class="d-flex gap-2 mb-3">
         <?= csrf_field() ?>
         <input type="hidden" name="form_action" value="add_comment">
@@ -464,6 +546,7 @@ require __DIR__ . '/../includes/header.php';
         <input type="text" name="body" class="form-control" placeholder="Type a reply / comment" required>
         <button type="submit" class="btn btn-outline-brand">Post</button>
       </form>
+      <?php endif; ?>
       <?php foreach ($comments as $c): ?>
         <div class="d-flex gap-2 mb-3">
           <div class="rounded-circle bg-secondary-subtle text-secondary d-flex align-items-center justify-content-center flex-shrink-0" style="width:36px;height:36px;font-size:.75rem;font-weight:700"><?= e(initials($c['author_name'] ?? '?')) ?></div>

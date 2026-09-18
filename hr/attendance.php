@@ -1,6 +1,6 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
-require_login();
+require_module_edit('hrms');
 
 $date = input('date') ?: today();
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {

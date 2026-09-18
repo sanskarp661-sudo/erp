@@ -1,9 +1,13 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
-require_role(['admin']);
+require_admin_section();
 require_once __DIR__ . '/../includes/print_engine.php';
 
 $id = (int)input('id');
+$canEdit = can_edit_admin_section();
+if (!$id) {
+    require_admin_edit();
+}
 $doctypes = pf_doctypes();
 
 $format = [
@@ -24,6 +28,7 @@ if ($id) {
 $error = '';
 
 if (is_post()) {
+    require_admin_edit();
     // If PHP's post_max_size was exceeded, PHP silently empties $_POST and
     // $_FILES (no warning, no exception) while CONTENT_LENGTH still shows
     // what the browser actually sent. That's the #1 cause of "I pasted a
@@ -99,8 +104,10 @@ foreach ($doctypes as $key => $cfg) {
 
 $page_title = $id ? 'Edit Print Format' : 'New Print Format';
 require __DIR__ . '/../includes/header.php';
+$ro = $canEdit ? '' : 'disabled';
 ?>
 <?php if ($error): ?><div class="alert alert-danger"><?= e($error) ?></div><?php endif; ?>
+<?php if (!$canEdit): ?><div class="alert alert-secondary">View only — you don't have permission to edit print formats.</div><?php endif; ?>
 <form method="post" id="pfForm" enctype="multipart/form-data">
   <?= csrf_field() ?>
   <div class="row g-3">
@@ -109,11 +116,11 @@ require __DIR__ . '/../includes/header.php';
         <div class="row g-3 mb-3">
           <div class="col-sm-6">
             <label class="form-label">Format Name</label>
-            <input type="text" name="name" class="form-control" required value="<?= e($format['name']) ?>" placeholder="e.g. Sales Invoice - Compact">
+            <input type="text" name="name" class="form-control" required value="<?= e($format['name']) ?>" placeholder="e.g. Sales Invoice - Compact" <?= $ro ?>>
           </div>
           <div class="col-sm-6">
             <label class="form-label">Document Type</label>
-            <select name="doctype" id="doctypeSelect" class="form-select" <?= $id ? 'disabled' : '' ?> required>
+            <select name="doctype" id="doctypeSelect" class="form-select" <?= ($id || !$canEdit) ? 'disabled' : '' ?> required>
               <?php foreach ($doctypes as $key => $cfg): ?>
                 <option value="<?= e($key) ?>" <?= $format['doctype'] === $key ? 'selected' : '' ?>><?= e($cfg['label']) ?></option>
               <?php endforeach; ?>
@@ -123,23 +130,25 @@ require __DIR__ . '/../includes/header.php';
         </div>
         <div class="d-flex justify-content-between align-items-center mb-1">
           <label class="form-label mb-0">HTML Template</label>
-          <button type="button" id="loadDefaultBtn" class="btn btn-sm btn-outline-secondary">Load built-in default as starting point</button>
+          <?php if ($canEdit): ?><button type="button" id="loadDefaultBtn" class="btn btn-sm btn-outline-secondary">Load built-in default as starting point</button><?php endif; ?>
         </div>
-        <textarea name="html_template" id="templateTextarea" class="form-control" rows="18" style="font-family:ui-monospace,monospace;font-size:.85rem"><?= e($format['html_template']) ?></textarea>
+        <textarea name="html_template" id="templateTextarea" class="form-control" rows="18" style="font-family:ui-monospace,monospace;font-size:.85rem" <?= $ro ?>><?= e($format['html_template']) ?></textarea>
         <div class="d-flex justify-content-between mt-1">
           <span class="small text-muted">Pasted content is <span id="charCount">0</span> characters. If a large paste gets cut off with no error, use the upload option below instead — it isn't affected by the same limit.</span>
         </div>
+        <?php if ($canEdit): ?>
         <div class="mt-2">
           <label class="form-label small mb-1">Or upload a .html file instead of pasting</label>
           <input type="file" name="template_file" accept=".html,.htm,.txt" class="form-control form-control-sm">
           <div class="form-text">If both a paste and a file are provided, the uploaded file wins.</div>
         </div>
+        <?php endif; ?>
         <div class="form-check mt-3">
-          <input type="checkbox" class="form-check-input" id="isDefaultCheck" name="is_default" value="1" <?= $format['is_default'] ? 'checked' : '' ?>>
+          <input type="checkbox" class="form-check-input" id="isDefaultCheck" name="is_default" value="1" <?= $format['is_default'] ? 'checked' : '' ?> <?= $ro ?>>
           <label class="form-check-label" for="isDefaultCheck">Make this the default format for <span id="doctypeLabelInline"><?= e($doctypes[$format['doctype']]['label']) ?></span></label>
         </div>
         <div class="page-actions mt-4">
-          <button type="submit" class="btn btn-brand">Save</button>
+          <?php if ($canEdit): ?><button type="submit" class="btn btn-brand">Save</button><?php endif; ?>
           <a href="index.php" class="btn btn-outline-secondary">Cancel</a>
         </div>
       </div>
@@ -216,12 +225,15 @@ document.getElementById('tokenList').addEventListener('click', function (e) {
   ta.selectionStart = ta.selectionEnd = start + token.length;
 });
 
-document.getElementById('loadDefaultBtn').addEventListener('click', function () {
-  var doctype = doctypeSelect ? doctypeSelect.value : " . json_encode($format['doctype']) . ";
-  var cfg = PF_DOCTYPES[doctype];
-  if (!cfg) return;
-  if (document.getElementById('templateTextarea').value.trim() !== '' && !confirm('This will replace the current template content. Continue?')) return;
-  document.getElementById('templateTextarea').value = cfg.default;
-});
+var loadDefaultBtn = document.getElementById('loadDefaultBtn');
+if (loadDefaultBtn) {
+  loadDefaultBtn.addEventListener('click', function () {
+    var doctype = doctypeSelect ? doctypeSelect.value : " . json_encode($format['doctype']) . ";
+    var cfg = PF_DOCTYPES[doctype];
+    if (!cfg) return;
+    if (document.getElementById('templateTextarea').value.trim() !== '' && !confirm('This will replace the current template content. Continue?')) return;
+    document.getElementById('templateTextarea').value = cfg.default;
+  });
+}
 ";
 require __DIR__ . '/../includes/footer.php';

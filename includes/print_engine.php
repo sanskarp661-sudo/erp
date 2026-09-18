@@ -132,7 +132,7 @@ function pf_number_to_words(float $amount): string
 /**
  * doctype => [
  *   'label'    => display name shown throughout the UI,
- *   'roles'    => null (any logged-in user) or an array of allowed roles,
+ *   'roles'    => null (any logged-in user) or 'hrms_manage' (require_module_manage('hrms')),
  *   'fetch'    => function(int $id): ?array — returns token values, or null if not found,
  *   'tokens'   => [token => human description] for the cheat-sheet in the format editor,
  *   'default'  => built-in fallback HTML template used when no admin-created default exists,
@@ -372,7 +372,7 @@ function pf_doctypes(): array
 
         'salary_slip' => [
             'label' => 'Salary Slip',
-            'roles' => ['admin', 'manager'],
+            'roles' => 'hrms_manage',
             'fetch' => function (int $id): ?array {
                 $stmt = db()->prepare("
                   SELECT s.*, e.name employee_name, e.employee_code, e.designation, d.name department_name

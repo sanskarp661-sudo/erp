@@ -34,6 +34,18 @@ CREATE TABLE IF NOT EXISTS settings (
   setting_value TEXT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- A user can hold several roles at once; see includes/permissions.php's
+-- ROLE_DEFS for the full role list and what each grants. The legacy
+-- users.role column above is no longer read by the app.
+CREATE TABLE IF NOT EXISTS user_roles (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id INT UNSIGNED NOT NULL,
+  role_key VARCHAR(40) NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uniq_user_role (user_id, role_key),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- Generic activity log and comments, keyed by (entity_type, entity_id) so
 -- they can be reused for any record — currently only wired up for users.
 CREATE TABLE IF NOT EXISTS activity_log (
@@ -344,6 +356,8 @@ SET FOREIGN_KEY_CHECKS = 1;
 -- (password_hash for 'Admin@123' using PHP password_hash/BCRYPT)
 INSERT INTO users (name, first_name, email, password_hash, role, status) VALUES
 ('Administrator', 'Administrator', 'admin@example.com', '$2y$12$FGHd5COVc9dRpxaOLavEBeAt1b4DTscuTkJ78Vpr.oojbAyBxH8za', 'admin', 'active');
+
+INSERT INTO user_roles (user_id, role_key) VALUES (1, 'system_admin');
 
 INSERT INTO activity_log (entity_type, entity_id, actor_id, action, description) VALUES
 ('user', 1, 1, 'created', 'Administrator created this');

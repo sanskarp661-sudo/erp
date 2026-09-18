@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
 require_login();
+$canEdit = can_edit_module('finance');
 
 // Lazily flag invoices whose due date has passed as overdue.
 db()->exec("UPDATE invoices SET status='overdue' WHERE due_date IS NOT NULL AND due_date < CURDATE() AND status IN ('unpaid','partially_paid')");
@@ -34,7 +35,7 @@ require __DIR__ . '/../includes/header.php';
 <?php endif; ?>
 <div class="d-flex justify-content-between align-items-center mb-3">
   <input type="text" class="form-control" style="max-width:280px" placeholder="Search invoices..." data-table-search="#invTable">
-  <a href="invoice_form.php" class="btn btn-brand"><i class="fa-solid fa-plus"></i> New Invoice</a>
+  <?php if ($canEdit): ?><a href="invoice_form.php" class="btn btn-brand"><i class="fa-solid fa-plus"></i> New Invoice</a><?php endif; ?>
 </div>
 <div class="card p-3">
   <div class="table-responsive">

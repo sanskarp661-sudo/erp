@@ -11,6 +11,7 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/functions.php';
+require_once __DIR__ . '/permissions.php';
 
 function current_user(): ?array
 {
@@ -36,26 +37,6 @@ function require_login(): void
     }
 }
 
-/** @param string[] $roles Allowed roles, e.g. ['admin','manager'] */
-function require_role(array $roles): void
-{
-    require_login();
-    $user = current_user();
-    if (!in_array($user['role'], $roles, true)) {
-        http_response_code(403);
-        require __DIR__ . '/header.php';
-        echo '<div class="alert alert-danger">You do not have permission to view this page.</div>';
-        require __DIR__ . '/footer.php';
-        exit;
-    }
-}
-
-function is_admin(): bool
-{
-    $u = current_user();
-    return $u && $u['role'] === 'admin';
-}
-
 function attempt_login(string $email, string $password): bool
 {
     $stmt = db()->prepare('SELECT * FROM users WHERE email = ? LIMIT 1');
@@ -66,12 +47,16 @@ function attempt_login(string $email, string $password): bool
         return false;
     }
 
+    $rolesStmt = db()->prepare('SELECT role_key FROM user_roles WHERE user_id = ?');
+    $rolesStmt->execute([$user['id']]);
+    $roles = $rolesStmt->fetchAll(PDO::FETCH_COLUMN);
+
     session_regenerate_id(true);
     $_SESSION['user'] = [
         'id'                   => $user['id'],
         'name'                 => $user['name'],
         'email'                => $user['email'],
-        'role'                 => $user['role'],
+        'roles'                => $roles,
         'must_change_password' => (bool)$user['must_change_password'],
     ];
 

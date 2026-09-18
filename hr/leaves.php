@@ -23,8 +23,8 @@ if (is_post() && input('action') === 'apply') {
 }
 
 if (is_post() && input('action') === 'decide') {
+    require_module_manage('hrms');
     csrf_verify();
-    require_role(['admin', 'manager']);
     $id = (int)input('id');
     $decision = input('decision') === 'approved' ? 'approved' : 'rejected';
     db()->prepare('UPDATE leaves SET status = ? WHERE id = ?')->execute([$decision, $id]);
@@ -39,7 +39,7 @@ $leaves = db()->query("
 ")->fetchAll();
 
 $employees = db()->query("SELECT id, name, employee_code FROM employees WHERE status='active' ORDER BY name")->fetchAll();
-$canDecide = in_array(current_user()['role'], ['admin', 'manager'], true);
+$canDecide = can_manage_module('hrms');
 $badge = ['pending' => 'warning', 'approved' => 'success', 'rejected' => 'danger'];
 
 $page_title = 'Leave Requests';

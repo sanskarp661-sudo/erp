@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
 require_login();
+$canEdit = can_edit_module('sales');
 
 $userFilter = (int)input('user');
 $userFilterName = null;
@@ -31,7 +32,7 @@ require __DIR__ . '/../includes/header.php';
 <?php endif; ?>
 <div class="d-flex justify-content-between align-items-center mb-3">
   <input type="text" class="form-control" style="max-width:280px" placeholder="Search orders..." data-table-search="#ordTable">
-  <a href="order_form.php" class="btn btn-brand"><i class="fa-solid fa-plus"></i> New Sales Order</a>
+  <?php if ($canEdit): ?><a href="order_form.php" class="btn btn-brand"><i class="fa-solid fa-plus"></i> New Sales Order</a><?php endif; ?>
 </div>
 <div class="card p-3">
   <div class="table-responsive">

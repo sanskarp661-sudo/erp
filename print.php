@@ -16,8 +16,8 @@ if (!isset($doctypes[$doctype])) {
 }
 $config = $doctypes[$doctype];
 
-if ($config['roles']) {
-    require_role($config['roles']);
+if ($config['roles'] === 'hrms_manage') {
+    require_module_manage('hrms');
 }
 
 $tokens = ($config['fetch'])($id);
@@ -154,7 +154,7 @@ $currentFormatId = $selectedFormat['id'] ?? 0;
       </select>
     </form>
     <div class="d-flex gap-2">
-      <?php if (is_admin()): ?>
+      <?php if (can_edit_admin_section()): ?>
         <a href="<?= base_url('print_formats/form.php?doctype=' . urlencode($doctype)) ?>" class="btn btn-sm btn-outline-secondary"><i class="fa-solid fa-palette"></i> New Format for <?= e($config['label']) ?></a>
       <?php endif; ?>
       <?php if (input('pos') === '1'): ?>

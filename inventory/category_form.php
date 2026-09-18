@@ -1,6 +1,6 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
-require_login();
+require_module_edit('inventory');
 
 $id = (int)input('id');
 $category = ['id' => 0, 'name' => '', 'description' => ''];

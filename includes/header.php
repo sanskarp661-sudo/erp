@@ -51,7 +51,7 @@ function nav_active(string $needle, string $current): string
         <a href="<?= base_url('dashboard.php') ?>" class="back-link"><i class="fa-solid fa-arrow-left"></i> All Modules</a>
         <div class="nav-section"><i class="<?= e($mod['icon']) ?>"></i> <?= e($mod['label']) ?></div>
         <?php foreach ($mod['items'] as $item): ?>
-          <?php if (isset($item['roles']) && !in_array($user['role'], $item['roles'], true)) continue; ?>
+          <?php if (isset($item['visible']) && !$item['visible']) continue; ?>
           <a href="<?= base_url($item['url']) ?>" class="<?= nav_active($item['match'], $current_path) ?>"><i class="<?= e($item['icon']) ?>"></i> <?= e($item['label']) ?></a>
         <?php endforeach; ?>
 
@@ -77,10 +77,10 @@ function nav_active(string $needle, string $current): string
       <div class="topbar-title"><?= isset($page_title) ? e($page_title) : '' ?></div>
       <div class="topbar-user dropdown">
         <button class="btn-icon dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-          <i class="fa-solid fa-circle-user"></i> <?= e($user['name']) ?> <span class="badge text-bg-secondary text-capitalize"><?= e($user['role']) ?></span>
+          <i class="fa-solid fa-circle-user"></i> <?= e($user['name']) ?> <span class="badge text-bg-secondary"><?= e(implode(', ', array_map('role_label', $user['roles']))) ?: 'No roles' ?></span>
         </button>
         <ul class="dropdown-menu dropdown-menu-end">
-          <?php if (is_admin()): ?>
+          <?php if (can_view_admin_section()): ?>
           <li><a class="dropdown-item" href="<?= base_url('users/users.php') ?>"><i class="fa-solid fa-users-gear"></i> Users</a></li>
           <li><a class="dropdown-item" href="<?= base_url('users/settings.php') ?>"><i class="fa-solid fa-gear"></i> Settings</a></li>
           <li><a class="dropdown-item" href="<?= base_url('print_formats/index.php') ?>"><i class="fa-solid fa-palette"></i> Print Formats</a></li>

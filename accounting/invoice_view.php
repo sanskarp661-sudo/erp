@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
 require_login();
+$canEdit = can_edit_module('finance');
 
 $id = (int)input('id');
 
@@ -16,6 +17,7 @@ if (!$invoice) {
 }
 
 if (is_post() && input('action') === 'record_payment') {
+    require_module_edit('finance');
     csrf_verify();
     $amount = (float)input('amount');
     $balance = $invoice['total'] - $invoice['amount_paid'];
@@ -67,7 +69,7 @@ require __DIR__ . '/../includes/header.php';
     <div class="text-muted"><?= e($invoice['customer_name']) ?> &middot; Issued <?= e($invoice['invoice_date']) ?><?= $invoice['due_date'] ? ' &middot; Due ' . e($invoice['due_date']) : '' ?></div>
   </div>
   <div class="page-actions">
-    <?php if ($invoice['amount_paid'] == 0 && $invoice['status'] === 'unpaid'): ?>
+    <?php if ($canEdit && $invoice['amount_paid'] == 0 && $invoice['status'] === 'unpaid'): ?>
       <a href="invoice_form.php?id=<?= $id ?>" class="btn btn-outline-secondary btn-sm"><i class="fa-solid fa-pen"></i> Edit</a>
     <?php endif; ?>
     <a href="<?= base_url('print.php?doctype=invoice&id=' . $id) ?>" target="_blank" class="btn btn-outline-brand btn-sm"><i class="fa-solid fa-print"></i> Print / PDF</a>
@@ -126,7 +128,7 @@ require __DIR__ . '/../includes/header.php';
   </div>
 
   <div class="col-lg-4">
-    <?php if ($balance > 0.009 && $invoice['status'] !== 'cancelled'): ?>
+    <?php if ($canEdit && $balance > 0.009 && $invoice['status'] !== 'cancelled'): ?>
     <div class="card p-3">
       <h6 class="mb-3">Record Payment</h6>
       <form method="post">
@@ -161,6 +163,8 @@ require __DIR__ . '/../includes/header.php';
         <button type="submit" class="btn btn-brand w-100">Record Payment</button>
       </form>
     </div>
+    <?php elseif (!$canEdit && $balance > 0.009 && $invoice['status'] !== 'cancelled'): ?>
+    <div class="card p-3 text-center text-muted">You don't have permission to record payments.</div>
     <?php else: ?>
     <div class="card p-3 text-center text-muted"><i class="fa-solid fa-circle-check fa-2x text-success mb-2"></i><br>This invoice is fully settled.</div>
     <?php endif; ?>

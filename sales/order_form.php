@@ -1,6 +1,6 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
-require_login();
+require_module_edit('sales');
 
 $id = (int)input('id');
 $order = ['id' => 0, 'order_no' => '', 'customer_id' => '', 'order_date' => today(), 'notes' => ''];

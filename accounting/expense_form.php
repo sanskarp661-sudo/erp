@@ -1,6 +1,6 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
-require_login();
+require_module_edit('finance');
 
 $id = (int)input('id');
 $expense = ['id' => 0, 'category' => '', 'description' => '', 'amount' => '0', 'expense_date' => today(), 'payment_method' => 'cash'];

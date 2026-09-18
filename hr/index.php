@@ -21,7 +21,7 @@ $recentLeaves = $pdo->query("
 $badge = ['pending' => 'warning', 'approved' => 'success', 'rejected' => 'danger'];
 $slipBadge = ['draft' => 'secondary', 'paid' => 'success'];
 
-$canSeeSalary = in_array(current_user()['role'], ['admin', 'manager'], true);
+$canSeeSalary = can_manage_module('hrms');
 $payrollThisMonth = 0;
 $draftSlips = 0;
 $recentSlips = [];

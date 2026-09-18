@@ -1,6 +1,6 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
-require_login();
+require_module_edit('finance');
 
 $id = (int)input('id');
 $fromOrder = (int)input('from_order');

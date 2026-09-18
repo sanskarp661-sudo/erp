@@ -1,9 +1,11 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
-require_role(['admin']);
+require_admin_section();
 require_once __DIR__ . '/../includes/print_engine.php';
+$canEdit = can_edit_admin_section();
 
 if (is_post() && input('action') === 'delete') {
+    require_admin_edit();
     csrf_verify();
     $id = (int)input('id');
     db()->prepare('DELETE FROM print_formats WHERE id = ?')->execute([$id]);
@@ -12,6 +14,7 @@ if (is_post() && input('action') === 'delete') {
 }
 
 if (is_post() && input('action') === 'set_default') {
+    require_admin_edit();
     csrf_verify();
     $id = (int)input('id');
     $stmt = db()->prepare('SELECT doctype FROM print_formats WHERE id = ?');
@@ -36,7 +39,7 @@ require __DIR__ . '/../includes/header.php';
 ?>
 <div class="d-flex justify-content-between align-items-center mb-3">
   <p class="text-muted mb-0">Custom print formats you create here become selectable only on that document type's print page — e.g. a format created for Sales Invoice only appears when printing an invoice.</p>
-  <a href="form.php" class="btn btn-brand text-nowrap ms-3"><i class="fa-solid fa-plus"></i> New Print Format</a>
+  <?php if ($canEdit): ?><a href="form.php" class="btn btn-brand text-nowrap ms-3"><i class="fa-solid fa-plus"></i> New Print Format</a><?php endif; ?>
 </div>
 <div class="card p-3">
   <div class="table-responsive">
@@ -51,19 +54,23 @@ require __DIR__ . '/../includes/header.php';
           <td>
             <?php if ($f['is_default']): ?>
               <span class="badge text-bg-success">Default</span>
-            <?php else: ?>
+            <?php elseif ($canEdit): ?>
               <form method="post" class="d-inline">
                 <?= csrf_field() ?><input type="hidden" name="action" value="set_default"><input type="hidden" name="id" value="<?= (int)$f['id'] ?>">
                 <button class="btn btn-sm btn-outline-secondary" type="submit">Set as Default</button>
               </form>
+            <?php else: ?>
+              <span class="text-muted">&mdash;</span>
             <?php endif; ?>
           </td>
           <td class="text-end">
-            <a href="form.php?id=<?= (int)$f['id'] ?>" class="btn btn-sm btn-outline-secondary"><i class="fa-solid fa-pen"></i></a>
+            <a href="form.php?id=<?= (int)$f['id'] ?>" class="btn btn-sm btn-outline-secondary"><i class="fa-solid fa-<?= $canEdit ? 'pen' : 'eye' ?>"></i></a>
+            <?php if ($canEdit): ?>
             <form method="post" class="d-inline" data-confirm="Delete this print format?">
               <?= csrf_field() ?><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?= (int)$f['id'] ?>">
               <button class="btn btn-sm btn-outline-danger" type="submit"><i class="fa-solid fa-trash"></i></button>
             </form>
+            <?php endif; ?>
           </td>
         </tr>
       <?php endforeach; ?>

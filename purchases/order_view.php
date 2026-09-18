@@ -1,6 +1,8 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
 require_login();
+$canEdit = can_edit_module('procurement');
+$canManage = can_manage_module('procurement');
 
 $id = (int)input('id');
 $stmt = db()->prepare('SELECT po.*, v.name vendor_name, v.email vendor_email, v.phone vendor_phone FROM purchase_orders po JOIN vendors v ON v.id = po.vendor_id WHERE po.id = ?');
@@ -13,8 +15,13 @@ if (!$order) {
 }
 
 if (is_post() && input('action') === 'transition') {
-    csrf_verify();
     $newStatus = input('status');
+    if ($newStatus === 'cancelled') {
+        require_module_manage('procurement');
+    } else {
+        require_module_edit('procurement');
+    }
+    csrf_verify();
     $valid = [
         'pending' => ['ordered', 'cancelled'],
         'ordered' => ['received', 'cancelled'],
@@ -64,24 +71,32 @@ require __DIR__ . '/../includes/header.php';
   </div>
   <div class="page-actions">
     <?php if ($order['status'] === 'pending'): ?>
+      <?php if ($canEdit): ?>
       <a href="order_form.php?id=<?= $id ?>" class="btn btn-outline-secondary btn-sm"><i class="fa-solid fa-pen"></i> Edit</a>
       <form method="post" class="d-inline" data-confirm="Mark this order as ordered?">
         <?= csrf_field() ?><input type="hidden" name="action" value="transition"><input type="hidden" name="status" value="ordered">
         <button class="btn btn-brand btn-sm" type="submit"><i class="fa-solid fa-paper-plane"></i> Mark Ordered</button>
       </form>
+      <?php endif; ?>
+      <?php if ($canManage): ?>
       <form method="post" class="d-inline" data-confirm="Cancel this purchase order?">
         <?= csrf_field() ?><input type="hidden" name="action" value="transition"><input type="hidden" name="status" value="cancelled">
         <button class="btn btn-outline-danger btn-sm" type="submit"><i class="fa-solid fa-ban"></i> Cancel</button>
       </form>
+      <?php endif; ?>
     <?php elseif ($order['status'] === 'ordered'): ?>
+      <?php if ($canEdit): ?>
       <form method="post" class="d-inline" data-confirm="Receive this order? Stock will be added.">
         <?= csrf_field() ?><input type="hidden" name="action" value="transition"><input type="hidden" name="status" value="received">
         <button class="btn btn-brand btn-sm" type="submit"><i class="fa-solid fa-box-open"></i> Mark Received</button>
       </form>
+      <?php endif; ?>
+      <?php if ($canManage): ?>
       <form method="post" class="d-inline" data-confirm="Cancel this purchase order?">
         <?= csrf_field() ?><input type="hidden" name="action" value="transition"><input type="hidden" name="status" value="cancelled">
         <button class="btn btn-outline-danger btn-sm" type="submit"><i class="fa-solid fa-ban"></i> Cancel</button>
       </form>
+      <?php endif; ?>
     <?php endif; ?>
     <a href="<?= base_url('print.php?doctype=purchase_order&id=' . $id) ?>" target="_blank" class="btn btn-outline-brand btn-sm"><i class="fa-solid fa-print"></i> Print</a>
     <a href="orders.php" class="btn btn-outline-secondary btn-sm">Back to list</a>

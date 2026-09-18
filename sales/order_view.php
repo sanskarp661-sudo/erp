@@ -1,6 +1,9 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
 require_login();
+$canEdit = can_edit_module('sales');
+$canManage = can_manage_module('sales');
+$canEditFinance = can_edit_module('finance');
 
 $id = (int)input('id');
 $stmt = db()->prepare('SELECT so.*, c.name customer_name, c.email customer_email, c.phone customer_phone FROM sales_orders so JOIN customers c ON c.id = so.customer_id WHERE so.id = ?');
@@ -13,8 +16,13 @@ if (!$order) {
 }
 
 if (is_post() && input('action') === 'transition') {
-    csrf_verify();
     $newStatus = input('status');
+    if ($newStatus === 'cancelled') {
+        require_module_manage('sales');
+    } else {
+        require_module_edit('sales');
+    }
+    csrf_verify();
     $valid = [
         'pending'   => ['confirmed', 'cancelled'],
         'confirmed' => ['shipped', 'cancelled'],
@@ -86,39 +94,51 @@ require __DIR__ . '/../includes/header.php';
   </div>
   <div class="page-actions">
     <?php if ($order['status'] === 'pending'): ?>
+      <?php if ($canEdit): ?>
       <a href="order_form.php?id=<?= $id ?>" class="btn btn-outline-secondary btn-sm"><i class="fa-solid fa-pen"></i> Edit</a>
       <form method="post" class="d-inline" data-confirm="Confirm this order? Stock will be deducted.">
         <?= csrf_field() ?><input type="hidden" name="action" value="transition"><input type="hidden" name="status" value="confirmed">
         <button class="btn btn-brand btn-sm" type="submit"><i class="fa-solid fa-check"></i> Confirm Order</button>
       </form>
+      <?php endif; ?>
+      <?php if ($canManage): ?>
       <form method="post" class="d-inline" data-confirm="Cancel this order?">
         <?= csrf_field() ?><input type="hidden" name="action" value="transition"><input type="hidden" name="status" value="cancelled">
         <button class="btn btn-outline-danger btn-sm" type="submit"><i class="fa-solid fa-ban"></i> Cancel</button>
       </form>
+      <?php endif; ?>
     <?php elseif ($order['status'] === 'confirmed'): ?>
+      <?php if ($canEdit): ?>
       <form method="post" class="d-inline" data-confirm="Mark this order as shipped?">
         <?= csrf_field() ?><input type="hidden" name="action" value="transition"><input type="hidden" name="status" value="shipped">
         <button class="btn btn-brand btn-sm" type="submit"><i class="fa-solid fa-truck"></i> Mark Shipped</button>
       </form>
+      <?php endif; ?>
+      <?php if ($canManage): ?>
       <form method="post" class="d-inline" data-confirm="Cancel this order? Stock will be restored.">
         <?= csrf_field() ?><input type="hidden" name="action" value="transition"><input type="hidden" name="status" value="cancelled">
         <button class="btn btn-outline-danger btn-sm" type="submit"><i class="fa-solid fa-ban"></i> Cancel</button>
       </form>
+      <?php endif; ?>
     <?php elseif ($order['status'] === 'shipped'): ?>
+      <?php if ($canEdit): ?>
       <form method="post" class="d-inline" data-confirm="Mark this order as completed?">
         <?= csrf_field() ?><input type="hidden" name="action" value="transition"><input type="hidden" name="status" value="completed">
         <button class="btn btn-brand btn-sm" type="submit"><i class="fa-solid fa-flag-checkered"></i> Mark Completed</button>
       </form>
+      <?php endif; ?>
+      <?php if ($canManage): ?>
       <form method="post" class="d-inline" data-confirm="Cancel this order? Stock will be restored.">
         <?= csrf_field() ?><input type="hidden" name="action" value="transition"><input type="hidden" name="status" value="cancelled">
         <button class="btn btn-outline-danger btn-sm" type="submit"><i class="fa-solid fa-ban"></i> Cancel</button>
       </form>
+      <?php endif; ?>
     <?php endif; ?>
 
     <?php if (in_array($order['status'], ['confirmed', 'shipped', 'completed'], true)): ?>
       <?php if ($existingInvoice): ?>
         <a href="<?= base_url('accounting/invoice_view.php?id=' . $existingInvoice['id']) ?>" class="btn btn-outline-brand btn-sm"><i class="fa-solid fa-file-invoice-dollar"></i> View Invoice <?= e($existingInvoice['invoice_no']) ?></a>
-      <?php else: ?>
+      <?php elseif ($canEditFinance): ?>
         <a href="<?= base_url('accounting/invoice_form.php?from_order=' . $id) ?>" class="btn btn-outline-brand btn-sm"><i class="fa-solid fa-file-invoice-dollar"></i> Create Invoice</a>
       <?php endif; ?>
     <?php endif; ?>

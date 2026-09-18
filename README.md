@@ -33,7 +33,8 @@ features/doctypes plus a "‹ All Modules" link back to the top level.
   Customer"), and it completes the sale, deducts stock, generates a paid
   invoice, and prints a receipt in one step.
 - **HRMS** (`hr/`) — departments, employees, daily attendance, leave
-  requests with approval, and salary slips (admin/manager only):
+  requests with approval, and salary slips (visible to whoever can manage
+  the HRMS module — System Admin, Admin, or the HR role):
   generate a payslip per employee per month with itemized earnings and
   deductions, mark it paid (which also records the net pay as a
   "Payroll" expense under Finance), and print it.
@@ -45,7 +46,8 @@ features/doctypes plus a "‹ All Modules" link back to the top level.
 Each module has its own dashboard (KPIs + recent activity) as its landing
 page. Reports live under `reports/` and are linked from their relevant
 module's sidebar. User management, company settings, and Print Formats
-(admin-only) are reached from the top-right account menu rather than the
+(System Admin / Admin / System Viewer only — see Roles & Permissions
+below) are reached from the top-right account menu rather than the
 module list, since they aren't a business module.
 
 ## Print Formats
@@ -65,7 +67,29 @@ doctype, or "Standard (Built-in)" — and you can set one format as the
 default for its doctype. Reports don't use this system; their Print
 button is a plain browser print of the report as shown.
 
-Auth is session-based with three roles (admin / manager / staff).
+## Roles &amp; Permissions
+
+Auth is session-based. A user can hold several roles at once (assigned
+under Administration → Users → Roles & Permissions tab); what they can do
+is the union of what each role grants:
+
+- **System Admin** — full access, including managing Users.
+- **Admin** — full access except managing Users (can view the Users list,
+  can't create/edit users or change roles).
+- **System Viewer** — read-only access to everything, including the
+  Administration section.
+- **Purchase Manager / Purchase User**, **Sales Manager / Sales User**,
+  **Accounts Manager / Accounts User** — view access to every module, edit
+  access to just their own module (Procurement, Sales, or Finance); the
+  Manager tier can also delete records and cancel orders/invoices, the
+  User tier can create and edit but not delete or cancel.
+- **HR**, **CRM**, **POS**, **Supply Chain**, **Item Manager** — same
+  pattern for HRMS, CRM, POS, Supply Chain, and Inventory respectively,
+  each with full create/edit/delete rights in their one module.
+
+None of the module-scoped roles can see the Administration section (Users,
+Settings, Print Formats) — that's reserved for System Admin, Admin, and
+System Viewer.
 
 ## Deploying on Hostinger via File Manager
 
@@ -100,8 +124,8 @@ Auth is session-based with three roles (admin / manager / staff).
 
    **Change this password immediately** — go to Users (top-left menu,
    Administration section) → edit the Administrator account → set a new
-   password. You can also create additional users with Manager or Staff
-   roles there.
+   password. You can also create additional users and assign them roles
+   there (see Roles & Permissions above).
 
 6. **Set your company details.** Under Administration → Settings, set your
    company name, currency symbol, default tax rate, and address/phone/email/
