@@ -248,6 +248,24 @@ require __DIR__ . '/../includes/header.php';
       </div>
       <?php if ($product['tags']): ?><div class="mt-2 small text-muted"><?= e($product['tags']) ?></div><?php endif; ?>
     </div>
+    <div class="card p-3 mt-3">
+      <h6 class="mb-2">Inventory Settings</h6>
+      <div class="small">
+        <div class="d-flex justify-content-between"><span class="text-muted">Stock Item Type</span><span><?= e($product['stock_item_type']) ?></span></div>
+        <div class="d-flex justify-content-between"><span class="text-muted">Reorder Qty</span><span><?= (int)$product['reorder_qty'] ?></span></div>
+        <div class="d-flex justify-content-between"><span class="text-muted">Safety Stock</span><span><?= (int)$product['safety_stock'] ?></span></div>
+        <div class="d-flex justify-content-between"><span class="text-muted">Issue / Receipt Method</span><span><?= e($product['issue_method']) ?> / <?= e($product['receipt_method']) ?></span></div>
+        <?php $storageParts = array_filter([$product['storage_section'], $product['storage_rack'], $product['storage_shelf'], $product['storage_bin']]); ?>
+        <div class="d-flex justify-content-between"><span class="text-muted">Storage Location</span><span><?= $storageParts ? e(implode(' / ', $storageParts)) : '—' ?></span></div>
+      </div>
+      <?php if ($product['has_batch_no'] || $product['has_serial_no']): ?>
+      <hr>
+      <div class="d-flex flex-wrap gap-1">
+        <?php if ($product['has_batch_no']): ?><span class="badge text-bg-light border">Has Batch No.</span><?php endif; ?>
+        <?php if ($product['has_serial_no']): ?><span class="badge text-bg-light border">Has Serial No.</span><?php endif; ?>
+      </div>
+      <?php endif; ?>
+    </div>
     <?php if ($barcodes): ?>
     <div class="card p-3 mt-3">
       <h6 class="mb-2">Barcodes</h6>

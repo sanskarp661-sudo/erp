@@ -6,17 +6,27 @@ $id = (int)input('id');
 $product = [
     'id' => 0, 'sku' => '', 'name' => '', 'image' => null, 'category_id' => '', 'description' => '',
     'item_category_id' => '', 'brand_id' => '', 'hsn_sac_code' => '',
-    'is_stock_item' => 1, 'is_sales_item' => 1, 'is_purchase_item' => 1, 'is_manufactured_item' => 0,
+    'is_stock_item' => 1, 'stock_item_type' => 'Regular Stock Item', 'opening_stock_date' => today(), 'valuation_rate' => 0,
+    'is_sales_item' => 1, 'is_purchase_item' => 1, 'is_manufactured_item' => 0,
     'is_sub_contracted_item' => 0, 'is_asset_item' => 0, 'has_variants' => 0,
     'unit' => 'pcs', 'purchase_uom' => '', 'sales_uom' => '',
     'purchase_uom_conversion_factor' => '1.000', 'sales_uom_conversion_factor' => '1.000',
-    'default_warehouse_id' => '', 'default_price_list_id' => '', 'min_stock_level' => 0, 'max_stock_level' => 0,
+    'default_warehouse_id' => '', 'default_bin' => '', 'issue_method' => 'FIFO', 'receipt_method' => 'FIFO',
+    'allow_negative_stock' => 0, 'auto_create_batch_serial' => 0,
+    'default_price_list_id' => '', 'min_stock_level' => 0, 'max_stock_level' => 0,
     'lead_time_days' => 0, 'shelf_life_days' => 0,
     'item_type' => 'Finished Good', 'valuation_method' => 'FIFO',
     'standard_weight_kg' => 0, 'standard_volume_ltr' => 0, 'gross_weight_kg' => 0, 'net_weight_kg' => 0, 'tags' => '',
-    'cost_price' => '0', 'selling_price' => '0', 'quantity' => '0', 'reorder_level' => '0', 'status' => 'active',
+    'cost_price' => '0', 'selling_price' => '0', 'quantity' => '0',
+    'reorder_level' => '0', 'reorder_qty' => 0, 'safety_stock' => 0, 'enable_reorder_notifications' => 1, 'consider_in_mrp' => 1,
+    'has_batch_no' => 0, 'has_serial_no' => 0, 'batch_expiry_required' => 0, 'batch_number_series' => '',
+    'storage_section' => '', 'storage_rack' => '', 'storage_shelf' => '', 'storage_bin' => '',
+    'track_stock_ageing' => 0, 'include_in_stock_report' => 1, 'allow_stock_transfer' => 1, 'is_kit_or_set' => 0,
+    'use_alternative_item' => 0, 'restrict_warehouse' => 0, 'block_for_stock_transactions' => 0, 'exclude_from_inventory_valuation' => 0,
+    'status' => 'active',
 ];
 $barcodes = [];
+$stockByWarehouse = [];
 
 if ($id) {
     $stmt = db()->prepare('SELECT * FROM products WHERE id = ?');
@@ -25,6 +35,15 @@ if ($id) {
     $stmt = db()->prepare('SELECT * FROM product_barcodes WHERE product_id = ? ORDER BY sort_order, id');
     $stmt->execute([$id]);
     $barcodes = $stmt->fetchAll();
+    $stmt = db()->prepare("
+      SELECT w.id, w.name, COALESCE(sb.quantity, 0) quantity
+      FROM warehouses w
+      LEFT JOIN stock_bins sb ON sb.warehouse_id = w.id AND sb.product_id = ?
+      WHERE w.is_group = 0 AND w.status = 'active'
+      ORDER BY w.name
+    ");
+    $stmt->execute([$id]);
+    $stockByWarehouse = $stmt->fetchAll();
 }
 // Captured before any POST handling touches $product — quantity and the
 // current image are never taken from client input on an edit; quantity
@@ -34,7 +53,7 @@ if ($id) {
 $existingQuantity = $id ? (int)$product['quantity'] : 0;
 $existingImage = $id ? $product['image'] : null;
 
-$activeTab = in_array(input('tab'), [], true) ? input('tab') : 'details';
+$activeTab = in_array(input('tab'), ['inventory'], true) ? input('tab') : 'details';
 $error = '';
 $maxImageBytes = 3 * 1024 * 1024;
 $mimeToExt = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp', 'image/gif' => 'gif'];
@@ -88,6 +107,9 @@ if (is_post()) {
         'brand_id' => input('brand_id') ?: null,
         'hsn_sac_code' => input('hsn_sac_code') ?: null,
         'is_stock_item' => input('is_stock_item') === '1' ? 1 : 0,
+        'stock_item_type' => in_array(input('stock_item_type'), ['Regular Stock Item', 'Non-Stock Item', 'Fixed Asset Item'], true) ? input('stock_item_type') : 'Regular Stock Item',
+        'opening_stock_date' => input('opening_stock_date') ?: null,
+        'valuation_rate' => (float)input('valuation_rate'),
         'is_sales_item' => input('is_sales_item') === '1' ? 1 : 0,
         'is_purchase_item' => input('is_purchase_item') === '1' ? 1 : 0,
         'is_manufactured_item' => input('is_manufactured_item') === '1' ? 1 : 0,
@@ -100,6 +122,11 @@ if (is_post()) {
         'purchase_uom_conversion_factor' => (float)input('purchase_uom_conversion_factor') ?: 1.0,
         'sales_uom_conversion_factor' => (float)input('sales_uom_conversion_factor') ?: 1.0,
         'default_warehouse_id' => input('default_warehouse_id') ?: null,
+        'default_bin' => input('default_bin') ?: null,
+        'issue_method' => in_array(input('issue_method'), ['FIFO', 'LIFO', 'Moving Average'], true) ? input('issue_method') : 'FIFO',
+        'receipt_method' => in_array(input('receipt_method'), ['FIFO', 'LIFO', 'Moving Average'], true) ? input('receipt_method') : 'FIFO',
+        'allow_negative_stock' => input('allow_negative_stock') === '1' ? 1 : 0,
+        'auto_create_batch_serial' => input('auto_create_batch_serial') === '1' ? 1 : 0,
         'default_price_list_id' => input('default_price_list_id') ?: null,
         'min_stock_level' => (int)input('min_stock_level'),
         'max_stock_level' => (int)input('max_stock_level'),
@@ -116,6 +143,26 @@ if (is_post()) {
         'selling_price' => (float)input('selling_price'),
         'quantity' => $openingQty,
         'reorder_level' => (int)input('reorder_level'),
+        'reorder_qty' => (int)input('reorder_qty'),
+        'safety_stock' => (int)input('safety_stock'),
+        'enable_reorder_notifications' => input('enable_reorder_notifications') === '1' ? 1 : 0,
+        'consider_in_mrp' => input('consider_in_mrp') === '1' ? 1 : 0,
+        'has_batch_no' => input('has_batch_no') === '1' ? 1 : 0,
+        'has_serial_no' => input('has_serial_no') === '1' ? 1 : 0,
+        'batch_expiry_required' => input('batch_expiry_required') === '1' ? 1 : 0,
+        'batch_number_series' => input('batch_number_series') ?: null,
+        'storage_section' => input('storage_section') ?: null,
+        'storage_rack' => input('storage_rack') ?: null,
+        'storage_shelf' => input('storage_shelf') ?: null,
+        'storage_bin' => input('storage_bin') ?: null,
+        'track_stock_ageing' => input('track_stock_ageing') === '1' ? 1 : 0,
+        'include_in_stock_report' => input('include_in_stock_report') === '1' ? 1 : 0,
+        'allow_stock_transfer' => input('allow_stock_transfer') === '1' ? 1 : 0,
+        'is_kit_or_set' => input('is_kit_or_set') === '1' ? 1 : 0,
+        'use_alternative_item' => input('use_alternative_item') === '1' ? 1 : 0,
+        'restrict_warehouse' => input('restrict_warehouse') === '1' ? 1 : 0,
+        'block_for_stock_transactions' => input('block_for_stock_transactions') === '1' ? 1 : 0,
+        'exclude_from_inventory_valuation' => input('exclude_from_inventory_valuation') === '1' ? 1 : 0,
         'status' => in_array(input('status'), ['active', 'inactive'], true) ? input('status') : 'active',
     ];
 
@@ -151,22 +198,25 @@ if (is_post()) {
         $pdo = db();
         $pdo->beginTransaction();
         try {
+            // $headerColNames must exactly match $product's keys (minus 'id'/'quantity',
+            // which are handled separately) — $headerVals is derived from it below so
+            // the two can never drift out of parallel sync as more columns are added.
             $headerColNames = [
                 'sku', 'name', 'image', 'category_id', 'description', 'item_category_id', 'brand_id', 'hsn_sac_code',
-                'is_stock_item', 'is_sales_item', 'is_purchase_item', 'is_manufactured_item', 'is_sub_contracted_item', 'is_asset_item', 'has_variants',
+                'is_stock_item', 'stock_item_type', 'opening_stock_date', 'valuation_rate',
+                'is_sales_item', 'is_purchase_item', 'is_manufactured_item', 'is_sub_contracted_item', 'is_asset_item', 'has_variants',
                 'unit', 'purchase_uom', 'sales_uom', 'purchase_uom_conversion_factor', 'sales_uom_conversion_factor',
-                'default_warehouse_id', 'default_price_list_id', 'min_stock_level', 'max_stock_level', 'lead_time_days', 'shelf_life_days',
+                'default_warehouse_id', 'default_bin', 'issue_method', 'receipt_method', 'allow_negative_stock', 'auto_create_batch_serial',
+                'default_price_list_id', 'min_stock_level', 'max_stock_level', 'lead_time_days', 'shelf_life_days',
                 'item_type', 'valuation_method', 'standard_weight_kg', 'standard_volume_ltr', 'gross_weight_kg', 'net_weight_kg', 'tags',
-                'cost_price', 'selling_price', 'reorder_level', 'status',
+                'cost_price', 'selling_price', 'reorder_level', 'reorder_qty', 'safety_stock', 'enable_reorder_notifications', 'consider_in_mrp',
+                'has_batch_no', 'has_serial_no', 'batch_expiry_required', 'batch_number_series',
+                'storage_section', 'storage_rack', 'storage_shelf', 'storage_bin',
+                'track_stock_ageing', 'include_in_stock_report', 'allow_stock_transfer', 'is_kit_or_set',
+                'use_alternative_item', 'restrict_warehouse', 'block_for_stock_transactions', 'exclude_from_inventory_valuation',
+                'status',
             ];
-            $headerVals = [
-                $product['sku'], $product['name'], $product['image'], $product['category_id'], $product['description'], $product['item_category_id'], $product['brand_id'], $product['hsn_sac_code'],
-                $product['is_stock_item'], $product['is_sales_item'], $product['is_purchase_item'], $product['is_manufactured_item'], $product['is_sub_contracted_item'], $product['is_asset_item'], $product['has_variants'],
-                $product['unit'], $product['purchase_uom'], $product['sales_uom'], $product['purchase_uom_conversion_factor'], $product['sales_uom_conversion_factor'],
-                $product['default_warehouse_id'], $product['default_price_list_id'], $product['min_stock_level'], $product['max_stock_level'], $product['lead_time_days'], $product['shelf_life_days'],
-                $product['item_type'], $product['valuation_method'], $product['standard_weight_kg'], $product['standard_volume_ltr'], $product['gross_weight_kg'], $product['net_weight_kg'], $product['tags'],
-                $product['cost_price'], $product['selling_price'], $product['reorder_level'], $product['status'],
-            ];
+            $headerVals = array_map(fn($c) => $product[$c], $headerColNames);
 
             if ($id) {
                 $setClause = implode(', ', array_map(fn($c) => "$c=?", $headerColNames));
@@ -223,6 +273,7 @@ require __DIR__ . '/../includes/header.php';
 
   <ul class="nav nav-tabs mb-3">
     <li class="nav-item"><button class="nav-link <?= $activeTab === 'details' ? 'active' : '' ?>" id="tab-details" data-bs-toggle="tab" data-bs-target="#pane-details" type="button">Details</button></li>
+    <li class="nav-item"><button class="nav-link <?= $activeTab === 'inventory' ? 'active' : '' ?>" id="tab-inventory" data-bs-toggle="tab" data-bs-target="#pane-inventory" type="button">Inventory</button></li>
   </ul>
 
   <form method="post" enctype="multipart/form-data">
@@ -512,6 +563,170 @@ require __DIR__ . '/../includes/header.php';
                 </table>
               </div>
               <button type="button" class="btn btn-sm btn-outline-brand product-barcode-add-row"><i class="fa-solid fa-plus"></i> Add Barcode</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-pane fade <?= $activeTab === 'inventory' ? 'show active' : '' ?>" id="pane-inventory">
+        <div class="row g-3">
+          <div class="col-lg-4">
+            <div class="card p-3 mb-3">
+              <h6 class="mb-3">Stock Settings</h6>
+              <div class="mb-2">
+                <label class="form-label">Stock Item Type</label>
+                <select name="stock_item_type" class="form-select">
+                  <?php foreach (['Regular Stock Item', 'Non-Stock Item', 'Fixed Asset Item'] as $sit): ?>
+                    <option value="<?= e($sit) ?>" <?= $product['stock_item_type'] === $sit ? 'selected' : '' ?>><?= e($sit) ?></option>
+                  <?php endforeach; ?>
+                </select>
+              </div>
+              <div class="row g-2">
+                <div class="col-6">
+                  <label class="form-label">Opening Stock Date</label>
+                  <input type="date" name="opening_stock_date" class="form-control" value="<?= e($product['opening_stock_date'] ?? '') ?>">
+                </div>
+                <div class="col-6">
+                  <label class="form-label">Valuation Rate</label>
+                  <input type="number" step="0.01" min="0" name="valuation_rate" class="form-control" value="<?= e($product['valuation_rate']) ?>">
+                </div>
+              </div>
+            </div>
+
+            <div class="card p-3 mb-3">
+              <h6 class="mb-3">Inventory Dimensions</h6>
+              <div class="row g-2">
+                <div class="col-6">
+                  <label class="form-label">Default Bin</label>
+                  <input type="text" name="default_bin" class="form-control" value="<?= e($product['default_bin'] ?? '') ?>">
+                </div>
+                <div class="col-6">
+                  <label class="form-label">Issue Method</label>
+                  <select name="issue_method" class="form-select">
+                    <?php foreach (['FIFO', 'LIFO', 'Moving Average'] as $m): ?>
+                      <option value="<?= e($m) ?>" <?= $product['issue_method'] === $m ? 'selected' : '' ?>><?= e($m) ?></option>
+                    <?php endforeach; ?>
+                  </select>
+                </div>
+                <div class="col-6">
+                  <label class="form-label">Receipt Method</label>
+                  <select name="receipt_method" class="form-select">
+                    <?php foreach (['FIFO', 'LIFO', 'Moving Average'] as $m): ?>
+                      <option value="<?= e($m) ?>" <?= $product['receipt_method'] === $m ? 'selected' : '' ?>><?= e($m) ?></option>
+                    <?php endforeach; ?>
+                  </select>
+                </div>
+              </div>
+              <div class="form-check form-switch mt-2">
+                <input type="checkbox" class="form-check-input" id="allowNegStock" name="allow_negative_stock" value="1" <?= !empty($product['allow_negative_stock']) ? 'checked' : '' ?>>
+                <label class="form-check-label" for="allowNegStock">Allow Negative Stock</label>
+              </div>
+              <div class="form-check form-switch">
+                <input type="checkbox" class="form-check-input" id="autoCreateBatchSerial" name="auto_create_batch_serial" value="1" <?= !empty($product['auto_create_batch_serial']) ? 'checked' : '' ?>>
+                <label class="form-check-label" for="autoCreateBatchSerial">Auto Create Batch/Serial No.</label>
+              </div>
+            </div>
+
+            <div class="card p-3 mb-3">
+              <h6 class="mb-3">Batch &amp; Serial Settings</h6>
+              <p class="text-muted small mb-2">Full batch/serial configuration and tracking is on the Batch &amp; Serial No. tab, coming in a later phase.</p>
+              <div class="form-check form-switch">
+                <input type="checkbox" class="form-check-input" id="hasBatchNo" name="has_batch_no" value="1" <?= !empty($product['has_batch_no']) ? 'checked' : '' ?>>
+                <label class="form-check-label" for="hasBatchNo">Has Batch No.</label>
+              </div>
+              <div class="form-check form-switch">
+                <input type="checkbox" class="form-check-input" id="hasSerialNo" name="has_serial_no" value="1" <?= !empty($product['has_serial_no']) ? 'checked' : '' ?>>
+                <label class="form-check-label" for="hasSerialNo">Has Serial No.</label>
+              </div>
+              <div class="form-check form-switch mb-2">
+                <input type="checkbox" class="form-check-input" id="batchExpiryRequired" name="batch_expiry_required" value="1" <?= !empty($product['batch_expiry_required']) ? 'checked' : '' ?>>
+                <label class="form-check-label" for="batchExpiryRequired">Batch Expiry Required</label>
+              </div>
+              <label class="form-label">Batch Number Series</label>
+              <input type="text" name="batch_number_series" class="form-control" placeholder="BATCH-YYYY-####" value="<?= e($product['batch_number_series'] ?? '') ?>">
+            </div>
+          </div>
+
+          <div class="col-lg-4">
+            <div class="card p-3 mb-3">
+              <h6 class="mb-3">Stock Levels</h6>
+              <div class="row g-2">
+                <div class="col-6">
+                  <label class="form-label">Reorder Qty</label>
+                  <input type="number" min="0" name="reorder_qty" class="form-control" value="<?= e($product['reorder_qty']) ?>">
+                </div>
+                <div class="col-6">
+                  <label class="form-label">Safety Stock</label>
+                  <input type="number" min="0" name="safety_stock" class="form-control" value="<?= e($product['safety_stock']) ?>">
+                </div>
+              </div>
+              <div class="form-text mb-2">Reorder Level and Max Stock Level are on the Details tab.</div>
+              <div class="form-check form-switch">
+                <input type="checkbox" class="form-check-input" id="enableReorderNotif" name="enable_reorder_notifications" value="1" <?= !empty($product['enable_reorder_notifications']) ? 'checked' : '' ?>>
+                <label class="form-check-label" for="enableReorderNotif">Enable Reorder Notifications</label>
+              </div>
+              <div class="form-check form-switch">
+                <input type="checkbox" class="form-check-input" id="considerInMrp" name="consider_in_mrp" value="1" <?= !empty($product['consider_in_mrp']) ? 'checked' : '' ?>>
+                <label class="form-check-label" for="considerInMrp">Consider in MRP</label>
+              </div>
+            </div>
+
+            <div class="card p-3 mb-3">
+              <h6 class="mb-3">Storage &amp; Shelf Information</h6>
+              <div class="row g-2">
+                <div class="col-6">
+                  <label class="form-label">Storage Section</label>
+                  <input type="text" name="storage_section" class="form-control" value="<?= e($product['storage_section'] ?? '') ?>">
+                </div>
+                <div class="col-6">
+                  <label class="form-label">Rack</label>
+                  <input type="text" name="storage_rack" class="form-control" value="<?= e($product['storage_rack'] ?? '') ?>">
+                </div>
+                <div class="col-6">
+                  <label class="form-label">Shelf</label>
+                  <input type="text" name="storage_shelf" class="form-control" value="<?= e($product['storage_shelf'] ?? '') ?>">
+                </div>
+                <div class="col-6">
+                  <label class="form-label">Bin</label>
+                  <input type="text" name="storage_bin" class="form-control" value="<?= e($product['storage_bin'] ?? '') ?>">
+                </div>
+              </div>
+            </div>
+
+            <div class="card p-3 mb-3">
+              <h6 class="mb-3">Additional Inventory Options</h6>
+              <?php
+              $invOptions = [
+                  'track_stock_ageing' => 'Track Stock Ageing', 'include_in_stock_report' => 'Include in Stock Report',
+                  'allow_stock_transfer' => 'Allow Stock Transfer', 'is_kit_or_set' => 'This Item is a Kit/Set',
+                  'use_alternative_item' => 'Use Alternative Item', 'restrict_warehouse' => 'Restrict Warehouse',
+                  'block_for_stock_transactions' => 'Block for Stock Transactions', 'exclude_from_inventory_valuation' => 'Exclude from Inventory Valuation',
+              ];
+              ?>
+              <div class="row g-1">
+                <?php foreach ($invOptions as $ioKey => $ioLabel): ?>
+                  <div class="col-6 form-check">
+                    <input type="checkbox" class="form-check-input" id="io_<?= e($ioKey) ?>" name="<?= e($ioKey) ?>" value="1" <?= !empty($product[$ioKey]) ? 'checked' : '' ?>>
+                    <label class="form-check-label" for="io_<?= e($ioKey) ?>"><?= e($ioLabel) ?></label>
+                  </div>
+                <?php endforeach; ?>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-lg-4">
+            <div class="card p-3 mb-3">
+              <h6 class="mb-2">Warehouse Wise Stock</h6>
+              <p class="text-muted small mb-2">View-only — use Stock Movements to change stock.</p>
+              <table class="table table-sm mb-0">
+                <thead><tr><th>Warehouse</th><th class="text-end">Current Stock</th></tr></thead>
+                <tbody>
+                <?php foreach ($stockByWarehouse as $w): ?>
+                  <tr><td><?= e($w['name']) ?></td><td class="text-end fw-bold"><?= (int)$w['quantity'] ?></td></tr>
+                <?php endforeach; ?>
+                <?php if (!$stockByWarehouse): ?><tr><td class="text-muted text-center" colspan="2"><?= $id ? 'No warehouses set up yet.' : 'Save the item first to see stock by warehouse.' ?></td></tr><?php endif; ?>
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
