@@ -24,10 +24,15 @@ $order = [
     'payment_instructions' => '', 'require_advance_payment' => 0, 'advance_percentage' => 0, 'advance_valid_till' => '',
     'interest_on_late_payment' => 0, 'late_interest_rate' => 0, 'late_grace_period_days' => 0, 'late_payment_terms' => '',
     'payment_reference' => '', 'special_payment_terms' => '', 'allow_partial_payments' => 1, 'send_payment_reminder' => 0,
+    'quotation_id' => '', 'opportunity' => '', 'customer_po_date' => '', 'campaign_source' => '',
+    'sales_group' => '', 'sales_office' => '', 'cost_center' => '', 'business_unit' => '', 'valid_till' => '',
+    'order_type' => 'Standard Order', 'tags' => '', 'remarks_internal' => '', 'end_customer' => '',
+    'channel_partner' => '', 'deal_registration_no' => '', 'market_segment' => '', 'region' => '', 'expected_close_date' => '',
 ];
 $items = [];
 $taxRows = [];
 $paymentSchedule = [];
+$salesTeam = [];
 
 if ($id) {
     $stmt = db()->prepare('SELECT * FROM sales_orders WHERE id = ?');
@@ -50,10 +55,29 @@ if ($id) {
     $stmt = db()->prepare('SELECT * FROM sales_order_payment_schedule WHERE order_id = ? ORDER BY sort_order, id');
     $stmt->execute([$id]);
     $paymentSchedule = $stmt->fetchAll();
+    $stmt = db()->prepare('SELECT * FROM sales_order_sales_team WHERE order_id = ? ORDER BY sort_order, id');
+    $stmt->execute([$id]);
+    $salesTeam = $stmt->fetchAll();
+} elseif ($fromQuotationId = (int)input('from_quotation')) {
+    $stmt = db()->prepare('SELECT * FROM quotations WHERE id = ?');
+    $stmt->execute([$fromQuotationId]);
+    $quotation = $stmt->fetch();
+    if ($quotation) {
+        $order['customer_id'] = $quotation['customer_id'];
+        $order['quotation_id'] = $fromQuotationId;
+        $stmt = db()->prepare('SELECT qi.*, p.unit FROM quotation_items qi JOIN products p ON p.id = qi.product_id WHERE quotation_id = ?');
+        $stmt->execute([$fromQuotationId]);
+        foreach ($stmt->fetchAll() as $qi) {
+            $items[] = [
+                'product_id' => $qi['product_id'], 'description' => '', 'warehouse_id' => default_warehouse_id(),
+                'quantity' => $qi['quantity'], 'uom' => $qi['unit'] ?: 'pcs', 'unit_price' => $qi['unit_price'], 'discount_percent' => 0,
+            ];
+        }
+    }
 }
 
 $error = '';
-$activeTab = in_array(input('tab'), ['items', 'taxes', 'shipping', 'payment'], true) ? input('tab') : 'details';
+$activeTab = in_array(input('tab'), ['items', 'taxes', 'shipping', 'payment', 'more'], true) ? input('tab') : 'details';
 
 /** Rounds $amount to the nearest multiple of $precision, per $method ('nearest'|'up'|'down'). */
 function so_round(float $amount, float $precision, string $method): float
@@ -132,6 +156,41 @@ if (is_post()) {
     $specialPaymentTerms = input('special_payment_terms') ?: null;
     $allowPartialPayments = input('allow_partial_payments') ? 1 : 0;
     $sendPaymentReminder = input('send_payment_reminder') ? 1 : 0;
+
+    $quotationId = (int)input('quotation_id') ?: null;
+    $opportunity = input('opportunity') ?: null;
+    $customerPoDate = input('customer_po_date') ?: null;
+    $campaignSource = input('campaign_source') ?: null;
+    $salesGroup = input('sales_group') ?: null;
+    $salesOffice = input('sales_office') ?: null;
+    $costCenter = input('cost_center') ?: null;
+    $businessUnit = input('business_unit') ?: null;
+    $validTill = input('valid_till') ?: null;
+    $orderType = input('order_type') ?: 'Standard Order';
+    $tags = input('tags') ?: null;
+    $remarksInternal = input('remarks_internal') ?: null;
+    $endCustomer = input('end_customer') ?: null;
+    $channelPartner = input('channel_partner') ?: null;
+    $dealRegistrationNo = input('deal_registration_no') ?: null;
+    $marketSegment = input('market_segment') ?: null;
+    $region = input('region') ?: null;
+    $expectedCloseDate = input('expected_close_date') ?: null;
+
+    $stSalesPersonIds = $_POST['team_sales_person_id'] ?? [];
+    $stRoles = $_POST['team_role'] ?? [];
+    $stCommissions = $_POST['team_commission_percent'] ?? [];
+    $salesTeamToSave = [];
+    $stSort = 0;
+    foreach ($stSalesPersonIds as $i => $spId) {
+        $spId = (int)$spId;
+        if ($spId <= 0) {
+            continue;
+        }
+        $salesTeamToSave[] = [
+            'sales_person_id' => $spId, 'role' => trim($stRoles[$i] ?? '') ?: null,
+            'commission_percent' => max(0, min(100, (float)($stCommissions[$i] ?? 0))), 'sort_order' => $stSort++,
+        ];
+    }
 
     $productIds = $_POST['product_id'] ?? [];
     $descriptions = $_POST['description'] ?? [];
@@ -249,14 +308,15 @@ if (is_post()) {
         $pdo = db();
         $pdo->beginTransaction();
         try {
-            $headerColNames = ['customer_id', 'contact_person', 'customer_address_id', 'warehouse_id', 'order_date', 'required_delivery_date', 'price_list_id', 'currency', 'sales_channel', 'territory', 'sales_person_id', 'customer_po_no', 'project', 'notes', 'total_amount', 'net_amount', 'tax_template_id', 'place_of_supply', 'gst_category', 'reverse_charge', 'tax_remarks', 'rounding_method', 'rounding_precision', 'additional_discount', 'additional_charge', 'adjustment_type', 'adjustment_amount', 'adjustment_remarks', 'promised_delivery_date', 'delivery_priority', 'fulfillment_type', 'delivery_terms', 'shipping_rule', 'delivery_remarks', 'ship_to_address_id', 'shipping_partner_id', 'shipping_service_type', 'shipping_method', 'tracking_no', 'expected_dispatch_date', 'expected_delivery_date', 'create_dn_after_submit', 'update_stock_on_submit', 'allow_partial_delivery', 'notify_customer', 'print_picking_list', 'print_shipping_label', 'include_shipping_in_total', 'payment_terms_template_id', 'payment_terms', 'payment_method', 'payment_due_date_basis', 'payment_instructions', 'require_advance_payment', 'advance_percentage', 'advance_valid_till', 'interest_on_late_payment', 'late_interest_rate', 'late_grace_period_days', 'late_payment_terms', 'payment_reference', 'special_payment_terms', 'allow_partial_payments', 'send_payment_reminder'];
-            $headerVals = [$customerId, $contactPerson, $customerAddressId, $firstWarehouseId, $orderDate, $requiredDeliveryDate, $priceListId, $currency, $salesChannel, $territory, $salesPersonId, $customerPoNo, $project, $notes, $grandTotal, $netAmount, $taxTemplateId, $placeOfSupply, $gstCategory, $reverseCharge, $taxRemarks, $roundingMethod, $roundingPrecision, $additionalDiscount, $additionalCharge, $adjustmentType, $adjustmentAmount, $adjustmentRemarks, $promisedDeliveryDate, $deliveryPriority, $fulfillmentType, $deliveryTerms, $shippingRule, $deliveryRemarks, $shipToAddressId, $shippingPartnerId, $shippingServiceType, $shippingMethod, $trackingNo, $expectedDispatchDate, $expectedDeliveryDate, $createDnAfterSubmit, $updateStockOnSubmit, $allowPartialDelivery, $notifyCustomer, $printPickingList, $printShippingLabel, $includeShippingInTotal, $paymentTermsTemplateId, $paymentTerms, $paymentMethod, $paymentDueDateBasis, $paymentInstructions, $requireAdvancePayment, $advancePercentage, $advanceValidTill, $interestOnLatePayment, $lateInterestRate, $lateGracePeriodDays, $latePaymentTerms, $paymentReference, $specialPaymentTerms, $allowPartialPayments, $sendPaymentReminder];
+            $headerColNames = ['customer_id', 'contact_person', 'customer_address_id', 'warehouse_id', 'order_date', 'required_delivery_date', 'price_list_id', 'currency', 'sales_channel', 'territory', 'sales_person_id', 'customer_po_no', 'project', 'notes', 'total_amount', 'net_amount', 'tax_template_id', 'place_of_supply', 'gst_category', 'reverse_charge', 'tax_remarks', 'rounding_method', 'rounding_precision', 'additional_discount', 'additional_charge', 'adjustment_type', 'adjustment_amount', 'adjustment_remarks', 'promised_delivery_date', 'delivery_priority', 'fulfillment_type', 'delivery_terms', 'shipping_rule', 'delivery_remarks', 'ship_to_address_id', 'shipping_partner_id', 'shipping_service_type', 'shipping_method', 'tracking_no', 'expected_dispatch_date', 'expected_delivery_date', 'create_dn_after_submit', 'update_stock_on_submit', 'allow_partial_delivery', 'notify_customer', 'print_picking_list', 'print_shipping_label', 'include_shipping_in_total', 'payment_terms_template_id', 'payment_terms', 'payment_method', 'payment_due_date_basis', 'payment_instructions', 'require_advance_payment', 'advance_percentage', 'advance_valid_till', 'interest_on_late_payment', 'late_interest_rate', 'late_grace_period_days', 'late_payment_terms', 'payment_reference', 'special_payment_terms', 'allow_partial_payments', 'send_payment_reminder', 'quotation_id', 'opportunity', 'customer_po_date', 'campaign_source', 'sales_group', 'sales_office', 'cost_center', 'business_unit', 'valid_till', 'order_type', 'tags', 'remarks_internal', 'end_customer', 'channel_partner', 'deal_registration_no', 'market_segment', 'region', 'expected_close_date'];
+            $headerVals = [$customerId, $contactPerson, $customerAddressId, $firstWarehouseId, $orderDate, $requiredDeliveryDate, $priceListId, $currency, $salesChannel, $territory, $salesPersonId, $customerPoNo, $project, $notes, $grandTotal, $netAmount, $taxTemplateId, $placeOfSupply, $gstCategory, $reverseCharge, $taxRemarks, $roundingMethod, $roundingPrecision, $additionalDiscount, $additionalCharge, $adjustmentType, $adjustmentAmount, $adjustmentRemarks, $promisedDeliveryDate, $deliveryPriority, $fulfillmentType, $deliveryTerms, $shippingRule, $deliveryRemarks, $shipToAddressId, $shippingPartnerId, $shippingServiceType, $shippingMethod, $trackingNo, $expectedDispatchDate, $expectedDeliveryDate, $createDnAfterSubmit, $updateStockOnSubmit, $allowPartialDelivery, $notifyCustomer, $printPickingList, $printShippingLabel, $includeShippingInTotal, $paymentTermsTemplateId, $paymentTerms, $paymentMethod, $paymentDueDateBasis, $paymentInstructions, $requireAdvancePayment, $advancePercentage, $advanceValidTill, $interestOnLatePayment, $lateInterestRate, $lateGracePeriodDays, $latePaymentTerms, $paymentReference, $specialPaymentTerms, $allowPartialPayments, $sendPaymentReminder, $quotationId, $opportunity, $customerPoDate, $campaignSource, $salesGroup, $salesOffice, $costCenter, $businessUnit, $validTill, $orderType, $tags, $remarksInternal, $endCustomer, $channelPartner, $dealRegistrationNo, $marketSegment, $region, $expectedCloseDate];
             if ($id) {
                 $setClause = implode(', ', array_map(fn($c) => "$c=?", $headerColNames));
                 $pdo->prepare("UPDATE sales_orders SET $setClause WHERE id=?")->execute([...$headerVals, $id]);
                 $pdo->prepare('DELETE FROM sales_order_items WHERE order_id=?')->execute([$id]);
                 $pdo->prepare('DELETE FROM sales_order_taxes WHERE order_id=?')->execute([$id]);
                 $pdo->prepare('DELETE FROM sales_order_payment_schedule WHERE order_id=?')->execute([$id]);
+                $pdo->prepare('DELETE FROM sales_order_sales_team WHERE order_id=?')->execute([$id]);
                 $orderId = $id;
             } else {
                 $orderNo = next_code('SO', 'sales_orders', 'order_no');
@@ -277,6 +337,10 @@ if (is_post()) {
             $scheduleStmt = $pdo->prepare('INSERT INTO sales_order_payment_schedule (order_id, due_on, days_from, payment_type, percentage, amount, remarks, sort_order) VALUES (?,?,?,?,?,?,?,?)');
             foreach ($paymentScheduleToSave as $ps) {
                 $scheduleStmt->execute([$orderId, $ps['due_on'], $ps['days_from'], $ps['payment_type'], $ps['percentage'], $ps['amount'], $ps['remarks'], $ps['sort_order']]);
+            }
+            $teamStmt = $pdo->prepare('INSERT INTO sales_order_sales_team (order_id, sales_person_id, role, commission_percent, sort_order) VALUES (?,?,?,?,?)');
+            foreach ($salesTeamToSave as $st) {
+                $teamStmt->execute([$orderId, $st['sales_person_id'], $st['role'], $st['commission_percent'], $st['sort_order']]);
             }
             $pdo->commit();
             flash('success', $id ? 'Sales order updated.' : 'Sales order created.');
@@ -312,10 +376,17 @@ if (is_post()) {
         'late_grace_period_days' => $lateGracePeriodDays, 'late_payment_terms' => $latePaymentTerms,
         'payment_reference' => $paymentReference, 'special_payment_terms' => $specialPaymentTerms,
         'allow_partial_payments' => $allowPartialPayments, 'send_payment_reminder' => $sendPaymentReminder,
+        'quotation_id' => $quotationId, 'opportunity' => $opportunity, 'customer_po_date' => $customerPoDate,
+        'campaign_source' => $campaignSource, 'sales_group' => $salesGroup, 'sales_office' => $salesOffice,
+        'cost_center' => $costCenter, 'business_unit' => $businessUnit, 'valid_till' => $validTill,
+        'order_type' => $orderType, 'tags' => $tags, 'remarks_internal' => $remarksInternal,
+        'end_customer' => $endCustomer, 'channel_partner' => $channelPartner, 'deal_registration_no' => $dealRegistrationNo,
+        'market_segment' => $marketSegment, 'region' => $region, 'expected_close_date' => $expectedCloseDate,
     ];
     $items = $lineItems;
     $taxRows = $taxRowsToSave;
     $paymentSchedule = $paymentScheduleToSave;
+    $salesTeam = $salesTeamToSave;
 }
 
 $newAddressId = (int)input('new_address_id');
@@ -360,6 +431,19 @@ foreach ($pttStmt as $r) {
 $warehouseNames = [];
 foreach ($warehouses as $w) {
     $warehouseNames[(int)$w['id']] = $w['name'];
+}
+
+$quotationsByCustomer = [];
+$qStmt = db()->query("SELECT id, customer_id, quotation_no FROM quotations WHERE status IN ('sent','accepted') ORDER BY id DESC");
+foreach ($qStmt as $q) {
+    $quotationsByCustomer[(int)$q['customer_id']][] = ['id' => (int)$q['id'], 'text' => $q['quotation_no']];
+}
+if ($order['quotation_id']) {
+    $stmt = db()->prepare('SELECT quotation_no FROM quotations WHERE id = ?');
+    $stmt->execute([$order['quotation_id']]);
+    $currentQuotationNo = $stmt->fetchColumn();
+} else {
+    $currentQuotationNo = null;
 }
 
 $priceListRates = [];
@@ -412,6 +496,7 @@ require __DIR__ . '/../includes/header.php';
     <li class="nav-item"><button class="nav-link <?= $activeTab === 'taxes' ? 'active' : '' ?>" id="tab-taxes" data-bs-toggle="tab" data-bs-target="#pane-taxes" type="button">Taxes &amp; Charges</button></li>
     <li class="nav-item"><button class="nav-link <?= $activeTab === 'shipping' ? 'active' : '' ?>" id="tab-shipping" data-bs-toggle="tab" data-bs-target="#pane-shipping" type="button">Shipping &amp; Delivery</button></li>
     <li class="nav-item"><button class="nav-link <?= $activeTab === 'payment' ? 'active' : '' ?>" id="tab-payment" data-bs-toggle="tab" data-bs-target="#pane-payment" type="button">Payment Terms</button></li>
+    <li class="nav-item"><button class="nav-link <?= $activeTab === 'more' ? 'active' : '' ?>" id="tab-more" data-bs-toggle="tab" data-bs-target="#pane-more" type="button">More Info</button></li>
   </ul>
 
   <form method="post" id="soForm">
@@ -497,7 +582,16 @@ require __DIR__ . '/../includes/header.php';
             <label class="form-label">Project</label>
             <input type="text" name="project" class="form-control" value="<?= e($order['project'] ?? '') ?>">
           </div>
-          <div class="col-sm-9">
+          <div class="col-sm-3">
+            <label class="form-label">Reference Quotation</label>
+            <select name="quotation_id" id="quotationSelect" class="form-select">
+              <option value="">— None —</option>
+              <?php if ($order['quotation_id'] && $currentQuotationNo): ?>
+                <option value="<?= (int)$order['quotation_id'] ?>" selected><?= e($currentQuotationNo) ?></option>
+              <?php endif; ?>
+            </select>
+          </div>
+          <div class="col-sm-6">
             <label class="form-label">Notes</label>
             <input type="text" name="notes" class="form-control" value="<?= e($order['notes'] ?? '') ?>">
           </div>
@@ -1094,6 +1188,134 @@ require __DIR__ . '/../includes/header.php';
           </div>
         </div>
       </div>
+
+      <div class="tab-pane fade <?= $activeTab === 'more' ? 'show active' : '' ?>" id="pane-more">
+        <div class="row g-3">
+          <div class="col-lg-6">
+            <div class="card p-3 mb-3">
+              <h6 class="mb-3">Reference Information</h6>
+              <div class="row g-3">
+                <div class="col-sm-6">
+                  <label class="form-label">Opportunity</label>
+                  <input type="text" name="opportunity" class="form-control" value="<?= e($order['opportunity'] ?? '') ?>">
+                </div>
+                <div class="col-sm-6">
+                  <label class="form-label">Customer PO Date</label>
+                  <input type="date" name="customer_po_date" class="form-control" value="<?= e($order['customer_po_date'] ?? '') ?>">
+                </div>
+                <div class="col-sm-12">
+                  <label class="form-label">Campaign / Source</label>
+                  <input type="text" name="campaign_source" class="form-control" value="<?= e($order['campaign_source'] ?? '') ?>">
+                </div>
+              </div>
+            </div>
+            <div class="card p-3 mb-3">
+              <h6 class="mb-3">Additional Classification</h6>
+              <div class="row g-3">
+                <div class="col-sm-6">
+                  <label class="form-label">Sales Group</label>
+                  <input type="text" name="sales_group" class="form-control" value="<?= e($order['sales_group'] ?? '') ?>">
+                </div>
+                <div class="col-sm-6">
+                  <label class="form-label">Sales Office</label>
+                  <input type="text" name="sales_office" class="form-control" value="<?= e($order['sales_office'] ?? '') ?>">
+                </div>
+                <div class="col-sm-6">
+                  <label class="form-label">Cost Center</label>
+                  <input type="text" name="cost_center" class="form-control" value="<?= e($order['cost_center'] ?? '') ?>">
+                </div>
+                <div class="col-sm-6">
+                  <label class="form-label">Business Unit</label>
+                  <input type="text" name="business_unit" class="form-control" value="<?= e($order['business_unit'] ?? '') ?>">
+                </div>
+              </div>
+            </div>
+            <div class="card p-3 mb-3">
+              <h6 class="mb-3">Internal Information</h6>
+              <div class="row g-3">
+                <div class="col-sm-6">
+                  <label class="form-label">Valid Till</label>
+                  <input type="date" name="valid_till" class="form-control" value="<?= e($order['valid_till'] ?? '') ?>">
+                </div>
+                <div class="col-sm-6">
+                  <label class="form-label">Order Type</label>
+                  <select name="order_type" class="form-select">
+                    <?php foreach (['Standard Order', 'Maintenance Order', 'Shopping Cart Order'] as $ot): ?>
+                      <option value="<?= e($ot) ?>" <?= ($order['order_type'] ?: 'Standard Order') === $ot ? 'selected' : '' ?>><?= e($ot) ?></option>
+                    <?php endforeach; ?>
+                  </select>
+                </div>
+                <div class="col-sm-12">
+                  <label class="form-label">Tags</label>
+                  <input type="text" name="tags" class="form-control" placeholder="Comma-separated" value="<?= e($order['tags'] ?? '') ?>">
+                </div>
+                <div class="col-sm-12">
+                  <label class="form-label">Remarks (Internal)</label>
+                  <textarea name="remarks_internal" class="form-control" rows="2"><?= e($order['remarks_internal'] ?? '') ?></textarea>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="col-lg-6">
+            <div class="card p-3 mb-3">
+              <h6 class="mb-3">Sales Team</h6>
+              <div class="table-responsive">
+                <table class="table table-sm so-team-rows">
+                  <thead><tr><th style="width:45%">Sales Person</th><th style="width:30%">Role</th><th style="width:18%">Commission %</th><th></th></tr></thead>
+                  <tbody>
+                  <?php if (!$salesTeam): $salesTeam = [['sales_person_id' => '', 'role' => '', 'commission_percent' => 0]]; endif; ?>
+                  <?php foreach ($salesTeam as $st): ?>
+                    <tr data-row>
+                      <td>
+                        <select class="form-select form-select-sm" name="team_sales_person_id[]">
+                          <option value="">— Select —</option>
+                          <?php foreach ($salesUsers as $u): ?>
+                            <option value="<?= (int)$u['id'] ?>" <?= (string)($st['sales_person_id'] ?? '') === (string)$u['id'] ? 'selected' : '' ?>><?= e($u['name']) ?></option>
+                          <?php endforeach; ?>
+                        </select>
+                      </td>
+                      <td><input type="text" class="form-control form-control-sm" name="team_role[]" value="<?= e($st['role'] ?? '') ?>"></td>
+                      <td><input type="number" step="0.01" min="0" max="100" class="form-control form-control-sm" name="team_commission_percent[]" value="<?= e($st['commission_percent'] ?? 0) ?>"></td>
+                      <td><button type="button" class="btn btn-sm btn-outline-danger so-team-remove-row"><i class="fa-solid fa-xmark"></i></button></td>
+                    </tr>
+                  <?php endforeach; ?>
+                  </tbody>
+                </table>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-brand so-team-add-row"><i class="fa-solid fa-plus"></i> Add row</button>
+            </div>
+            <div class="card p-3 mb-3">
+              <h6 class="mb-3">Custom Fields</h6>
+              <div class="row g-3">
+                <div class="col-sm-6">
+                  <label class="form-label">End Customer</label>
+                  <input type="text" name="end_customer" class="form-control" value="<?= e($order['end_customer'] ?? '') ?>">
+                </div>
+                <div class="col-sm-6">
+                  <label class="form-label">Channel Partner</label>
+                  <input type="text" name="channel_partner" class="form-control" value="<?= e($order['channel_partner'] ?? '') ?>">
+                </div>
+                <div class="col-sm-6">
+                  <label class="form-label">Deal Registration No.</label>
+                  <input type="text" name="deal_registration_no" class="form-control" value="<?= e($order['deal_registration_no'] ?? '') ?>">
+                </div>
+                <div class="col-sm-6">
+                  <label class="form-label">Market Segment</label>
+                  <input type="text" name="market_segment" class="form-control" value="<?= e($order['market_segment'] ?? '') ?>">
+                </div>
+                <div class="col-sm-6">
+                  <label class="form-label">Region</label>
+                  <input type="text" name="region" class="form-control" value="<?= e($order['region'] ?? '') ?>">
+                </div>
+                <div class="col-sm-6">
+                  <label class="form-label">Expected Close Date</label>
+                  <input type="date" name="expected_close_date" class="form-control" value="<?= e($order['expected_close_date'] ?? '') ?>">
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="page-actions mt-3">
@@ -1108,6 +1330,8 @@ $extra_js_inline = "
 var productMeta = " . json_encode($productMeta) . ";
 var priceListRates = " . json_encode($priceListRates) . ";
 var addressesByCustomer = " . json_encode($addressesByCustomer) . ";
+var quotationsByCustomer = " . json_encode($quotationsByCustomer) . ";
+var selectedQuotationId = " . json_encode((string)($order['quotation_id'] ?? '')) . ";
 var selectedAddressId = " . json_encode((string)($order['customer_address_id'] ?? '')) . ";
 var selectedShipToId = " . json_encode((string)($order['ship_to_address_id'] ?? '')) . ";
 var currentCustomerId = " . json_encode((string)($order['customer_id'] ?? '')) . ";
@@ -1132,6 +1356,20 @@ function populateAddressSelect(selectEl, customerId, selectId) {
   });
 }
 
+function populateQuotationSelect(customerId, selectId) {
+  var sel = document.getElementById('quotationSelect');
+  if (!sel) return;
+  sel.innerHTML = '<option value=\"\">— None —</option>';
+  var list = quotationsByCustomer[customerId] || [];
+  list.forEach(function (q) {
+    var opt = document.createElement('option');
+    opt.value = q.id;
+    opt.textContent = q.text;
+    if (selectId && String(q.id) === String(selectId)) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
 function updateShipToPreview() {
   var sel = document.getElementById('shipToSelect');
   var preview = document.getElementById('shipToPreview');
@@ -1152,12 +1390,14 @@ document.addEventListener('DOMContentLoaded', function () {
   if (customerSelect) {
     populateAddressSelect(addressSelect, customerSelect.value, selectedAddressId);
     populateAddressSelect(shipToSelect, customerSelect.value, selectedShipToId);
+    populateQuotationSelect(customerSelect.value, selectedQuotationId);
     updateShipToPreview();
     currentCustomerId = customerSelect.value;
     customerSelect.addEventListener('change', function () {
       currentCustomerId = customerSelect.value;
       populateAddressSelect(addressSelect, customerSelect.value, null);
       populateAddressSelect(shipToSelect, customerSelect.value, null);
+      populateQuotationSelect(customerSelect.value, null);
       updateShipToPreview();
     });
   }
@@ -1490,6 +1730,30 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   window.soRecalcPaymentSchedule();
+});
+
+document.addEventListener('DOMContentLoaded', function () {
+  var wrap = document.querySelector('.so-team-rows');
+  if (!wrap) return;
+  var tbody = wrap.querySelector('tbody');
+
+  wrap.closest('.card').addEventListener('click', function (e) {
+    if (e.target.closest('.so-team-add-row')) {
+      var rows = tbody.querySelectorAll('tr[data-row]');
+      var clone = rows[rows.length - 1].cloneNode(true);
+      clone.querySelectorAll('input').forEach(function (inp) { inp.value = ''; });
+      clone.querySelectorAll('select').forEach(function (sel) { sel.selectedIndex = 0; });
+      tbody.appendChild(clone);
+      return;
+    }
+    var rm = e.target.closest('.so-team-remove-row');
+    if (rm) {
+      var rows2 = tbody.querySelectorAll('tr[data-row]');
+      if (rows2.length > 1) {
+        rm.closest('tr[data-row]').remove();
+      }
+    }
+  });
 });
 ";
 require __DIR__ . '/../includes/footer.php';

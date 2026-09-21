@@ -68,6 +68,7 @@ $MODULES = [
         'items' => [
             ['label' => 'Dashboard',      'icon' => 'fa-solid fa-gauge',      'url' => 'sales/index.php',  'match' => 'sales/index.php'],
             ['label' => 'Sales Orders',   'icon' => 'fa-solid fa-cart-shopping', 'url' => 'sales/orders.php', 'match' => 'sales/order'],
+            ['label' => 'Quotations',     'icon' => 'fa-solid fa-file-lines', 'url' => 'sales/quotations.php', 'match' => 'sales/quotation'],
             ['label' => 'Delivery Notes', 'icon' => 'fa-solid fa-truck',      'url' => 'sales/delivery_notes.php', 'match' => 'sales/delivery_note'],
             ['label' => 'Sales Returns',  'icon' => 'fa-solid fa-rotate-left', 'url' => 'sales/returns.php', 'match' => 'sales/return'],
             ['label' => 'Sales Invoices', 'icon' => 'fa-solid fa-file-invoice-dollar', 'url' => 'accounting/invoices.php', 'match' => 'accounting/invoice'],

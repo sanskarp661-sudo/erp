@@ -9,7 +9,7 @@ $stmt = db()->prepare('
   SELECT so.*, c.name customer_name, c.email customer_email, c.phone customer_phone, w.name warehouse_name,
          pl.name price_list_name, u.name sales_person_name, ca.label address_label, ca.address_line, ca.city, ca.state, ca.pincode,
          sa.label ship_to_label, sa.address_line ship_to_address_line, sa.city ship_to_city, sa.contact_person ship_to_contact_person,
-         sa.contact_phone ship_to_contact_phone, sp.name shipping_partner_name
+         sa.contact_phone ship_to_contact_phone, sp.name shipping_partner_name, q.quotation_no
   FROM sales_orders so
   JOIN customers c ON c.id = so.customer_id
   LEFT JOIN warehouses w ON w.id = so.warehouse_id
@@ -18,6 +18,7 @@ $stmt = db()->prepare('
   LEFT JOIN customer_addresses ca ON ca.id = so.customer_address_id
   LEFT JOIN customer_addresses sa ON sa.id = so.ship_to_address_id
   LEFT JOIN shipping_partners sp ON sp.id = so.shipping_partner_id
+  LEFT JOIN quotations q ON q.id = so.quotation_id
   WHERE so.id = ?
 ');
 $stmt->execute([$id]);
@@ -68,6 +69,10 @@ $taxRows = $taxRows->fetchAll();
 $paymentSchedule = db()->prepare('SELECT * FROM sales_order_payment_schedule WHERE order_id = ? ORDER BY sort_order, id');
 $paymentSchedule->execute([$id]);
 $paymentSchedule = $paymentSchedule->fetchAll();
+
+$salesTeam = db()->prepare('SELECT sst.*, u.name sales_person_name FROM sales_order_sales_team sst JOIN users u ON u.id = sst.sales_person_id WHERE order_id = ? ORDER BY sort_order, sst.id');
+$salesTeam->execute([$id]);
+$salesTeam = $salesTeam->fetchAll();
 
 $dnStmt = db()->prepare('SELECT id, dn_no, status FROM delivery_notes WHERE sales_order_id = ? LIMIT 1');
 $dnStmt->execute([$id]);
@@ -302,6 +307,47 @@ require __DIR__ . '/../includes/header.php';
   <?php endif; ?>
   <?php if ($order['require_advance_payment']): ?>
     <div class="mt-2 small"><strong>Advance:</strong> <?= e(number_format((float)$order['advance_percentage'], 2)) ?>% due<?= $order['advance_valid_till'] ? ' (valid till ' . e($order['advance_valid_till']) . ')' : '' ?></div>
+  <?php endif; ?>
+</div>
+
+<div class="card p-3 mt-3">
+  <h6 class="mb-3">More Info</h6>
+  <div class="row g-3 mb-3">
+    <div class="col-sm-3"><div class="small text-muted">Reference Quotation</div><div><?= $order['quotation_no'] ? '<a href="' . base_url('sales/quotation_view.php?id=' . (int)$order['quotation_id']) . '">' . e($order['quotation_no']) . '</a>' : '—' ?></div></div>
+    <div class="col-sm-3"><div class="small text-muted">Opportunity</div><div><?= e($order['opportunity'] ?: '—') ?></div></div>
+    <div class="col-sm-3"><div class="small text-muted">Customer PO Date</div><div><?= e($order['customer_po_date'] ?: '—') ?></div></div>
+    <div class="col-sm-3"><div class="small text-muted">Campaign / Source</div><div><?= e($order['campaign_source'] ?: '—') ?></div></div>
+    <div class="col-sm-3"><div class="small text-muted">Sales Group</div><div><?= e($order['sales_group'] ?: '—') ?></div></div>
+    <div class="col-sm-3"><div class="small text-muted">Sales Office</div><div><?= e($order['sales_office'] ?: '—') ?></div></div>
+    <div class="col-sm-3"><div class="small text-muted">Cost Center</div><div><?= e($order['cost_center'] ?: '—') ?></div></div>
+    <div class="col-sm-3"><div class="small text-muted">Business Unit</div><div><?= e($order['business_unit'] ?: '—') ?></div></div>
+    <div class="col-sm-3"><div class="small text-muted">Valid Till</div><div><?= e($order['valid_till'] ?: '—') ?></div></div>
+    <div class="col-sm-3"><div class="small text-muted">Order Type</div><div><?= e($order['order_type'] ?: '—') ?></div></div>
+    <div class="col-sm-3"><div class="small text-muted">Tags</div><div><?= e($order['tags'] ?: '—') ?></div></div>
+    <div class="col-sm-3"><div class="small text-muted">End Customer</div><div><?= e($order['end_customer'] ?: '—') ?></div></div>
+    <div class="col-sm-3"><div class="small text-muted">Channel Partner</div><div><?= e($order['channel_partner'] ?: '—') ?></div></div>
+    <div class="col-sm-3"><div class="small text-muted">Deal Registration No.</div><div><?= e($order['deal_registration_no'] ?: '—') ?></div></div>
+    <div class="col-sm-3"><div class="small text-muted">Market Segment</div><div><?= e($order['market_segment'] ?: '—') ?></div></div>
+    <div class="col-sm-3"><div class="small text-muted">Region</div><div><?= e($order['region'] ?: '—') ?></div></div>
+    <div class="col-sm-3"><div class="small text-muted">Expected Close Date</div><div><?= e($order['expected_close_date'] ?: '—') ?></div></div>
+  </div>
+  <?php if ($order['remarks_internal']): ?><div class="mb-3"><div class="small text-muted">Remarks (Internal)</div><div><?= e($order['remarks_internal']) ?></div></div><?php endif; ?>
+  <?php if ($salesTeam): ?>
+  <h6 class="mb-2">Sales Team</h6>
+  <div class="table-responsive">
+    <table class="table table-sm">
+      <thead><tr><th>Sales Person</th><th>Role</th><th class="text-end">Commission %</th></tr></thead>
+      <tbody>
+      <?php foreach ($salesTeam as $st): ?>
+        <tr>
+          <td><?= e($st['sales_person_name']) ?></td>
+          <td><?= e($st['role'] ?: '—') ?></td>
+          <td class="text-end"><?= e(number_format((float)$st['commission_percent'], 2)) ?></td>
+        </tr>
+      <?php endforeach; ?>
+      </tbody>
+    </table>
+  </div>
   <?php endif; ?>
 </div>
 

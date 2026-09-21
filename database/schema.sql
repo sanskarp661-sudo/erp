@@ -275,6 +275,34 @@ CREATE TABLE IF NOT EXISTS payment_terms_template_items (
   FOREIGN KEY (template_id) REFERENCES payment_terms_templates(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- A lightweight pre-order proposal (header + items only) — what a Sales
+-- Order's "Reference Quotation" field points at once accepted.
+CREATE TABLE IF NOT EXISTS quotations (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  quotation_no VARCHAR(30) NOT NULL UNIQUE,
+  customer_id INT UNSIGNED NOT NULL,
+  quotation_date DATE NOT NULL,
+  valid_till DATE DEFAULT NULL,
+  status ENUM('draft','sent','accepted','rejected','expired') NOT NULL DEFAULT 'draft',
+  notes VARCHAR(255) DEFAULT NULL,
+  total_amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+  created_by INT UNSIGNED DEFAULT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS quotation_items (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  quotation_id INT UNSIGNED NOT NULL,
+  product_id INT UNSIGNED NOT NULL,
+  quantity INT NOT NULL,
+  unit_price DECIMAL(14,2) NOT NULL,
+  subtotal DECIMAL(14,2) NOT NULL,
+  FOREIGN KEY (quotation_id) REFERENCES quotations(id) ON DELETE CASCADE,
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- warehouse_id is optional and only used for the Stock Balance Report's
 -- "Reserved Qty" column — a Sales Order never moves stock itself, that's
 -- still exclusively the job of its Delivery Note. It's kept in sync with
@@ -352,6 +380,24 @@ CREATE TABLE IF NOT EXISTS sales_orders (
   special_payment_terms VARCHAR(255) DEFAULT NULL,
   allow_partial_payments TINYINT(1) NOT NULL DEFAULT 1,
   send_payment_reminder TINYINT(1) NOT NULL DEFAULT 0,
+  quotation_id INT UNSIGNED DEFAULT NULL,
+  opportunity VARCHAR(120) DEFAULT NULL,
+  customer_po_date DATE DEFAULT NULL,
+  campaign_source VARCHAR(120) DEFAULT NULL,
+  sales_group VARCHAR(120) DEFAULT NULL,
+  sales_office VARCHAR(120) DEFAULT NULL,
+  cost_center VARCHAR(120) DEFAULT NULL,
+  business_unit VARCHAR(120) DEFAULT NULL,
+  valid_till DATE DEFAULT NULL,
+  order_type VARCHAR(60) NOT NULL DEFAULT 'Standard Order',
+  tags VARCHAR(255) DEFAULT NULL,
+  remarks_internal VARCHAR(500) DEFAULT NULL,
+  end_customer VARCHAR(150) DEFAULT NULL,
+  channel_partner VARCHAR(150) DEFAULT NULL,
+  deal_registration_no VARCHAR(120) DEFAULT NULL,
+  market_segment VARCHAR(120) DEFAULT NULL,
+  region VARCHAR(120) DEFAULT NULL,
+  expected_close_date DATE DEFAULT NULL,
   created_by INT UNSIGNED DEFAULT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
@@ -359,6 +405,7 @@ CREATE TABLE IF NOT EXISTS sales_orders (
   FOREIGN KEY (ship_to_address_id) REFERENCES customer_addresses(id) ON DELETE SET NULL,
   FOREIGN KEY (shipping_partner_id) REFERENCES shipping_partners(id) ON DELETE SET NULL,
   FOREIGN KEY (payment_terms_template_id) REFERENCES payment_terms_templates(id) ON DELETE SET NULL,
+  FOREIGN KEY (quotation_id) REFERENCES quotations(id) ON DELETE SET NULL,
   FOREIGN KEY (warehouse_id) REFERENCES warehouses(id) ON DELETE SET NULL,
   FOREIGN KEY (price_list_id) REFERENCES price_lists(id) ON DELETE SET NULL,
   FOREIGN KEY (sales_person_id) REFERENCES users(id) ON DELETE SET NULL,
@@ -407,6 +454,17 @@ CREATE TABLE IF NOT EXISTS sales_order_payment_schedule (
   remarks VARCHAR(120) DEFAULT NULL,
   sort_order INT NOT NULL DEFAULT 0,
   FOREIGN KEY (order_id) REFERENCES sales_orders(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS sales_order_sales_team (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  order_id INT UNSIGNED NOT NULL,
+  sales_person_id INT UNSIGNED NOT NULL,
+  role VARCHAR(60) DEFAULT NULL,
+  commission_percent DECIMAL(5,2) NOT NULL DEFAULT 0,
+  sort_order INT NOT NULL DEFAULT 0,
+  FOREIGN KEY (order_id) REFERENCES sales_orders(id) ON DELETE CASCADE,
+  FOREIGN KEY (sales_person_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- A Delivery Note is what actually deducts stock for a sale (Sales Orders
