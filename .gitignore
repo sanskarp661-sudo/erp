@@ -3,3 +3,5 @@
 # through the app at runtime.
 /uploads/products/*
 !/uploads/products/.gitkeep
+/uploads/sales_orders/*
+!/uploads/sales_orders/.gitkeep

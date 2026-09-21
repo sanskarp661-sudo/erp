@@ -74,6 +74,19 @@ CREATE TABLE IF NOT EXISTS comments (
   FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE IF NOT EXISTS attachments (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  entity_type VARCHAR(40) NOT NULL,
+  entity_id INT UNSIGNED NOT NULL,
+  file_name VARCHAR(255) NOT NULL,
+  file_path VARCHAR(255) NOT NULL,
+  file_size INT UNSIGNED NOT NULL DEFAULT 0,
+  uploaded_by INT UNSIGNED DEFAULT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_entity (entity_type, entity_id),
+  FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- ---------------------------------------------------------------------
 -- Inventory
 -- ---------------------------------------------------------------------

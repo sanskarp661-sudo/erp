@@ -49,6 +49,17 @@ function money($amount): string
     return $symbol . number_format((float)$amount, 2);
 }
 
+function format_file_size(int $bytes): string
+{
+    if ($bytes >= 1048576) {
+        return number_format($bytes / 1048576, 1) . ' MB';
+    }
+    if ($bytes >= 1024) {
+        return number_format($bytes / 1024, 1) . ' KB';
+    }
+    return $bytes . ' B';
+}
+
 function today(): string
 {
     return date('Y-m-d');
@@ -203,6 +214,10 @@ function format_activity(array $row): string
             $old = $row['old_value'] ?? 'null';
             $new = $row['new_value'] ?? 'null';
             return $who . ' changed the value of ' . e($row['field_name']) . ' from ' . e($old) . ' to ' . e($new);
+        case 'attachment_added':
+            return $who . ' attached "' . e($row['new_value']) . '"';
+        case 'attachment_removed':
+            return $who . ' removed "' . e($row['old_value']) . '"';
         default:
             return $who . ' ' . e($row['action']);
     }
@@ -221,6 +236,24 @@ function get_comments(string $entityType, int $entityId): array
       FROM comments c LEFT JOIN users u ON u.id = c.author_id
       WHERE c.entity_type = ? AND c.entity_id = ?
       ORDER BY c.id DESC
+    ");
+    $stmt->execute([$entityType, $entityId]);
+    return $stmt->fetchAll();
+}
+
+function add_attachment(string $entityType, int $entityId, string $fileName, string $filePath, int $fileSize): void
+{
+    db()->prepare('INSERT INTO attachments (entity_type, entity_id, file_name, file_path, file_size, uploaded_by) VALUES (?,?,?,?,?,?)')
+        ->execute([$entityType, $entityId, $fileName, $filePath, $fileSize, current_user()['id'] ?? null]);
+}
+
+function get_attachments(string $entityType, int $entityId): array
+{
+    $stmt = db()->prepare("
+      SELECT a.*, u.name uploaded_by_name
+      FROM attachments a LEFT JOIN users u ON u.id = a.uploaded_by
+      WHERE a.entity_type = ? AND a.entity_id = ?
+      ORDER BY a.id DESC
     ");
     $stmt->execute([$entityType, $entityId]);
     return $stmt->fetchAll();

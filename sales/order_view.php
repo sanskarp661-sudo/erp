@@ -3,6 +3,7 @@ require_once __DIR__ . '/../includes/auth.php';
 require_login();
 $canEdit = can_edit_module('sales');
 $canManage = can_manage_module('sales');
+$me = current_user();
 
 $id = (int)input('id');
 $stmt = db()->prepare('
@@ -51,11 +52,73 @@ if (is_post() && input('action') === 'transition') {
     // (created separately, once confirmed/shipped) actually deducts it.
     try {
         db()->prepare('UPDATE sales_orders SET status = ? WHERE id = ?')->execute([$newStatus, $id]);
+        log_activity('sales_order', $id, 'field_changed', null, 'Status', $order['status'], $newStatus);
         flash('success', 'Order status updated to "' . $newStatus . '".');
     } catch (Exception $e) {
         flash('danger', 'Could not update order status.');
     }
     redirect('/sales/order_view.php?id=' . $id);
+}
+
+$attachmentAllowedExt = ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'doc', 'docx', 'xls', 'xlsx', 'csv', 'txt'];
+$attachmentMaxBytes = 10 * 1024 * 1024;
+
+if (is_post() && input('form_action') === 'upload_attachment') {
+    require_module_edit('sales');
+    csrf_verify();
+    if (!empty($_FILES['file']['name']) && ($_FILES['file']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
+        $file = $_FILES['file'];
+        $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+        if ($file['error'] !== UPLOAD_ERR_OK) {
+            flash('danger', 'File upload failed. Please try again.');
+        } elseif ($file['size'] > $attachmentMaxBytes) {
+            flash('danger', 'File must be smaller than 10 MB.');
+        } elseif (!in_array($ext, $attachmentAllowedExt, true)) {
+            flash('danger', 'That file type is not allowed.');
+        } else {
+            $destDir = __DIR__ . '/../uploads/sales_orders/';
+            if (!is_dir($destDir)) {
+                mkdir($destDir, 0755, true);
+            }
+            $filename = bin2hex(random_bytes(16)) . '.' . $ext;
+            if (move_uploaded_file($file['tmp_name'], $destDir . $filename)) {
+                add_attachment('sales_order', $id, $file['name'], 'uploads/sales_orders/' . $filename, (int)$file['size']);
+                log_activity('sales_order', $id, 'attachment_added', null, null, null, $file['name']);
+                flash('success', 'File uploaded.');
+            } else {
+                flash('danger', 'Could not save the uploaded file.');
+            }
+        }
+    }
+    redirect('/sales/order_view.php?id=' . $id . '#documents');
+}
+
+if (is_post() && input('form_action') === 'delete_attachment') {
+    require_module_edit('sales');
+    csrf_verify();
+    $attId = (int)input('attachment_id');
+    $stmt = db()->prepare('SELECT * FROM attachments WHERE id = ? AND entity_type = ? AND entity_id = ?');
+    $stmt->execute([$attId, 'sales_order', $id]);
+    $att = $stmt->fetch();
+    if ($att) {
+        if (is_file(__DIR__ . '/../' . $att['file_path'])) {
+            @unlink(__DIR__ . '/../' . $att['file_path']);
+        }
+        db()->prepare('DELETE FROM attachments WHERE id = ?')->execute([$attId]);
+        log_activity('sales_order', $id, 'attachment_removed', null, null, $att['file_name'], null);
+        flash('success', 'Attachment deleted.');
+    }
+    redirect('/sales/order_view.php?id=' . $id . '#documents');
+}
+
+if (is_post() && input('form_action') === 'add_comment') {
+    require_module_edit('sales');
+    csrf_verify();
+    $body = input('body');
+    if ($body !== '') {
+        add_comment('sales_order', $id, $body);
+    }
+    redirect('/sales/order_view.php?id=' . $id . '#documents');
 }
 
 $items = db()->prepare('SELECT soi.*, p.name product_name, p.sku, w.name item_warehouse_name FROM sales_order_items soi JOIN products p ON p.id = soi.product_id LEFT JOIN warehouses w ON w.id = soi.warehouse_id WHERE order_id = ?');
@@ -86,6 +149,10 @@ $returnsStmt = db()->prepare('SELECT id, return_no, status, return_date, total_a
 $returnsStmt->execute([$id]);
 $returns = $returnsStmt->fetchAll();
 $returnBadge = ['draft' => 'secondary', 'completed' => 'success', 'cancelled' => 'danger'];
+
+$attachments = get_attachments('sales_order', $id);
+$comments = get_comments('sales_order', $id);
+$activities = get_activity_log('sales_order', $id);
 
 $badge = ['pending' => 'secondary', 'confirmed' => 'info', 'shipped' => 'primary', 'completed' => 'success', 'cancelled' => 'danger'];
 $dnBadge = ['draft' => 'secondary', 'delivered' => 'success', 'cancelled' => 'danger'];
@@ -372,4 +439,96 @@ require __DIR__ . '/../includes/header.php';
   </div>
 </div>
 <?php endif; ?>
+
+<div class="card p-3 mt-3" id="documents">
+  <h6 class="mb-3">Documents</h6>
+
+  <h6 class="mb-2">Linked Documents</h6>
+  <ul class="list-unstyled mb-4">
+    <li class="mb-1"><i class="fa-solid fa-file-lines text-muted me-1"></i> Quotation:
+      <?php if ($order['quotation_no']): ?>
+        <a href="<?= base_url('sales/quotation_view.php?id=' . (int)$order['quotation_id']) ?>"><?= e($order['quotation_no']) ?></a>
+      <?php else: ?><span class="text-muted">None</span><?php endif; ?>
+    </li>
+    <li class="mb-1"><i class="fa-solid fa-truck text-muted me-1"></i> Delivery Note:
+      <?php if ($existingDn): ?>
+        <a href="<?= base_url('sales/delivery_note_view.php?id=' . (int)$existingDn['id']) ?>"><?= e($existingDn['dn_no']) ?></a>
+      <?php else: ?><span class="text-muted">Not created</span><?php endif; ?>
+    </li>
+    <li class="mb-1"><i class="fa-solid fa-file-invoice-dollar text-muted me-1"></i> Sales Invoice:
+      <?php if ($existingInvoice): ?>
+        <a href="<?= base_url('accounting/invoice_view.php?id=' . (int)$existingInvoice['id']) ?>"><?= e($existingInvoice['invoice_no']) ?></a>
+      <?php else: ?><span class="text-muted">Not created</span><?php endif; ?>
+    </li>
+    <?php foreach ($returns as $r): ?>
+      <li class="mb-1"><i class="fa-solid fa-rotate-left text-muted me-1"></i> Sales Return: <a href="<?= base_url('sales/return_view.php?id=' . (int)$r['id']) ?>"><?= e($r['return_no']) ?></a></li>
+    <?php endforeach; ?>
+  </ul>
+
+  <h6 class="mb-2">Attachments</h6>
+  <?php if ($canEdit): ?>
+  <form method="post" enctype="multipart/form-data" class="d-flex gap-2 mb-3">
+    <?= csrf_field() ?>
+    <input type="hidden" name="form_action" value="upload_attachment">
+    <input type="file" name="file" class="form-control" required>
+    <button type="submit" class="btn btn-outline-brand text-nowrap"><i class="fa-solid fa-upload"></i> Upload</button>
+  </form>
+  <?php endif; ?>
+  <?php if ($attachments): ?>
+  <ul class="list-unstyled mb-4">
+    <?php foreach ($attachments as $a): ?>
+      <li class="d-flex justify-content-between align-items-center mb-2">
+        <div>
+          <a href="<?= base_url($a['file_path']) ?>" target="_blank"><i class="fa-solid fa-paperclip"></i> <?= e($a['file_name']) ?></a>
+          <span class="text-muted small"> &middot; <?= e(format_file_size((int)$a['file_size'])) ?> &middot; <?= e($a['uploaded_by_name'] ?: 'Someone') ?>, <?= e(date('M j, Y', strtotime($a['created_at']))) ?></span>
+        </div>
+        <?php if ($canEdit): ?>
+        <form method="post" class="d-inline" data-confirm="Delete this attachment?">
+          <?= csrf_field() ?>
+          <input type="hidden" name="form_action" value="delete_attachment">
+          <input type="hidden" name="attachment_id" value="<?= (int)$a['id'] ?>">
+          <button type="submit" class="btn btn-sm btn-outline-danger"><i class="fa-solid fa-trash"></i></button>
+        </form>
+        <?php endif; ?>
+      </li>
+    <?php endforeach; ?>
+  </ul>
+  <?php else: ?>
+  <div class="text-muted small mb-4">No attachments yet.</div>
+  <?php endif; ?>
+
+  <div class="row g-3">
+    <div class="col-lg-7">
+      <h6 class="mb-2">Comments</h6>
+      <?php if ($canEdit): ?>
+      <form method="post" class="d-flex gap-2 mb-3">
+        <?= csrf_field() ?>
+        <input type="hidden" name="form_action" value="add_comment">
+        <div class="rounded-circle bg-success-subtle text-success d-flex align-items-center justify-content-center flex-shrink-0" style="width:36px;height:36px;font-size:.75rem;font-weight:700"><?= e(initials($me['name'])) ?></div>
+        <input type="text" name="body" class="form-control" placeholder="Type a reply / comment" required>
+        <button type="submit" class="btn btn-outline-brand">Post</button>
+      </form>
+      <?php endif; ?>
+      <?php foreach ($comments as $c): ?>
+        <div class="d-flex gap-2 mb-3">
+          <div class="rounded-circle bg-secondary-subtle text-secondary d-flex align-items-center justify-content-center flex-shrink-0" style="width:36px;height:36px;font-size:.75rem;font-weight:700"><?= e(initials($c['author_name'] ?? '?')) ?></div>
+          <div>
+            <div class="small"><strong><?= e($c['author_name'] ?? 'Someone') ?></strong> <span class="text-muted"><?= e(date('M j, Y g:ia', strtotime($c['created_at']))) ?></span></div>
+            <div><?= e($c['body']) ?></div>
+          </div>
+        </div>
+      <?php endforeach; ?>
+      <?php if (!$comments): ?><div class="text-muted small">No comments yet.</div><?php endif; ?>
+    </div>
+    <div class="col-lg-5">
+      <h6 class="mb-2">Activity</h6>
+      <ul class="list-unstyled activity-feed">
+        <?php foreach ($activities as $a): ?>
+          <li><?= format_activity($a) ?> <span class="text-muted small">&middot; <?= e(date('M j, Y', strtotime($a['created_at']))) ?></span></li>
+        <?php endforeach; ?>
+        <?php if (!$activities): ?><li class="text-muted small">No activity yet.</li><?php endif; ?>
+      </ul>
+    </div>
+  </div>
+</div>
 <?php require __DIR__ . '/../includes/footer.php'; ?>

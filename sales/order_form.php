@@ -343,6 +343,7 @@ if (is_post()) {
                 $teamStmt->execute([$orderId, $st['sales_person_id'], $st['role'], $st['commission_percent'], $st['sort_order']]);
             }
             $pdo->commit();
+            log_activity('sales_order', $orderId, $id ? 'edited' : 'created');
             flash('success', $id ? 'Sales order updated.' : 'Sales order created.');
             redirect('/sales/order_view.php?id=' . $orderId);
         } catch (Exception $e) {
