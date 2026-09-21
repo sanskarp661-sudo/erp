@@ -191,7 +191,7 @@ require __DIR__ . '/../includes/header.php';
             </div>
 
             <div id="posCfPanel" style="display:none" class="text-center">
-              <h6 class="mb-2">Scan to Pay</h6>
+              <h6 class="mb-2" id="posCfHeading">Scan to Pay</h6>
               <div id="posCfQr" class="d-flex justify-content-center mb-3"></div>
               <div class="fs-5 fw-bold mb-2" id="posCfAmount"></div>
               <div class="text-muted small mb-3"><i class="fa-solid fa-spinner fa-spin"></i> Waiting for payment confirmation...</div>
@@ -207,7 +207,9 @@ require __DIR__ . '/../includes/header.php';
 <?php
 $currencySymbol = setting('currency_symbol', '$');
 if (cashfree_configured()) {
-    $extra_js = ['https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js'];
+    $extra_js = cashfree_product() === 'payment_link'
+        ? ['https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js']
+        : ['https://sdk.cashfree.com/js/v3/cashfree.js'];
 }
 $extra_js_inline = "
 var cart = {};
@@ -488,7 +490,20 @@ function showCashfreeQr(data) {
   document.getElementById('posCfAmount').textContent = fmt(data.amount);
   var qrEl = document.getElementById('posCfQr');
   qrEl.innerHTML = '';
-  new QRCode(qrEl, { text: data.link_url, width: 220, height: 220 });
+
+  if (data.mode === 'orders') {
+    document.getElementById('posCfHeading').textContent = 'Complete Payment';
+    qrEl.innerHTML = '<div class=\"text-muted small\">Opening the secure payment window…</div>';
+    var cashfree = Cashfree({ mode: data.cashfree_env === 'production' ? 'production' : 'sandbox' });
+    cashfree.checkout({ paymentSessionId: data.payment_session_id, redirectTarget: '_modal' });
+  } else {
+    document.getElementById('posCfHeading').textContent = 'Scan to Pay';
+    new QRCode(qrEl, { text: data.link_url, width: 220, height: 220 });
+  }
+
+  // The Cashfree checkout widget's own result is never trusted for
+  // fulfilment — only the server-verified webhook (polled below) confirms
+  // payment and triggers pos_complete_sale().
   if (cfPollTimer) clearInterval(cfPollTimer);
   cfPollTimer = setInterval(pollCashfreeStatus, 3000);
 }

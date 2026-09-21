@@ -94,24 +94,49 @@ if ($subtotal <= 0) {
 }
 
 $reference = 'POSGW' . strtoupper(bin2hex(random_bytes(8)));
+$notifyUrl = base_url('pos/cashfree_webhook.php') . '?ref=' . urlencode($reference);
 
 try {
-    $link = cashfree_create_payment_link([
-        'link_id' => $reference,
-        'amount' => $subtotal,
-        'purpose' => 'POS Sale',
-        'customer_name' => $customer['name'],
-        'customer_phone' => $customerPhone,
-        'notify_url' => base_url('pos/cashfree_webhook.php') . '?ref=' . urlencode($reference),
-        'return_url' => base_url('pos/index.php'),
-    ]);
+    if (cashfree_product() === 'payment_link') {
+        $link = cashfree_create_payment_link([
+            'link_id' => $reference,
+            'amount' => $subtotal,
+            'purpose' => 'POS Sale',
+            'customer_name' => $customer['name'],
+            'customer_phone' => $customerPhone,
+            'notify_url' => $notifyUrl,
+            'return_url' => base_url('pos/index.php'),
+        ]);
+
+        $pdo->prepare('INSERT INTO pos_gateway_payments (reference, gateway, gateway_link_id, link_url, customer_id, cart_json, amount, status, created_by) VALUES (?,?,?,?,?,?,?,?,?)')
+            ->execute([$reference, 'cashfree', $link['link_id'] ?? null, $link['link_url'], $customerId, json_encode($cart), $subtotal, 'created', current_user()['id']]);
+
+        echo json_encode(['reference' => $reference, 'mode' => 'payment_link', 'link_url' => $link['link_url'], 'amount' => $subtotal]);
+    } else {
+        $order = cashfree_create_order([
+            'order_id' => $reference,
+            'amount' => $subtotal,
+            'purpose' => 'POS Sale',
+            'customer_id' => 'CUST' . $customerId,
+            'customer_name' => $customer['name'],
+            'customer_phone' => $customerPhone,
+            'notify_url' => $notifyUrl,
+            'return_url' => base_url('pos/index.php'),
+        ]);
+
+        $pdo->prepare('INSERT INTO pos_gateway_payments (reference, gateway, gateway_link_id, customer_id, cart_json, amount, status, created_by) VALUES (?,?,?,?,?,?,?,?)')
+            ->execute([$reference, 'cashfree', $order['cf_order_id'] ?? null, $customerId, json_encode($cart), $subtotal, 'created', current_user()['id']]);
+
+        echo json_encode([
+            'reference' => $reference,
+            'mode' => 'orders',
+            'payment_session_id' => $order['payment_session_id'],
+            'cashfree_env' => defined('CASHFREE_ENV') && CASHFREE_ENV === 'production' ? 'production' : 'sandbox',
+            'amount' => $subtotal,
+        ]);
+    }
 } catch (Throwable $e) {
     http_response_code(502);
     echo json_encode(['error' => $e->getMessage()]);
     exit;
 }
-
-$pdo->prepare('INSERT INTO pos_gateway_payments (reference, gateway, gateway_link_id, link_url, customer_id, cart_json, amount, status, created_by) VALUES (?,?,?,?,?,?,?,?,?)')
-    ->execute([$reference, 'cashfree', $link['link_id'] ?? null, $link['link_url'], $customerId, json_encode($cart), $subtotal, 'created', current_user()['id']]);
-
-echo json_encode(['reference' => $reference, 'link_url' => $link['link_url'], 'amount' => $subtotal]);

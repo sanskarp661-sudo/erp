@@ -35,3 +35,8 @@ define('CASHFREE_CLIENT_ID', '');
 define('CASHFREE_CLIENT_SECRET', '');
 // 'sandbox' or 'production'.
 define('CASHFREE_ENV', 'production');
+// 'orders' (Standard Checkout — Cashfree's default product, enabled for
+// any approved merchant account) or 'payment_link' (a separate add-on
+// product that needs explicit enabling by Cashfree support — switch to
+// this only once care@cashfree.com has turned it on for your account).
+define('CASHFREE_PRODUCT', 'orders');
