@@ -107,6 +107,7 @@ if (is_post()) {
 }
 
 $categories = db()->query('SELECT id, name FROM categories ORDER BY name')->fetchAll();
+$units = db()->query("SELECT id, name FROM uom WHERE status = 'active' ORDER BY name")->fetchAll();
 $warehouses = leaf_warehouses();
 
 $page_title = $id ? 'Edit Product' : 'Add Product';
@@ -150,7 +151,17 @@ require __DIR__ . '/../includes/header.php';
       </div>
       <div class="col-sm-6">
         <label class="form-label">Unit</label>
-        <input type="text" name="unit" class="form-control" value="<?= e($product['unit']) ?>" placeholder="pcs, kg, box...">
+        <select name="unit" class="form-select">
+          <?php $unitListed = false; ?>
+          <?php foreach ($units as $u): ?>
+            <option value="<?= e($u['name']) ?>" <?= $product['unit'] === $u['name'] ? 'selected' : '' ?>><?= e($u['name']) ?></option>
+            <?php if ($product['unit'] === $u['name']) $unitListed = true; ?>
+          <?php endforeach; ?>
+          <?php if ($product['unit'] !== '' && !$unitListed): ?>
+            <option value="<?= e($product['unit']) ?>" selected><?= e($product['unit']) ?> (not in Units of Measure)</option>
+          <?php endif; ?>
+        </select>
+        <div class="form-text">Manage the list under Inventory &rsaquo; <a href="uom.php">Units of Measure</a>.</div>
       </div>
       <div class="col-sm-6">
         <label class="form-label">Cost Price</label>

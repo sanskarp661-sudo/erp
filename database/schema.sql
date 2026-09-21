@@ -84,6 +84,19 @@ CREATE TABLE IF NOT EXISTS categories (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Units of Measure master, maintained under Inventory -> Units of
+-- Measure. products.unit stores the plain name string chosen from here
+-- (no FK) so every page that already reads products.unit as text keeps
+-- working unchanged — this table only backs the product form's dropdown.
+CREATE TABLE IF NOT EXISTS uom (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(30) NOT NULL UNIQUE,
+  status ENUM('active','inactive') NOT NULL DEFAULT 'active',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+INSERT INTO uom (name) VALUES ('pcs'), ('kg'), ('box'), ('litre'), ('meter'), ('dozen');
+
 CREATE TABLE IF NOT EXISTS products (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   sku VARCHAR(60) NOT NULL UNIQUE,

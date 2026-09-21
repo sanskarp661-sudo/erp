@@ -5,7 +5,13 @@ $canEdit = can_edit_module('sales');
 
 $userFilter = (int)input('user');
 $userFilterName = null;
-$sql = "SELECT so.*, c.name customer_name FROM sales_orders so JOIN customers c ON c.id = so.customer_id";
+$sql = "SELECT so.*, c.name customer_name,
+               dn.id dn_id, dn.dn_no, dn.status dn_status,
+               inv.id invoice_id, inv.invoice_no, inv.status invoice_status
+        FROM sales_orders so
+        JOIN customers c ON c.id = so.customer_id
+        LEFT JOIN delivery_notes dn ON dn.sales_order_id = so.id
+        LEFT JOIN invoices inv ON inv.sales_order_id = so.id";
 $params = [];
 if ($userFilter) {
     $sql .= " WHERE so.created_by = ?";
@@ -20,6 +26,8 @@ $stmt->execute($params);
 $orders = $stmt->fetchAll();
 
 $badge = ['pending' => 'secondary', 'confirmed' => 'info', 'shipped' => 'primary', 'completed' => 'success', 'cancelled' => 'danger'];
+$dnBadge = ['draft' => 'secondary', 'delivered' => 'success', 'cancelled' => 'danger'];
+$invBadge = ['unpaid' => 'secondary', 'partially_paid' => 'warning', 'paid' => 'success', 'overdue' => 'danger', 'cancelled' => 'dark'];
 
 $page_title = 'Sales Orders';
 require __DIR__ . '/../includes/header.php';
@@ -37,7 +45,7 @@ require __DIR__ . '/../includes/header.php';
 <div class="card p-3">
   <div class="table-responsive">
     <table class="table table-hover" id="ordTable">
-      <thead><tr><th>Order #</th><th>Customer</th><th>Date</th><th>Status</th><th class="text-end">Total</th><th class="text-end">Actions</th></tr></thead>
+      <thead><tr><th>Order #</th><th>Customer</th><th>Date</th><th>Status</th><th>Delivery</th><th>Invoice</th><th class="text-end">Total</th><th class="text-end">Actions</th></tr></thead>
       <tbody>
       <?php foreach ($orders as $o): ?>
         <tr>
@@ -45,13 +53,27 @@ require __DIR__ . '/../includes/header.php';
           <td><?= e($o['customer_name']) ?></td>
           <td><?= e($o['order_date']) ?></td>
           <td><span class="badge text-bg-<?= $badge[$o['status']] ?? 'secondary' ?> badge-status"><?= e($o['status']) ?></span></td>
+          <td>
+            <?php if ($o['dn_id']): ?>
+              <a href="<?= base_url('sales/delivery_note_view.php?id=' . (int)$o['dn_id']) ?>"><span class="badge text-bg-<?= $dnBadge[$o['dn_status']] ?? 'secondary' ?> badge-status"><?= e($o['dn_status']) ?></span></a>
+            <?php else: ?>
+              <span class="text-muted small">Not created</span>
+            <?php endif; ?>
+          </td>
+          <td>
+            <?php if ($o['invoice_id']): ?>
+              <a href="<?= base_url('accounting/invoice_view.php?id=' . (int)$o['invoice_id']) ?>"><span class="badge text-bg-<?= $invBadge[$o['invoice_status']] ?? 'secondary' ?> badge-status"><?= e(str_replace('_', ' ', $o['invoice_status'])) ?></span></a>
+            <?php else: ?>
+              <span class="text-muted small">Not created</span>
+            <?php endif; ?>
+          </td>
           <td class="text-end"><?= money($o['total_amount']) ?></td>
           <td class="text-end">
             <a href="order_view.php?id=<?= (int)$o['id'] ?>" class="btn btn-sm btn-outline-secondary"><i class="fa-solid fa-eye"></i> View</a>
           </td>
         </tr>
       <?php endforeach; ?>
-      <?php if (!$orders): ?><tr><td colspan="6" class="text-muted text-center">No sales orders yet.</td></tr><?php endif; ?>
+      <?php if (!$orders): ?><tr><td colspan="8" class="text-muted text-center">No sales orders yet.</td></tr><?php endif; ?>
       </tbody>
     </table>
   </div>

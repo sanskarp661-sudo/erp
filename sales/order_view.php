@@ -51,12 +51,18 @@ $dnStmt = db()->prepare('SELECT id, dn_no, status FROM delivery_notes WHERE sale
 $dnStmt->execute([$id]);
 $existingDn = $dnStmt->fetch();
 
+$invStmt = db()->prepare('SELECT id, invoice_no, status FROM invoices WHERE sales_order_id = ? LIMIT 1');
+$invStmt->execute([$id]);
+$existingInvoice = $invStmt->fetch();
+
 $returnsStmt = db()->prepare('SELECT id, return_no, status, return_date, total_amount FROM sales_returns WHERE sales_order_id = ? ORDER BY id DESC');
 $returnsStmt->execute([$id]);
 $returns = $returnsStmt->fetchAll();
 $returnBadge = ['draft' => 'secondary', 'completed' => 'success', 'cancelled' => 'danger'];
 
 $badge = ['pending' => 'secondary', 'confirmed' => 'info', 'shipped' => 'primary', 'completed' => 'success', 'cancelled' => 'danger'];
+$dnBadge = ['draft' => 'secondary', 'delivered' => 'success', 'cancelled' => 'danger'];
+$invBadge = ['unpaid' => 'secondary', 'partially_paid' => 'warning', 'paid' => 'success', 'overdue' => 'danger', 'cancelled' => 'dark'];
 
 $page_title = 'Sales Order ' . $order['order_no'];
 require __DIR__ . '/../includes/header.php';
@@ -121,6 +127,37 @@ require __DIR__ . '/../includes/header.php';
     <?php endif; ?>
     <a href="<?= base_url('print.php?doctype=sales_order&id=' . $id) ?>" target="_blank" class="btn btn-outline-brand btn-sm"><i class="fa-solid fa-print"></i> Print</a>
     <a href="orders.php" class="btn btn-outline-secondary btn-sm">Back to list</a>
+  </div>
+</div>
+
+<div class="card p-3 mb-3">
+  <h6 class="mb-3">Document Flow</h6>
+  <div class="d-flex align-items-center flex-wrap gap-3">
+    <div style="min-width:150px">
+      <div class="small text-muted">Sales Order</div>
+      <div class="fw-bold"><?= e($order['order_no']) ?></div>
+      <span class="badge text-bg-<?= $badge[$order['status']] ?> badge-status"><?= e($order['status']) ?></span>
+    </div>
+    <i class="fa-solid fa-arrow-right text-muted"></i>
+    <div style="min-width:150px">
+      <div class="small text-muted">Delivery Note</div>
+      <?php if ($existingDn): ?>
+        <div class="fw-bold"><a href="<?= base_url('sales/delivery_note_view.php?id=' . (int)$existingDn['id']) ?>"><?= e($existingDn['dn_no']) ?></a></div>
+        <span class="badge text-bg-<?= $dnBadge[$existingDn['status']] ?? 'secondary' ?> badge-status"><?= e($existingDn['status']) ?></span>
+      <?php else: ?>
+        <div class="text-muted">Not created</div>
+      <?php endif; ?>
+    </div>
+    <i class="fa-solid fa-arrow-right text-muted"></i>
+    <div style="min-width:150px">
+      <div class="small text-muted">Sales Invoice</div>
+      <?php if ($existingInvoice): ?>
+        <div class="fw-bold"><a href="<?= base_url('accounting/invoice_view.php?id=' . (int)$existingInvoice['id']) ?>"><?= e($existingInvoice['invoice_no']) ?></a></div>
+        <span class="badge text-bg-<?= $invBadge[$existingInvoice['status']] ?? 'secondary' ?> badge-status"><?= e(str_replace('_', ' ', $existingInvoice['status'])) ?></span>
+      <?php else: ?>
+        <div class="text-muted">Not created<?= (!$existingDn || $existingDn['status'] !== 'delivered') ? ' (needs a delivered Delivery Note)' : '' ?></div>
+      <?php endif; ?>
+    </div>
   </div>
 </div>
 
