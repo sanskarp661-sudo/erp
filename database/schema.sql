@@ -167,15 +167,69 @@ CREATE TABLE IF NOT EXISTS customers (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- A product's rate on a given price list. If a product has no explicit
+-- row here, forms fall back to products.selling_price, so the seeded
+-- "Standard Selling" list works without pricing every product twice.
+CREATE TABLE IF NOT EXISTS price_lists (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(120) NOT NULL UNIQUE,
+  currency VARCHAR(3) NOT NULL DEFAULT 'INR',
+  is_default TINYINT(1) NOT NULL DEFAULT 0,
+  status ENUM('active','inactive') NOT NULL DEFAULT 'active',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS price_list_items (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  price_list_id INT UNSIGNED NOT NULL,
+  product_id INT UNSIGNED NOT NULL,
+  rate DECIMAL(14,2) NOT NULL DEFAULT 0,
+  UNIQUE KEY uniq_pricelist_product (price_list_id, product_id),
+  FOREIGN KEY (price_list_id) REFERENCES price_lists(id) ON DELETE CASCADE,
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Additive multi-address book for a customer. customers.address stays as
+-- the single legacy free-text field every existing page already reads;
+-- this only backs the Sales Order's Customer Address dropdown.
+CREATE TABLE IF NOT EXISTS customer_addresses (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  customer_id INT UNSIGNED NOT NULL,
+  label VARCHAR(60) NOT NULL DEFAULT 'Address',
+  address_line VARCHAR(255) NOT NULL,
+  city VARCHAR(100) DEFAULT NULL,
+  state VARCHAR(100) DEFAULT NULL,
+  pincode VARCHAR(20) DEFAULT NULL,
+  country VARCHAR(100) NOT NULL DEFAULT 'India',
+  contact_person VARCHAR(120) DEFAULT NULL,
+  contact_phone VARCHAR(40) DEFAULT NULL,
+  contact_email VARCHAR(150) DEFAULT NULL,
+  is_default TINYINT(1) NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- warehouse_id is optional and only used for the Stock Balance Report's
 -- "Reserved Qty" column — a Sales Order never moves stock itself, that's
--- still exclusively the job of its Delivery Note.
+-- still exclusively the job of its Delivery Note. It's kept in sync with
+-- the first line item's warehouse; the real per-item warehouse lives on
+-- sales_order_items (items can ship from different warehouses).
 CREATE TABLE IF NOT EXISTS sales_orders (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   order_no VARCHAR(30) NOT NULL UNIQUE,
   customer_id INT UNSIGNED NOT NULL,
+  contact_person VARCHAR(120) DEFAULT NULL,
+  customer_address_id INT UNSIGNED DEFAULT NULL,
   warehouse_id INT UNSIGNED DEFAULT NULL,
   order_date DATE NOT NULL,
+  required_delivery_date DATE DEFAULT NULL,
+  price_list_id INT UNSIGNED DEFAULT NULL,
+  currency VARCHAR(3) NOT NULL DEFAULT 'INR',
+  sales_channel VARCHAR(60) DEFAULT NULL,
+  territory VARCHAR(120) DEFAULT NULL,
+  sales_person_id INT UNSIGNED DEFAULT NULL,
+  customer_po_no VARCHAR(60) DEFAULT NULL,
+  project VARCHAR(120) DEFAULT NULL,
   status ENUM('pending','confirmed','shipped','completed','cancelled') NOT NULL DEFAULT 'pending',
   channel ENUM('online','pos') NOT NULL DEFAULT 'online',
   notes VARCHAR(255) DEFAULT NULL,
@@ -183,7 +237,10 @@ CREATE TABLE IF NOT EXISTS sales_orders (
   created_by INT UNSIGNED DEFAULT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
+  FOREIGN KEY (customer_address_id) REFERENCES customer_addresses(id) ON DELETE SET NULL,
   FOREIGN KEY (warehouse_id) REFERENCES warehouses(id) ON DELETE SET NULL,
+  FOREIGN KEY (price_list_id) REFERENCES price_lists(id) ON DELETE SET NULL,
+  FOREIGN KEY (sales_person_id) REFERENCES users(id) ON DELETE SET NULL,
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -191,11 +248,16 @@ CREATE TABLE IF NOT EXISTS sales_order_items (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   order_id INT UNSIGNED NOT NULL,
   product_id INT UNSIGNED NOT NULL,
+  description VARCHAR(255) DEFAULT NULL,
+  warehouse_id INT UNSIGNED DEFAULT NULL,
   quantity INT NOT NULL,
+  uom VARCHAR(30) NOT NULL DEFAULT 'pcs',
   unit_price DECIMAL(14,2) NOT NULL,
+  discount_percent DECIMAL(5,2) NOT NULL DEFAULT 0,
   subtotal DECIMAL(14,2) NOT NULL,
   FOREIGN KEY (order_id) REFERENCES sales_orders(id) ON DELETE CASCADE,
-  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+  FOREIGN KEY (warehouse_id) REFERENCES warehouses(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- A Delivery Note is what actually deducts stock for a sale (Sales Orders
@@ -633,7 +695,11 @@ INSERT INTO activity_log (entity_type, entity_id, actor_id, action, description)
 INSERT INTO settings (setting_key, setting_value) VALUES
 ('company_name', 'My Company'),
 ('currency_symbol', '$'),
+('currency_code', 'INR'),
 ('tax_rate', '0');
+
+INSERT INTO price_lists (name, currency, is_default) VALUES
+('Standard Selling', 'INR', 1);
 
 INSERT INTO departments (name, description) VALUES
 ('General', 'Default department');

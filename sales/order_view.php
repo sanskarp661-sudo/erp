@@ -5,7 +5,17 @@ $canEdit = can_edit_module('sales');
 $canManage = can_manage_module('sales');
 
 $id = (int)input('id');
-$stmt = db()->prepare('SELECT so.*, c.name customer_name, c.email customer_email, c.phone customer_phone, w.name warehouse_name FROM sales_orders so JOIN customers c ON c.id = so.customer_id LEFT JOIN warehouses w ON w.id = so.warehouse_id WHERE so.id = ?');
+$stmt = db()->prepare('
+  SELECT so.*, c.name customer_name, c.email customer_email, c.phone customer_phone, w.name warehouse_name,
+         pl.name price_list_name, u.name sales_person_name, ca.label address_label, ca.address_line, ca.city, ca.state, ca.pincode
+  FROM sales_orders so
+  JOIN customers c ON c.id = so.customer_id
+  LEFT JOIN warehouses w ON w.id = so.warehouse_id
+  LEFT JOIN price_lists pl ON pl.id = so.price_list_id
+  LEFT JOIN users u ON u.id = so.sales_person_id
+  LEFT JOIN customer_addresses ca ON ca.id = so.customer_address_id
+  WHERE so.id = ?
+');
 $stmt->execute([$id]);
 $order = $stmt->fetch();
 
@@ -43,7 +53,7 @@ if (is_post() && input('action') === 'transition') {
     redirect('/sales/order_view.php?id=' . $id);
 }
 
-$items = db()->prepare('SELECT soi.*, p.name product_name, p.sku FROM sales_order_items soi JOIN products p ON p.id = soi.product_id WHERE order_id = ?');
+$items = db()->prepare('SELECT soi.*, p.name product_name, p.sku, w.name item_warehouse_name FROM sales_order_items soi JOIN products p ON p.id = soi.product_id LEFT JOIN warehouses w ON w.id = soi.warehouse_id WHERE order_id = ?');
 $items->execute([$id]);
 $items = $items->fetchAll();
 
@@ -161,22 +171,41 @@ require __DIR__ . '/../includes/header.php';
   </div>
 </div>
 
+<div class="card p-3 mb-3">
+  <h6 class="mb-3">Order Information</h6>
+  <div class="row g-3">
+    <div class="col-sm-3"><div class="small text-muted">Contact Person</div><div><?= e($order['contact_person'] ?: '—') ?></div></div>
+    <div class="col-sm-3"><div class="small text-muted">Customer Address</div><div><?= $order['address_label'] ? e($order['address_label'] . ': ' . $order['address_line']) : '—' ?></div></div>
+    <div class="col-sm-3"><div class="small text-muted">Required Delivery Date</div><div><?= e($order['required_delivery_date'] ?: '—') ?></div></div>
+    <div class="col-sm-3"><div class="small text-muted">Sales Channel</div><div><?= e($order['sales_channel'] ?: '—') ?></div></div>
+    <div class="col-sm-3"><div class="small text-muted">Price List</div><div><?= e($order['price_list_name'] ?: '—') ?></div></div>
+    <div class="col-sm-3"><div class="small text-muted">Currency</div><div><?= e($order['currency']) ?></div></div>
+    <div class="col-sm-3"><div class="small text-muted">Territory</div><div><?= e($order['territory'] ?: '—') ?></div></div>
+    <div class="col-sm-3"><div class="small text-muted">Sales Person</div><div><?= e($order['sales_person_name'] ?: '—') ?></div></div>
+    <div class="col-sm-3"><div class="small text-muted">Customer PO No.</div><div><?= e($order['customer_po_no'] ?: '—') ?></div></div>
+    <div class="col-sm-3"><div class="small text-muted">Project</div><div><?= e($order['project'] ?: '—') ?></div></div>
+  </div>
+</div>
+
 <div class="card p-3">
   <div class="table-responsive">
     <table class="table">
-      <thead><tr><th>Product</th><th class="text-end">Qty</th><th class="text-end">Unit Price</th><th class="text-end">Subtotal</th></tr></thead>
+      <thead><tr><th>Product</th><th>Warehouse</th><th class="text-end">Qty</th><th>UOM</th><th class="text-end">Rate</th><th class="text-end">Discount %</th><th class="text-end">Amount</th></tr></thead>
       <tbody>
       <?php foreach ($items as $it): ?>
         <tr>
-          <td><?= e($it['product_name']) ?> <span class="text-muted small">(<?= e($it['sku']) ?>)</span></td>
+          <td><?= e($it['product_name']) ?> <span class="text-muted small">(<?= e($it['sku']) ?>)</span><?= $it['description'] ? '<div class="text-muted small">' . e($it['description']) . '</div>' : '' ?></td>
+          <td><?= e($it['item_warehouse_name'] ?: '—') ?></td>
           <td class="text-end"><?= (int)$it['quantity'] ?></td>
+          <td><?= e($it['uom']) ?></td>
           <td class="text-end"><?= money($it['unit_price']) ?></td>
+          <td class="text-end"><?= e(number_format((float)$it['discount_percent'], 2)) ?></td>
           <td class="text-end"><?= money($it['subtotal']) ?></td>
         </tr>
       <?php endforeach; ?>
       </tbody>
       <tfoot>
-        <tr><th colspan="3" class="text-end">Total</th><th class="text-end"><?= money($order['total_amount']) ?></th></tr>
+        <tr><th colspan="6" class="text-end">Total</th><th class="text-end"><?= money($order['total_amount']) ?></th></tr>
       </tfoot>
     </table>
   </div>

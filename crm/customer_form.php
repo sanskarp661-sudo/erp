@@ -72,6 +72,7 @@ require __DIR__ . '/../includes/header.php';
     <div class="page-actions mt-4">
       <button type="submit" class="btn btn-brand">Save</button>
       <a href="customers.php" class="btn btn-outline-secondary">Cancel</a>
+      <?php if ($id): ?><a href="customer_addresses.php?customer_id=<?= $id ?>" class="btn btn-outline-brand"><i class="fa-solid fa-location-dot"></i> Manage Addresses</a><?php endif; ?>
     </div>
   </form>
 </div>

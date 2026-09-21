@@ -71,6 +71,7 @@ $MODULES = [
             ['label' => 'Delivery Notes', 'icon' => 'fa-solid fa-truck',      'url' => 'sales/delivery_notes.php', 'match' => 'sales/delivery_note'],
             ['label' => 'Sales Returns',  'icon' => 'fa-solid fa-rotate-left', 'url' => 'sales/returns.php', 'match' => 'sales/return'],
             ['label' => 'Sales Invoices', 'icon' => 'fa-solid fa-file-invoice-dollar', 'url' => 'accounting/invoices.php', 'match' => 'accounting/invoice'],
+            ['label' => 'Price Lists',    'icon' => 'fa-solid fa-tags',       'url' => 'sales/price_lists.php', 'match' => 'sales/price_list'],
             ['label' => 'Sales Report',   'icon' => 'fa-solid fa-chart-line', 'url' => 'reports/sales_report.php', 'match' => 'reports/sales'],
         ],
     ],

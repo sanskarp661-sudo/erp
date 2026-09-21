@@ -9,6 +9,7 @@ if (is_post()) {
     $values = [
         'company_name' => input('company_name') ?: 'My Company',
         'currency_symbol' => input('currency_symbol') ?: '$',
+        'currency_code' => strtoupper(input('currency_code')) ?: 'INR',
         'tax_rate' => input('tax_rate') ?: '0',
         'company_address' => input('company_address'),
         'company_phone' => input('company_phone'),
@@ -38,9 +39,16 @@ require __DIR__ . '/../includes/header.php';
       <label class="form-label">Company Name</label>
       <input type="text" name="company_name" class="form-control" value="<?= e(setting('company_name', APP_NAME)) ?>" <?= $ro ?>>
     </div>
-    <div class="mb-3">
-      <label class="form-label">Currency Symbol</label>
-      <input type="text" name="currency_symbol" class="form-control" value="<?= e(setting('currency_symbol', '$')) ?>" <?= $ro ?>>
+    <div class="row g-3 mb-3">
+      <div class="col-sm-6">
+        <label class="form-label">Currency Symbol</label>
+        <input type="text" name="currency_symbol" class="form-control" value="<?= e(setting('currency_symbol', '$')) ?>" <?= $ro ?>>
+      </div>
+      <div class="col-sm-6">
+        <label class="form-label">Currency Code</label>
+        <input type="text" name="currency_code" class="form-control" maxlength="3" style="text-transform:uppercase" value="<?= e(setting('currency_code', 'INR')) ?>" <?= $ro ?>>
+        <div class="form-text">ISO code (e.g. INR, USD) — auto-fetched onto new Sales Orders.</div>
+      </div>
     </div>
     <div class="mb-3">
       <label class="form-label">Default Tax Rate (%)</label>
