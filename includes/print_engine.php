@@ -205,7 +205,14 @@ function pf_doctypes(): array
             'label' => 'Item Master',
             'roles' => null,
             'fetch' => function (int $id): ?array {
-                $stmt = db()->prepare('SELECT p.*, c.name category_name FROM products p LEFT JOIN categories c ON c.id = p.category_id WHERE p.id = ?');
+                $stmt = db()->prepare('
+                  SELECT p.*, c.name category_name, ic.name item_category_name, b.name brand_name
+                  FROM products p
+                  LEFT JOIN categories c ON c.id = p.category_id
+                  LEFT JOIN item_categories ic ON ic.id = p.item_category_id
+                  LEFT JOIN brands b ON b.id = p.brand_id
+                  WHERE p.id = ?
+                ');
                 $stmt->execute([$id]);
                 $p = $stmt->fetch();
                 if (!$p) return null;
@@ -215,17 +222,22 @@ function pf_doctypes(): array
                     'name' => e($p['name']),
                     'image' => $p['image'] ? '<img src="' . e(base_url($p['image'])) . '" style="max-width:150px;max-height:150px;object-fit:cover">' : '',
                     'category_name' => e($p['category_name'] ?? '—'),
+                    'item_category_name' => e($p['item_category_name'] ?? '—'),
+                    'brand_name' => e($p['brand_name'] ?? '—'),
+                    'hsn_sac_code' => e($p['hsn_sac_code'] ?? '—'),
                     'unit' => e($p['unit']),
+                    'item_type' => e($p['item_type']),
                     'cost_price' => money($p['cost_price']),
                     'selling_price' => money($p['selling_price']),
                     'quantity' => (int)$p['quantity'],
                     'reorder_level' => (int)$p['reorder_level'],
-                    'status' => e(ucfirst($p['status'])),
+                    'status' => e($p['status'] === 'active' ? 'Enabled' : 'Disabled'),
                 ];
             },
             'tokens' => [
-                'sku' => 'SKU', 'name' => 'Product name', 'image' => 'Product photo', 'category_name' => 'Category', 'unit' => 'Unit',
-                'cost_price' => 'Cost price', 'selling_price' => 'Selling price', 'quantity' => 'Quantity in stock',
+                'sku' => 'SKU', 'name' => 'Product name', 'image' => 'Product photo', 'category_name' => 'Item Group',
+                'item_category_name' => 'Item Category', 'brand_name' => 'Brand', 'hsn_sac_code' => 'HSN/SAC Code', 'unit' => 'Unit',
+                'item_type' => 'Item Type', 'cost_price' => 'Cost price', 'selling_price' => 'Selling price', 'quantity' => 'Quantity in stock',
                 'reorder_level' => 'Reorder level', 'status' => 'Status',
             ],
             'default' => pf_default_product_template(),

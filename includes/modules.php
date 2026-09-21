@@ -24,6 +24,8 @@ $MODULES = [
             ['label' => 'Dashboard',  'icon' => 'fa-solid fa-gauge',        'url' => 'inventory/index.php',            'match' => 'inventory/index.php'],
             ['label' => 'Products',   'icon' => 'fa-solid fa-box',          'url' => 'inventory/products.php',         'match' => 'inventory/product'],
             ['label' => 'Categories', 'icon' => 'fa-solid fa-tags',         'url' => 'inventory/categories.php',       'match' => 'inventory/categ'],
+            ['label' => 'Item Categories', 'icon' => 'fa-solid fa-layer-group', 'url' => 'inventory/item_categories.php', 'match' => 'inventory/item_categ'],
+            ['label' => 'Brands',     'icon' => 'fa-solid fa-copyright',    'url' => 'inventory/brands.php',           'match' => 'inventory/brand'],
             ['label' => 'Units of Measure', 'icon' => 'fa-solid fa-ruler',  'url' => 'inventory/uom.php',               'match' => 'inventory/uom'],
             ['label' => 'Stock Balance', 'icon' => 'fa-solid fa-scale-balanced', 'url' => 'reports/stock_balance_report.php', 'match' => 'reports/stock_balance'],
             ['label' => 'Inventory Report', 'icon' => 'fa-solid fa-chart-line', 'url' => 'reports/inventory_report.php', 'match' => 'reports/inventory'],

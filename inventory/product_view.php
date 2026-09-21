@@ -4,7 +4,16 @@ require_login();
 $canEdit = can_edit_module('inventory');
 
 $id = (int)input('id');
-$stmt = db()->prepare('SELECT p.*, c.name category_name FROM products p LEFT JOIN categories c ON c.id = p.category_id WHERE p.id = ?');
+$stmt = db()->prepare('
+  SELECT p.*, c.name category_name, ic.name item_category_name, b.name brand_name, dw.name default_warehouse_name, dpl.name default_price_list_name
+  FROM products p
+  LEFT JOIN categories c ON c.id = p.category_id
+  LEFT JOIN item_categories ic ON ic.id = p.item_category_id
+  LEFT JOIN brands b ON b.id = p.brand_id
+  LEFT JOIN warehouses dw ON dw.id = p.default_warehouse_id
+  LEFT JOIN price_lists dpl ON dpl.id = p.default_price_list_id
+  WHERE p.id = ?
+');
 $stmt->execute([$id]);
 $product = $stmt->fetch();
 
@@ -12,6 +21,10 @@ if (!$product) {
     flash('danger', 'Product not found.');
     redirect('/inventory/products.php');
 }
+
+$barcodes = db()->prepare('SELECT * FROM product_barcodes WHERE product_id = ? ORDER BY sort_order, id');
+$barcodes->execute([$id]);
+$barcodes = $barcodes->fetchAll();
 
 $pdo = db();
 
@@ -173,8 +186,8 @@ require __DIR__ . '/../includes/header.php';
 ?>
 <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
   <div>
-    <h4 class="mb-1"><?= e($product['name']) ?> <span class="badge text-bg-<?= $product['status'] === 'active' ? 'success' : 'secondary' ?> badge-status"><?= e($product['status']) ?></span></h4>
-    <div class="text-muted"><?= e($product['sku']) ?><?= $product['category_name'] ? ' &middot; ' . e($product['category_name']) : '' ?></div>
+    <h4 class="mb-1"><?= e($product['name']) ?> <span class="badge text-bg-<?= $product['status'] === 'active' ? 'success' : 'secondary' ?> badge-status"><?= $product['status'] === 'active' ? 'Enabled' : 'Disabled' ?></span></h4>
+    <div class="text-muted"><?= e($product['sku']) ?><?= $product['category_name'] ? ' &middot; ' . e($product['category_name']) : '' ?><?= $product['brand_name'] ? ' &middot; ' . e($product['brand_name']) : '' ?></div>
   </div>
   <div class="page-actions">
     <?php if ($canEdit): ?><a href="product_form.php?id=<?= $id ?>" class="btn btn-outline-secondary btn-sm"><i class="fa-solid fa-pen"></i> Edit</a><?php endif; ?>
@@ -210,6 +223,48 @@ require __DIR__ . '/../includes/header.php';
         </tbody>
       </table>
     </div>
+    <div class="card p-3 mt-3">
+      <h6 class="mb-2">Item Information</h6>
+      <div class="small">
+        <div class="d-flex justify-content-between"><span class="text-muted">Item Category</span><span><?= e($product['item_category_name'] ?: '—') ?></span></div>
+        <div class="d-flex justify-content-between"><span class="text-muted">HSN/SAC Code</span><span><?= e($product['hsn_sac_code'] ?: '—') ?></span></div>
+        <div class="d-flex justify-content-between"><span class="text-muted">Item Type</span><span><?= e($product['item_type']) ?></span></div>
+        <div class="d-flex justify-content-between"><span class="text-muted">Valuation Method</span><span><?= e($product['valuation_method']) ?></span></div>
+        <div class="d-flex justify-content-between"><span class="text-muted">Default Warehouse</span><span><?= e($product['default_warehouse_name'] ?: '—') ?></span></div>
+        <div class="d-flex justify-content-between"><span class="text-muted">Default Price List</span><span><?= e($product['default_price_list_name'] ?: '—') ?></span></div>
+      </div>
+      <hr>
+      <div class="d-flex flex-wrap gap-1">
+        <?php
+        $flagBadges = [
+            'is_stock_item' => 'Stock', 'is_sales_item' => 'Sales', 'is_purchase_item' => 'Purchase',
+            'is_manufactured_item' => 'Manufactured', 'is_sub_contracted_item' => 'Sub-Contracted',
+            'is_asset_item' => 'Asset', 'has_variants' => 'Has Variants',
+        ];
+        ?>
+        <?php foreach ($flagBadges as $fKey => $fLabel): ?>
+          <?php if (!empty($product[$fKey])): ?><span class="badge text-bg-light border"><?= e($fLabel) ?></span><?php endif; ?>
+        <?php endforeach; ?>
+      </div>
+      <?php if ($product['tags']): ?><div class="mt-2 small text-muted"><?= e($product['tags']) ?></div><?php endif; ?>
+    </div>
+    <?php if ($barcodes): ?>
+    <div class="card p-3 mt-3">
+      <h6 class="mb-2">Barcodes</h6>
+      <table class="table table-sm mb-0">
+        <thead><tr><th>Barcode</th><th>Type</th><th>UOM</th></tr></thead>
+        <tbody>
+        <?php foreach ($barcodes as $bc): ?>
+          <tr>
+            <td><?= e($bc['barcode']) ?><?= $bc['is_default'] ? ' <span class="badge text-bg-brand">Default</span>' : '' ?></td>
+            <td><?= e($bc['barcode_type'] ?: '—') ?></td>
+            <td><?= e($bc['uom'] ?: '—') ?></td>
+          </tr>
+        <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div>
+    <?php endif; ?>
   </div>
 
   <div class="col-lg-9">

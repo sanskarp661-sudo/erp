@@ -110,13 +110,62 @@ CREATE TABLE IF NOT EXISTS uom (
 
 INSERT INTO uom (name) VALUES ('pcs'), ('kg'), ('box'), ('litre'), ('meter'), ('dozen');
 
+CREATE TABLE IF NOT EXISTS brands (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(120) NOT NULL UNIQUE,
+  status ENUM('active','inactive') NOT NULL DEFAULT 'active',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS item_categories (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(120) NOT NULL UNIQUE,
+  status ENUM('active','inactive') NOT NULL DEFAULT 'active',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Item Master redesign: products gained a large batch of ERPNext-style
+-- fields across many phases (Details/Inventory/Pricing/Accounting/Sales/
+-- Purchase/Tax/UOM/Batch-Serial/More Info tabs). default_warehouse_id and
+-- default_price_list_id are deliberately plain columns with NO FK here —
+-- warehouses/price_lists are declared later in this file, and reordering
+-- this whole schema around them isn't worth the churn for two convenience
+-- defaults; app code validates them instead.
 CREATE TABLE IF NOT EXISTS products (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   sku VARCHAR(60) NOT NULL UNIQUE,
   name VARCHAR(160) NOT NULL,
   image VARCHAR(255) DEFAULT NULL,
   category_id INT UNSIGNED DEFAULT NULL,
+  description TEXT DEFAULT NULL,
+  item_category_id INT UNSIGNED DEFAULT NULL,
+  brand_id INT UNSIGNED DEFAULT NULL,
+  hsn_sac_code VARCHAR(20) DEFAULT NULL,
+  is_stock_item TINYINT(1) NOT NULL DEFAULT 1,
+  is_sales_item TINYINT(1) NOT NULL DEFAULT 1,
+  is_purchase_item TINYINT(1) NOT NULL DEFAULT 1,
+  is_manufactured_item TINYINT(1) NOT NULL DEFAULT 0,
+  is_sub_contracted_item TINYINT(1) NOT NULL DEFAULT 0,
+  is_asset_item TINYINT(1) NOT NULL DEFAULT 0,
+  has_variants TINYINT(1) NOT NULL DEFAULT 0,
   unit VARCHAR(30) NOT NULL DEFAULT 'pcs',
+  purchase_uom VARCHAR(30) DEFAULT NULL,
+  sales_uom VARCHAR(30) DEFAULT NULL,
+  purchase_uom_conversion_factor DECIMAL(10,3) NOT NULL DEFAULT 1.000,
+  sales_uom_conversion_factor DECIMAL(10,3) NOT NULL DEFAULT 1.000,
+  default_warehouse_id INT UNSIGNED DEFAULT NULL,
+  default_price_list_id INT UNSIGNED DEFAULT NULL,
+  min_stock_level INT NOT NULL DEFAULT 0,
+  max_stock_level INT NOT NULL DEFAULT 0,
+  lead_time_days INT NOT NULL DEFAULT 0,
+  shelf_life_days INT NOT NULL DEFAULT 0,
+  item_type ENUM('Finished Good','Raw Material','Service Item','Consumable') NOT NULL DEFAULT 'Finished Good',
+  valuation_method ENUM('FIFO','LIFO','Moving Average') NOT NULL DEFAULT 'FIFO',
+  standard_weight_kg DECIMAL(10,3) NOT NULL DEFAULT 0,
+  standard_volume_ltr DECIMAL(10,3) NOT NULL DEFAULT 0,
+  gross_weight_kg DECIMAL(10,3) NOT NULL DEFAULT 0,
+  net_weight_kg DECIMAL(10,3) NOT NULL DEFAULT 0,
+  tags VARCHAR(255) DEFAULT NULL,
   cost_price DECIMAL(14,2) NOT NULL DEFAULT 0,
   selling_price DECIMAL(14,2) NOT NULL DEFAULT 0,
   quantity INT NOT NULL DEFAULT 0,
@@ -124,7 +173,20 @@ CREATE TABLE IF NOT EXISTS products (
   status ENUM('active','inactive') NOT NULL DEFAULT 'active',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
+  FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,
+  FOREIGN KEY (item_category_id) REFERENCES item_categories(id) ON DELETE SET NULL,
+  FOREIGN KEY (brand_id) REFERENCES brands(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS product_barcodes (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  product_id INT UNSIGNED NOT NULL,
+  barcode VARCHAR(60) NOT NULL,
+  barcode_type VARCHAR(30) DEFAULT NULL,
+  uom VARCHAR(30) DEFAULT NULL,
+  is_default TINYINT(1) NOT NULL DEFAULT 0,
+  sort_order INT NOT NULL DEFAULT 0,
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Warehouses form a tree (self-referencing parent_id). A "Group" warehouse
