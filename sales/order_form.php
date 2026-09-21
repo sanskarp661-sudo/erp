@@ -14,6 +14,12 @@ $order = [
     'tax_template_id' => '', 'place_of_supply' => '', 'gst_category' => '', 'reverse_charge' => 0, 'tax_remarks' => '',
     'rounding_method' => 'nearest', 'rounding_precision' => '0.01', 'additional_discount' => 0, 'additional_charge' => 0,
     'adjustment_type' => 'none', 'adjustment_amount' => 0, 'adjustment_remarks' => '',
+    'promised_delivery_date' => '', 'delivery_priority' => 'normal', 'fulfillment_type' => 'complete_order',
+    'delivery_terms' => '', 'shipping_rule' => '', 'delivery_remarks' => '', 'ship_to_address_id' => '',
+    'shipping_partner_id' => '', 'shipping_service_type' => '', 'shipping_method' => '', 'tracking_no' => '',
+    'expected_dispatch_date' => '', 'expected_delivery_date' => '', 'create_dn_after_submit' => 1,
+    'update_stock_on_submit' => 1, 'allow_partial_delivery' => 0, 'notify_customer' => 0,
+    'print_picking_list' => 0, 'print_shipping_label' => 0, 'include_shipping_in_total' => 1,
 ];
 $items = [];
 $taxRows = [];
@@ -39,7 +45,7 @@ if ($id) {
 }
 
 $error = '';
-$activeTab = in_array(input('tab'), ['items', 'taxes'], true) ? input('tab') : 'details';
+$activeTab = in_array(input('tab'), ['items', 'taxes', 'shipping'], true) ? input('tab') : 'details';
 
 /** Rounds $amount to the nearest multiple of $precision, per $method ('nearest'|'up'|'down'). */
 function so_round(float $amount, float $precision, string $method): float
@@ -80,6 +86,27 @@ if (is_post()) {
     $adjustmentType = in_array(input('adjustment_type'), ['none', 'add', 'subtract'], true) ? input('adjustment_type') : 'none';
     $adjustmentAmount = max(0, (float)input('adjustment_amount'));
     $adjustmentRemarks = input('adjustment_remarks') ?: null;
+
+    $promisedDeliveryDate = input('promised_delivery_date') ?: null;
+    $deliveryPriority = in_array(input('delivery_priority'), ['low', 'normal', 'high', 'urgent'], true) ? input('delivery_priority') : 'normal';
+    $fulfillmentType = in_array(input('fulfillment_type'), ['complete_order', 'partial_allowed'], true) ? input('fulfillment_type') : 'complete_order';
+    $deliveryTerms = input('delivery_terms') ?: null;
+    $shippingRule = input('shipping_rule') ?: null;
+    $deliveryRemarks = input('delivery_remarks') ?: null;
+    $shipToAddressId = (int)input('ship_to_address_id') ?: null;
+    $shippingPartnerId = (int)input('shipping_partner_id') ?: null;
+    $shippingServiceType = input('shipping_service_type') ?: null;
+    $shippingMethod = input('shipping_method') ?: null;
+    $trackingNo = input('tracking_no') ?: null;
+    $expectedDispatchDate = input('expected_dispatch_date') ?: null;
+    $expectedDeliveryDate = input('expected_delivery_date') ?: null;
+    $createDnAfterSubmit = input('create_dn_after_submit') ? 1 : 0;
+    $updateStockOnSubmit = input('update_stock_on_submit') ? 1 : 0;
+    $allowPartialDelivery = input('allow_partial_delivery') ? 1 : 0;
+    $notifyCustomer = input('notify_customer') ? 1 : 0;
+    $printPickingList = input('print_picking_list') ? 1 : 0;
+    $printShippingLabel = input('print_shipping_label') ? 1 : 0;
+    $includeShippingInTotal = input('include_shipping_in_total') ? 1 : 0;
 
     $productIds = $_POST['product_id'] ?? [];
     $descriptions = $_POST['description'] ?? [];
@@ -173,8 +200,8 @@ if (is_post()) {
         $pdo = db();
         $pdo->beginTransaction();
         try {
-            $headerColNames = ['customer_id', 'contact_person', 'customer_address_id', 'warehouse_id', 'order_date', 'required_delivery_date', 'price_list_id', 'currency', 'sales_channel', 'territory', 'sales_person_id', 'customer_po_no', 'project', 'notes', 'total_amount', 'net_amount', 'tax_template_id', 'place_of_supply', 'gst_category', 'reverse_charge', 'tax_remarks', 'rounding_method', 'rounding_precision', 'additional_discount', 'additional_charge', 'adjustment_type', 'adjustment_amount', 'adjustment_remarks'];
-            $headerVals = [$customerId, $contactPerson, $customerAddressId, $firstWarehouseId, $orderDate, $requiredDeliveryDate, $priceListId, $currency, $salesChannel, $territory, $salesPersonId, $customerPoNo, $project, $notes, $grandTotal, $netAmount, $taxTemplateId, $placeOfSupply, $gstCategory, $reverseCharge, $taxRemarks, $roundingMethod, $roundingPrecision, $additionalDiscount, $additionalCharge, $adjustmentType, $adjustmentAmount, $adjustmentRemarks];
+            $headerColNames = ['customer_id', 'contact_person', 'customer_address_id', 'warehouse_id', 'order_date', 'required_delivery_date', 'price_list_id', 'currency', 'sales_channel', 'territory', 'sales_person_id', 'customer_po_no', 'project', 'notes', 'total_amount', 'net_amount', 'tax_template_id', 'place_of_supply', 'gst_category', 'reverse_charge', 'tax_remarks', 'rounding_method', 'rounding_precision', 'additional_discount', 'additional_charge', 'adjustment_type', 'adjustment_amount', 'adjustment_remarks', 'promised_delivery_date', 'delivery_priority', 'fulfillment_type', 'delivery_terms', 'shipping_rule', 'delivery_remarks', 'ship_to_address_id', 'shipping_partner_id', 'shipping_service_type', 'shipping_method', 'tracking_no', 'expected_dispatch_date', 'expected_delivery_date', 'create_dn_after_submit', 'update_stock_on_submit', 'allow_partial_delivery', 'notify_customer', 'print_picking_list', 'print_shipping_label', 'include_shipping_in_total'];
+            $headerVals = [$customerId, $contactPerson, $customerAddressId, $firstWarehouseId, $orderDate, $requiredDeliveryDate, $priceListId, $currency, $salesChannel, $territory, $salesPersonId, $customerPoNo, $project, $notes, $grandTotal, $netAmount, $taxTemplateId, $placeOfSupply, $gstCategory, $reverseCharge, $taxRemarks, $roundingMethod, $roundingPrecision, $additionalDiscount, $additionalCharge, $adjustmentType, $adjustmentAmount, $adjustmentRemarks, $promisedDeliveryDate, $deliveryPriority, $fulfillmentType, $deliveryTerms, $shippingRule, $deliveryRemarks, $shipToAddressId, $shippingPartnerId, $shippingServiceType, $shippingMethod, $trackingNo, $expectedDispatchDate, $expectedDeliveryDate, $createDnAfterSubmit, $updateStockOnSubmit, $allowPartialDelivery, $notifyCustomer, $printPickingList, $printShippingLabel, $includeShippingInTotal];
             if ($id) {
                 $setClause = implode(', ', array_map(fn($c) => "$c=?", $headerColNames));
                 $pdo->prepare("UPDATE sales_orders SET $setClause WHERE id=?")->execute([...$headerVals, $id]);
@@ -216,6 +243,14 @@ if (is_post()) {
         'reverse_charge' => $reverseCharge, 'tax_remarks' => $taxRemarks, 'rounding_method' => $roundingMethod,
         'rounding_precision' => $roundingPrecision, 'additional_discount' => $additionalDiscount, 'additional_charge' => $additionalCharge,
         'adjustment_type' => $adjustmentType, 'adjustment_amount' => $adjustmentAmount, 'adjustment_remarks' => $adjustmentRemarks,
+        'promised_delivery_date' => $promisedDeliveryDate, 'delivery_priority' => $deliveryPriority, 'fulfillment_type' => $fulfillmentType,
+        'delivery_terms' => $deliveryTerms, 'shipping_rule' => $shippingRule, 'delivery_remarks' => $deliveryRemarks,
+        'ship_to_address_id' => $shipToAddressId, 'shipping_partner_id' => $shippingPartnerId, 'shipping_service_type' => $shippingServiceType,
+        'shipping_method' => $shippingMethod, 'tracking_no' => $trackingNo, 'expected_dispatch_date' => $expectedDispatchDate,
+        'expected_delivery_date' => $expectedDeliveryDate, 'create_dn_after_submit' => $createDnAfterSubmit,
+        'update_stock_on_submit' => $updateStockOnSubmit, 'allow_partial_delivery' => $allowPartialDelivery,
+        'notify_customer' => $notifyCustomer, 'print_picking_list' => $printPickingList, 'print_shipping_label' => $printShippingLabel,
+        'include_shipping_in_total' => $includeShippingInTotal,
     ];
     $items = $lineItems;
     $taxRows = $taxRowsToSave;
@@ -234,12 +269,21 @@ $salesUsers = db()->query("SELECT id, name FROM users WHERE status='active' ORDE
 $uoms = db()->query("SELECT name FROM uom WHERE status='active' ORDER BY name")->fetchAll();
 
 $addressesByCustomer = [];
-$addrStmt = db()->query('SELECT id, customer_id, label, address_line, city, state, pincode, is_default FROM customer_addresses ORDER BY is_default DESC, label');
+$addrStmt = db()->query('SELECT id, customer_id, label, address_line, city, state, pincode, contact_person, contact_phone, contact_email, is_default FROM customer_addresses ORDER BY is_default DESC, label');
 foreach ($addrStmt as $a) {
     $addressesByCustomer[(int)$a['customer_id']][] = [
         'id' => (int)$a['id'],
         'text' => $a['label'] . ': ' . $a['address_line'] . ($a['city'] ? ', ' . $a['city'] : ''),
+        'address_line' => $a['address_line'], 'city' => $a['city'], 'state' => $a['state'], 'pincode' => $a['pincode'],
+        'contact_person' => $a['contact_person'], 'contact_phone' => $a['contact_phone'], 'contact_email' => $a['contact_email'],
     ];
+}
+
+$shippingPartners = db()->query("SELECT id, name FROM shipping_partners WHERE status='active' ORDER BY name")->fetchAll();
+
+$warehouseNames = [];
+foreach ($warehouses as $w) {
+    $warehouseNames[(int)$w['id']] = $w['name'];
 }
 
 $priceListRates = [];
@@ -290,6 +334,7 @@ require __DIR__ . '/../includes/header.php';
     <li class="nav-item"><button class="nav-link <?= $activeTab === 'details' ? 'active' : '' ?>" id="tab-details" data-bs-toggle="tab" data-bs-target="#pane-details" type="button">Details</button></li>
     <li class="nav-item"><button class="nav-link <?= $activeTab === 'items' ? 'active' : '' ?>" id="tab-items" data-bs-toggle="tab" data-bs-target="#pane-items" type="button">Items</button></li>
     <li class="nav-item"><button class="nav-link <?= $activeTab === 'taxes' ? 'active' : '' ?>" id="tab-taxes" data-bs-toggle="tab" data-bs-target="#pane-taxes" type="button">Taxes &amp; Charges</button></li>
+    <li class="nav-item"><button class="nav-link <?= $activeTab === 'shipping' ? 'active' : '' ?>" id="tab-shipping" data-bs-toggle="tab" data-bs-target="#pane-shipping" type="button">Shipping &amp; Delivery</button></li>
   </ul>
 
   <form method="post" id="soForm">
@@ -606,6 +651,181 @@ require __DIR__ . '/../includes/header.php';
           </div>
         </div>
       </div>
+
+      <div class="tab-pane fade <?= $activeTab === 'shipping' ? 'show active' : '' ?>" id="pane-shipping">
+        <div class="row g-3 mb-3">
+          <div class="col-lg-6">
+            <div class="card p-3 h-100">
+              <h6 class="mb-3"><i class="fa-solid fa-truck"></i> Delivery Information</h6>
+              <div class="row g-2 mb-2">
+                <div class="col-sm-6">
+                  <label class="form-label">Promised Delivery Date</label>
+                  <input type="date" name="promised_delivery_date" class="form-control" value="<?= e($order['promised_delivery_date'] ?? '') ?>">
+                </div>
+                <div class="col-sm-6">
+                  <label class="form-label">Delivery Priority</label>
+                  <select name="delivery_priority" class="form-select">
+                    <?php foreach (['low' => 'Low', 'normal' => 'Normal', 'high' => 'High', 'urgent' => 'Urgent'] as $val => $label): ?>
+                      <option value="<?= $val ?>" <?= $order['delivery_priority'] === $val ? 'selected' : '' ?>><?= $label ?></option>
+                    <?php endforeach; ?>
+                  </select>
+                </div>
+              </div>
+              <div class="row g-2 mb-2">
+                <div class="col-sm-6">
+                  <label class="form-label">Fulfillment Type</label>
+                  <select name="fulfillment_type" class="form-select">
+                    <option value="complete_order" <?= $order['fulfillment_type'] === 'complete_order' ? 'selected' : '' ?>>Complete Order</option>
+                    <option value="partial_allowed" <?= $order['fulfillment_type'] === 'partial_allowed' ? 'selected' : '' ?>>Partial Allowed</option>
+                  </select>
+                </div>
+                <div class="col-sm-6">
+                  <label class="form-label">Delivery Terms (Incoterms)</label>
+                  <select name="delivery_terms" class="form-select">
+                    <option value="">— Select incoterms —</option>
+                    <?php foreach (['EXW', 'FOB', 'CIF', 'DAP', 'DDP', 'CPT'] as $term): ?>
+                      <option value="<?= $term ?>" <?= $order['delivery_terms'] === $term ? 'selected' : '' ?>><?= $term ?></option>
+                    <?php endforeach; ?>
+                  </select>
+                </div>
+              </div>
+              <div class="mb-2">
+                <label class="form-label">Shipping Rule</label>
+                <select name="shipping_rule" class="form-select">
+                  <option value="">— Select shipping rule —</option>
+                  <?php foreach (['As per Stock Availability', 'Ship Complete Only', 'Ship as Available'] as $rule): ?>
+                    <option value="<?= e($rule) ?>" <?= $order['shipping_rule'] === $rule ? 'selected' : '' ?>><?= e($rule) ?></option>
+                  <?php endforeach; ?>
+                </select>
+              </div>
+              <div>
+                <label class="form-label">Remarks (Delivery)</label>
+                <textarea name="delivery_remarks" class="form-control" rows="2"><?= e($order['delivery_remarks'] ?? '') ?></textarea>
+              </div>
+            </div>
+          </div>
+          <div class="col-lg-6">
+            <div class="card p-3 h-100">
+              <h6 class="mb-3"><i class="fa-solid fa-location-dot"></i> Shipping Address</h6>
+              <div class="mb-2">
+                <label class="form-label">Ship To</label>
+                <select name="ship_to_address_id" id="shipToSelect" class="form-select">
+                  <option value="">— Select address —</option>
+                </select>
+              </div>
+              <div id="shipToPreview" class="p-2 rounded bg-light-subtle border mb-2 small text-muted">Select an address to see its details.</div>
+              <div class="row g-2">
+                <div class="col-sm-4">
+                  <label class="form-label">Contact Person</label>
+                  <input type="text" id="shipToContactPerson" class="form-control form-control-sm" disabled>
+                </div>
+                <div class="col-sm-4">
+                  <label class="form-label">Contact Number</label>
+                  <input type="text" id="shipToContactPhone" class="form-control form-control-sm" disabled>
+                </div>
+                <div class="col-sm-4">
+                  <label class="form-label">Email</label>
+                  <input type="text" id="shipToContactEmail" class="form-control form-control-sm" disabled>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row g-3 mb-3">
+          <div class="col-lg-6">
+            <div class="card p-3 h-100">
+              <h6 class="mb-3"><i class="fa-solid fa-box"></i> Shipping Details</h6>
+              <div class="row g-2 mb-2">
+                <div class="col-sm-4">
+                  <label class="form-label">Shipping Partner / Courier</label>
+                  <select name="shipping_partner_id" class="form-select">
+                    <option value="">— Select —</option>
+                    <?php foreach ($shippingPartners as $sp): ?>
+                      <option value="<?= (int)$sp['id'] ?>" <?= (string)($order['shipping_partner_id'] ?? '') === (string)$sp['id'] ? 'selected' : '' ?>><?= e($sp['name']) ?></option>
+                    <?php endforeach; ?>
+                  </select>
+                </div>
+                <div class="col-sm-4">
+                  <label class="form-label">Service Type</label>
+                  <select name="shipping_service_type" class="form-select">
+                    <option value="">— Select —</option>
+                    <?php foreach (['Surface', 'Air', 'Express'] as $svc): ?>
+                      <option value="<?= $svc ?>" <?= $order['shipping_service_type'] === $svc ? 'selected' : '' ?>><?= $svc ?></option>
+                    <?php endforeach; ?>
+                  </select>
+                </div>
+                <div class="col-sm-4">
+                  <label class="form-label">Shipping Method</label>
+                  <select name="shipping_method" class="form-select">
+                    <option value="">— Select —</option>
+                    <?php foreach (['Prepaid', 'COD'] as $m): ?>
+                      <option value="<?= $m ?>" <?= $order['shipping_method'] === $m ? 'selected' : '' ?>><?= $m ?></option>
+                    <?php endforeach; ?>
+                  </select>
+                </div>
+              </div>
+              <div class="row g-2">
+                <div class="col-sm-4">
+                  <label class="form-label">Tracking No.</label>
+                  <input type="text" name="tracking_no" class="form-control" value="<?= e($order['tracking_no'] ?? '') ?>">
+                </div>
+                <div class="col-sm-4">
+                  <label class="form-label">Expected Dispatch Date</label>
+                  <input type="date" name="expected_dispatch_date" class="form-control" value="<?= e($order['expected_dispatch_date'] ?? '') ?>">
+                </div>
+                <div class="col-sm-4">
+                  <label class="form-label">Expected Delivery Date</label>
+                  <input type="date" name="expected_delivery_date" class="form-control" value="<?= e($order['expected_delivery_date'] ?? '') ?>">
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="col-lg-6">
+            <div class="card p-3 h-100">
+              <h6 class="mb-3"><i class="fa-solid fa-gear"></i> Additional Options</h6>
+              <div class="row">
+                <div class="col-sm-6">
+                  <div class="form-check mb-2"><input type="checkbox" class="form-check-input" id="createDnChk" name="create_dn_after_submit" value="1" <?= !empty($order['create_dn_after_submit']) ? 'checked' : '' ?>><label class="form-check-label" for="createDnChk">Create Delivery Note after Submit</label></div>
+                  <div class="form-check mb-2"><input type="checkbox" class="form-check-input" id="updStockChk" name="update_stock_on_submit" value="1" <?= !empty($order['update_stock_on_submit']) ? 'checked' : '' ?>><label class="form-check-label" for="updStockChk">Update Stock on Submit</label></div>
+                  <div class="form-check mb-2"><input type="checkbox" class="form-check-input" id="partialChk" name="allow_partial_delivery" value="1" <?= !empty($order['allow_partial_delivery']) ? 'checked' : '' ?>><label class="form-check-label" for="partialChk">Allow Partial Delivery</label></div>
+                  <div class="form-check mb-2"><input type="checkbox" class="form-check-input" id="notifyChk" name="notify_customer" value="1" <?= !empty($order['notify_customer']) ? 'checked' : '' ?>><label class="form-check-label" for="notifyChk">Notify Customer</label></div>
+                </div>
+                <div class="col-sm-6">
+                  <div class="form-check mb-2"><input type="checkbox" class="form-check-input" id="pickChk" name="print_picking_list" value="1" <?= !empty($order['print_picking_list']) ? 'checked' : '' ?>><label class="form-check-label" for="pickChk">Print Picking List</label></div>
+                  <div class="form-check mb-2"><input type="checkbox" class="form-check-input" id="labelChk" name="print_shipping_label" value="1" <?= !empty($order['print_shipping_label']) ? 'checked' : '' ?>><label class="form-check-label" for="labelChk">Print Shipping Label</label></div>
+                  <div class="form-check mb-2"><input type="checkbox" class="form-check-input" id="inclShipChk" name="include_shipping_in_total" value="1" <?= !empty($order['include_shipping_in_total']) ? 'checked' : '' ?>><label class="form-check-label" for="inclShipChk">Include Shipping Charges in Order Total</label></div>
+                </div>
+              </div>
+              <div class="alert alert-secondary small mb-0 mt-2">Delivery notes and shipments are still created manually from the order view — these checkboxes save your intent, ready for automation in a later update.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card p-3">
+          <h6 class="mb-2">Delivery Items</h6>
+          <div class="table-responsive">
+            <table class="table table-sm">
+              <thead><tr><th>Item Code</th><th>Item Name</th><th>Warehouse</th><th class="text-end">Qty Ordered</th><th class="text-end">Qty to Deliver</th><th>UOM</th><th class="text-end">Pending Qty</th></tr></thead>
+              <tbody>
+              <?php foreach ($items as $it): $p = $productMeta[(int)($it['product_id'] ?? 0)] ?? null; ?>
+                <?php if (!$p) continue; ?>
+                <tr>
+                  <td><?= e($p['sku']) ?></td>
+                  <td><?= e($p['name']) ?></td>
+                  <td><?= e($warehouseNames[(int)($it['warehouse_id'] ?? 0)] ?? '—') ?></td>
+                  <td class="text-end"><?= (int)$it['quantity'] ?></td>
+                  <td class="text-end"><?= (int)$it['quantity'] ?></td>
+                  <td><?= e($it['uom'] ?? 'pcs') ?></td>
+                  <td class="text-end">0</td>
+                </tr>
+              <?php endforeach; ?>
+              <?php if (!$items): ?><tr><td colspan="7" class="text-muted text-center">Add items on the Items tab first.</td></tr><?php endif; ?>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="page-actions mt-3">
@@ -621,6 +841,7 @@ var productMeta = " . json_encode($productMeta) . ";
 var priceListRates = " . json_encode($priceListRates) . ";
 var addressesByCustomer = " . json_encode($addressesByCustomer) . ";
 var selectedAddressId = " . json_encode((string)($order['customer_address_id'] ?? '')) . ";
+var selectedShipToId = " . json_encode((string)($order['ship_to_address_id'] ?? '')) . ";
 var currentCustomerId = " . json_encode((string)($order['customer_id'] ?? '')) . ";
 
 function rateFor(productId, priceListId) {
@@ -630,25 +851,50 @@ function rateFor(productId, priceListId) {
   return productMeta[productId] ? productMeta[productId].rate : 0;
 }
 
-function populateAddresses(customerId, selectId) {
-  var sel = document.getElementById('addressSelect');
-  if (!sel) return;
-  sel.innerHTML = '<option value=\"\">— Select address —</option>';
+function populateAddressSelect(selectEl, customerId, selectId) {
+  if (!selectEl) return;
+  selectEl.innerHTML = '<option value=\"\">— Select address —</option>';
   var list = addressesByCustomer[customerId] || [];
   list.forEach(function (a) {
     var opt = document.createElement('option');
     opt.value = a.id;
     opt.textContent = a.text;
     if (selectId && String(a.id) === String(selectId)) opt.selected = true;
-    sel.appendChild(opt);
+    selectEl.appendChild(opt);
   });
+}
+
+function updateShipToPreview() {
+  var sel = document.getElementById('shipToSelect');
+  var preview = document.getElementById('shipToPreview');
+  if (!sel || !preview) return;
+  var list = addressesByCustomer[currentCustomerId] || [];
+  var addr = list.filter(function (a) { return String(a.id) === String(sel.value); })[0];
+  document.getElementById('shipToContactPerson').value = addr ? (addr.contact_person || '') : '';
+  document.getElementById('shipToContactPhone').value = addr ? (addr.contact_phone || '') : '';
+  document.getElementById('shipToContactEmail').value = addr ? (addr.contact_email || '') : '';
+  if (!addr) { preview.textContent = 'Select an address to see its details.'; return; }
+  preview.textContent = addr.address_line + (addr.city ? ', ' + addr.city : '') + (addr.state ? ', ' + addr.state : '') + (addr.pincode ? ' - ' + addr.pincode : '');
 }
 
 document.addEventListener('DOMContentLoaded', function () {
   var customerSelect = document.getElementById('customerSelect');
+  var addressSelect = document.getElementById('addressSelect');
+  var shipToSelect = document.getElementById('shipToSelect');
   if (customerSelect) {
-    populateAddresses(customerSelect.value, selectedAddressId);
-    customerSelect.addEventListener('change', function () { populateAddresses(customerSelect.value, null); });
+    populateAddressSelect(addressSelect, customerSelect.value, selectedAddressId);
+    populateAddressSelect(shipToSelect, customerSelect.value, selectedShipToId);
+    updateShipToPreview();
+    currentCustomerId = customerSelect.value;
+    customerSelect.addEventListener('change', function () {
+      currentCustomerId = customerSelect.value;
+      populateAddressSelect(addressSelect, customerSelect.value, null);
+      populateAddressSelect(shipToSelect, customerSelect.value, null);
+      updateShipToPreview();
+    });
+  }
+  if (shipToSelect) {
+    shipToSelect.addEventListener('change', updateShipToPreview);
   }
 
   var newAddressLink = document.getElementById('newAddressLink');

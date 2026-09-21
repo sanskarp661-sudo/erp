@@ -73,6 +73,7 @@ $MODULES = [
             ['label' => 'Sales Invoices', 'icon' => 'fa-solid fa-file-invoice-dollar', 'url' => 'accounting/invoices.php', 'match' => 'accounting/invoice'],
             ['label' => 'Price Lists',    'icon' => 'fa-solid fa-tags',       'url' => 'sales/price_lists.php', 'match' => 'sales/price_list'],
             ['label' => 'Tax Templates',  'icon' => 'fa-solid fa-percent',    'url' => 'sales/tax_templates.php', 'match' => 'sales/tax_template'],
+            ['label' => 'Shipping Partners', 'icon' => 'fa-solid fa-truck-fast', 'url' => 'sales/shipping_partners.php', 'match' => 'sales/shipping_partner'],
             ['label' => 'Sales Report',   'icon' => 'fa-solid fa-chart-line', 'url' => 'reports/sales_report.php', 'match' => 'reports/sales'],
         ],
     ],

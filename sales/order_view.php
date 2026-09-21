@@ -7,13 +7,17 @@ $canManage = can_manage_module('sales');
 $id = (int)input('id');
 $stmt = db()->prepare('
   SELECT so.*, c.name customer_name, c.email customer_email, c.phone customer_phone, w.name warehouse_name,
-         pl.name price_list_name, u.name sales_person_name, ca.label address_label, ca.address_line, ca.city, ca.state, ca.pincode
+         pl.name price_list_name, u.name sales_person_name, ca.label address_label, ca.address_line, ca.city, ca.state, ca.pincode,
+         sa.label ship_to_label, sa.address_line ship_to_address_line, sa.city ship_to_city, sa.contact_person ship_to_contact_person,
+         sa.contact_phone ship_to_contact_phone, sp.name shipping_partner_name
   FROM sales_orders so
   JOIN customers c ON c.id = so.customer_id
   LEFT JOIN warehouses w ON w.id = so.warehouse_id
   LEFT JOIN price_lists pl ON pl.id = so.price_list_id
   LEFT JOIN users u ON u.id = so.sales_person_id
   LEFT JOIN customer_addresses ca ON ca.id = so.customer_address_id
+  LEFT JOIN customer_addresses sa ON sa.id = so.ship_to_address_id
+  LEFT JOIN shipping_partners sp ON sp.id = so.shipping_partner_id
   WHERE so.id = ?
 ');
 $stmt->execute([$id]);
@@ -188,6 +192,20 @@ require __DIR__ . '/../includes/header.php';
     <div class="col-sm-3"><div class="small text-muted">Sales Person</div><div><?= e($order['sales_person_name'] ?: '—') ?></div></div>
     <div class="col-sm-3"><div class="small text-muted">Customer PO No.</div><div><?= e($order['customer_po_no'] ?: '—') ?></div></div>
     <div class="col-sm-3"><div class="small text-muted">Project</div><div><?= e($order['project'] ?: '—') ?></div></div>
+  </div>
+</div>
+
+<div class="card p-3 mb-3">
+  <h6 class="mb-3">Shipping &amp; Delivery</h6>
+  <div class="row g-3">
+    <div class="col-sm-3"><div class="small text-muted">Promised Delivery Date</div><div><?= e($order['promised_delivery_date'] ?: '—') ?></div></div>
+    <div class="col-sm-3"><div class="small text-muted">Delivery Priority</div><div class="text-capitalize"><?= e($order['delivery_priority']) ?></div></div>
+    <div class="col-sm-3"><div class="small text-muted">Ship To</div><div><?= $order['ship_to_label'] ? e($order['ship_to_label'] . ': ' . $order['ship_to_address_line']) : '—' ?></div></div>
+    <div class="col-sm-3"><div class="small text-muted">Ship To Contact</div><div><?= e($order['ship_to_contact_person'] ?: '—') ?><?= $order['ship_to_contact_phone'] ? ' · ' . e($order['ship_to_contact_phone']) : '' ?></div></div>
+    <div class="col-sm-3"><div class="small text-muted">Shipping Partner</div><div><?= e($order['shipping_partner_name'] ?: '—') ?></div></div>
+    <div class="col-sm-3"><div class="small text-muted">Tracking No.</div><div><?= e($order['tracking_no'] ?: '—') ?></div></div>
+    <div class="col-sm-3"><div class="small text-muted">Expected Dispatch</div><div><?= e($order['expected_dispatch_date'] ?: '—') ?></div></div>
+    <div class="col-sm-3"><div class="small text-muted">Expected Delivery</div><div><?= e($order['expected_delivery_date'] ?: '—') ?></div></div>
   </div>
 </div>
 

@@ -243,6 +243,15 @@ CREATE TABLE IF NOT EXISTS tax_template_items (
   FOREIGN KEY (account_head_id) REFERENCES ledger_accounts(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- A courier/logistics partner, referenced on the Sales Order's Shipping
+-- & Delivery tab.
+CREATE TABLE IF NOT EXISTS shipping_partners (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(120) NOT NULL UNIQUE,
+  status ENUM('active','inactive') NOT NULL DEFAULT 'active',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- warehouse_id is optional and only used for the Stock Balance Report's
 -- "Reserved Qty" column — a Sales Order never moves stock itself, that's
 -- still exclusively the job of its Delivery Note. It's kept in sync with
@@ -260,6 +269,26 @@ CREATE TABLE IF NOT EXISTS sales_orders (
   warehouse_id INT UNSIGNED DEFAULT NULL,
   order_date DATE NOT NULL,
   required_delivery_date DATE DEFAULT NULL,
+  promised_delivery_date DATE DEFAULT NULL,
+  delivery_priority ENUM('low','normal','high','urgent') NOT NULL DEFAULT 'normal',
+  fulfillment_type ENUM('complete_order','partial_allowed') NOT NULL DEFAULT 'complete_order',
+  delivery_terms VARCHAR(60) DEFAULT NULL,
+  shipping_rule VARCHAR(120) DEFAULT NULL,
+  delivery_remarks VARCHAR(255) DEFAULT NULL,
+  ship_to_address_id INT UNSIGNED DEFAULT NULL,
+  shipping_partner_id INT UNSIGNED DEFAULT NULL,
+  shipping_service_type VARCHAR(60) DEFAULT NULL,
+  shipping_method VARCHAR(60) DEFAULT NULL,
+  tracking_no VARCHAR(120) DEFAULT NULL,
+  expected_dispatch_date DATE DEFAULT NULL,
+  expected_delivery_date DATE DEFAULT NULL,
+  create_dn_after_submit TINYINT(1) NOT NULL DEFAULT 1,
+  update_stock_on_submit TINYINT(1) NOT NULL DEFAULT 1,
+  allow_partial_delivery TINYINT(1) NOT NULL DEFAULT 0,
+  notify_customer TINYINT(1) NOT NULL DEFAULT 0,
+  print_picking_list TINYINT(1) NOT NULL DEFAULT 0,
+  print_shipping_label TINYINT(1) NOT NULL DEFAULT 0,
+  include_shipping_in_total TINYINT(1) NOT NULL DEFAULT 1,
   price_list_id INT UNSIGNED DEFAULT NULL,
   currency VARCHAR(3) NOT NULL DEFAULT 'INR',
   sales_channel VARCHAR(60) DEFAULT NULL,
@@ -288,6 +317,8 @@ CREATE TABLE IF NOT EXISTS sales_orders (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
   FOREIGN KEY (customer_address_id) REFERENCES customer_addresses(id) ON DELETE SET NULL,
+  FOREIGN KEY (ship_to_address_id) REFERENCES customer_addresses(id) ON DELETE SET NULL,
+  FOREIGN KEY (shipping_partner_id) REFERENCES shipping_partners(id) ON DELETE SET NULL,
   FOREIGN KEY (warehouse_id) REFERENCES warehouses(id) ON DELETE SET NULL,
   FOREIGN KEY (price_list_id) REFERENCES price_lists(id) ON DELETE SET NULL,
   FOREIGN KEY (sales_person_id) REFERENCES users(id) ON DELETE SET NULL,
