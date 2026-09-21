@@ -33,59 +33,12 @@ if (is_post()) {
     if (!$lineItems) {
         $error = 'Cart is empty — add at least one product.';
     } else {
-        $posWarehouseId = default_warehouse_id();
-        if (!$posWarehouseId) {
-            $error = 'No warehouse is set up yet — ask an admin to create one under Supply Chain → Warehouses.';
-        }
         $pdo->beginTransaction();
         try {
-            if (!$posWarehouseId) {
-                throw new RuntimeException($error);
-            }
-            $subtotal = 0;
-            $resolved = [];
-            foreach ($lineItems as $pid => $qty) {
-                $stmt = $pdo->prepare('SELECT * FROM products WHERE id = ? FOR UPDATE');
-                $stmt->execute([$pid]);
-                $product = $stmt->fetch();
-                if (!$product) {
-                    throw new RuntimeException('A product in the cart no longer exists.');
-                }
-                if (warehouse_stock($pid, $posWarehouseId) < $qty) {
-                    throw new RuntimeException('Not enough stock for ' . $product['name'] . '.');
-                }
-                $lineTotal = $qty * $product['selling_price'];
-                $subtotal += $lineTotal;
-                $resolved[] = ['product' => $product, 'qty' => $qty, 'unit_price' => $product['selling_price'], 'subtotal' => $lineTotal];
-            }
-
-            $orderNo = next_code('SO', 'sales_orders', 'order_no');
-            $pdo->prepare("INSERT INTO sales_orders (order_no, customer_id, order_date, status, channel, notes, total_amount, created_by) VALUES (?,?,?,?,'pos',?,?,?)")
-                ->execute([$orderNo, $customerId, today(), 'completed', 'POS sale', $subtotal, current_user()['id']]);
-            $orderId = (int)$pdo->lastInsertId();
-
-            $itemStmt = $pdo->prepare('INSERT INTO sales_order_items (order_id, product_id, quantity, unit_price, subtotal) VALUES (?,?,?,?,?)');
-            foreach ($resolved as $r) {
-                $itemStmt->execute([$orderId, $r['product']['id'], $r['qty'], $r['unit_price'], $r['subtotal']]);
-                stock_move($r['product']['id'], $posWarehouseId, -$r['qty'], 'out', $orderNo, 'POS sale', current_user()['id']);
-            }
-
-            $invoiceNo = next_code('INV', 'invoices', 'invoice_no');
-            $pdo->prepare("INSERT INTO invoices (invoice_no, sales_order_id, customer_id, invoice_date, due_date, status, subtotal, tax, total, amount_paid, notes, created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
-                ->execute([$invoiceNo, $orderId, $customerId, today(), today(), 'paid', $subtotal, 0, $subtotal, $subtotal, 'POS sale', current_user()['id']]);
-            $invoiceId = (int)$pdo->lastInsertId();
-
-            $invItemStmt = $pdo->prepare('INSERT INTO invoice_items (invoice_id, product_id, description, quantity, unit_price, subtotal) VALUES (?,?,?,?,?,?)');
-            foreach ($resolved as $r) {
-                $invItemStmt->execute([$invoiceId, $r['product']['id'], $r['product']['name'], $r['qty'], $r['unit_price'], $r['subtotal']]);
-            }
-
-            $pdo->prepare('INSERT INTO payments (invoice_id, amount, payment_date, method, reference, notes, created_by) VALUES (?,?,?,?,?,?,?)')
-                ->execute([$invoiceId, $subtotal, today(), $method, 'POS-' . $orderNo, 'POS sale', current_user()['id']]);
-
+            $result = pos_complete_sale($pdo, $customerId, $lineItems, $method, null, current_user()['id']);
             $pdo->commit();
-            flash('success', 'Sale completed — ' . money($subtotal) . ' charged.');
-            redirect('/print.php?doctype=invoice&id=' . $invoiceId . '&pos=1');
+            flash('success', 'Sale completed — ' . money($result['subtotal']) . ' charged.');
+            redirect('/print.php?doctype=invoice&id=' . $result['invoice_id'] . '&pos=1');
         } catch (Exception $e) {
             $pdo->rollBack();
             $error = $e->getMessage() ?: 'Could not complete the sale.';
@@ -200,29 +153,49 @@ require __DIR__ . '/../includes/header.php';
           <div class="card p-3">
             <div class="mb-3">
               <label class="form-label">Payment Method</label>
-              <select name="method" class="form-select">
+              <select name="method" id="posMethodSelect" class="form-select">
                 <option value="cash">Cash</option>
                 <option value="card">Card</option>
                 <option value="bank_transfer">Bank Transfer</option>
+                <?php if (cashfree_configured()): ?>
+                  <option value="cashfree">Cashfree (UPI / Card QR)</option>
+                <?php endif; ?>
                 <option value="other">Other</option>
               </select>
             </div>
-            <div class="mb-2">
-              <label class="form-label">Amount Tendered</label>
-              <input type="text" id="posTendered" class="form-control form-control-lg text-end" value="0.00" readonly>
+
+            <div id="posCfPhoneWrap" class="mb-3" style="display:none">
+              <label class="form-label">Customer Mobile Number</label>
+              <input type="tel" id="posCfPhone" class="form-control" placeholder="10-digit mobile number" maxlength="10">
+              <div class="form-text">Needed to send the UPI payment request.</div>
             </div>
-            <div class="pos-keypad mb-3">
-              <?php foreach (['7', '8', '9', '4', '5', '6', '1', '2', '3', '0', '.', 'C'] as $k): ?>
-                <button type="button" class="btn btn-outline-secondary pos-key" data-key="<?= e($k) ?>"><?= e($k) ?></button>
-              <?php endforeach; ?>
-              <button type="button" class="btn btn-outline-danger pos-key-back" id="posKeyBack"><i class="fa-solid fa-delete-left"></i></button>
+
+            <div id="posNormalCheckout">
+              <div class="mb-2" id="posTenderedWrap">
+                <label class="form-label">Amount Tendered</label>
+                <input type="text" id="posTendered" class="form-control form-control-lg text-end" value="0.00" readonly>
+              </div>
+              <div class="pos-keypad mb-3" id="posKeypadWrap">
+                <?php foreach (['7', '8', '9', '4', '5', '6', '1', '2', '3', '0', '.', 'C'] as $k): ?>
+                  <button type="button" class="btn btn-outline-secondary pos-key" data-key="<?= e($k) ?>"><?= e($k) ?></button>
+                <?php endforeach; ?>
+                <button type="button" class="btn btn-outline-danger pos-key-back" id="posKeyBack"><i class="fa-solid fa-delete-left"></i></button>
+              </div>
+              <div class="border-top pt-3">
+                <div class="d-flex justify-content-between mb-1"><span class="text-muted">Subtotal</span><strong id="posSubtotal2">$0.00</strong></div>
+                <div class="d-flex justify-content-between mb-1 fs-5"><span>Total</span><strong id="posTotal2">$0.00</strong></div>
+                <div class="d-flex justify-content-between mb-3" id="posChangeRow"><span class="text-muted" id="posChangeLabel">Change Due</span><strong id="posChange">$0.00</strong></div>
+                <button type="submit" id="posConfirmBtn" class="btn btn-brand btn-lg w-100">Confirm &amp; Complete Sale</button>
+                <button type="button" id="posVoidCart" class="btn btn-outline-danger w-100 mt-2">Void Cart</button>
+              </div>
             </div>
-            <div class="border-top pt-3">
-              <div class="d-flex justify-content-between mb-1"><span class="text-muted">Subtotal</span><strong id="posSubtotal2">$0.00</strong></div>
-              <div class="d-flex justify-content-between mb-1 fs-5"><span>Total</span><strong id="posTotal2">$0.00</strong></div>
-              <div class="d-flex justify-content-between mb-3"><span class="text-muted" id="posChangeLabel">Change Due</span><strong id="posChange">$0.00</strong></div>
-              <button type="submit" id="posConfirmBtn" class="btn btn-brand btn-lg w-100">Confirm &amp; Complete Sale</button>
-              <button type="button" id="posVoidCart" class="btn btn-outline-danger w-100 mt-2">Void Cart</button>
+
+            <div id="posCfPanel" style="display:none" class="text-center">
+              <h6 class="mb-2">Scan to Pay</h6>
+              <div id="posCfQr" class="d-flex justify-content-center mb-3"></div>
+              <div class="fs-5 fw-bold mb-2" id="posCfAmount"></div>
+              <div class="text-muted small mb-3"><i class="fa-solid fa-spinner fa-spin"></i> Waiting for payment confirmation...</div>
+              <button type="button" id="posCfCancel" class="btn btn-outline-secondary w-100">Cancel</button>
             </div>
           </div>
         </div>
@@ -233,10 +206,17 @@ require __DIR__ . '/../includes/header.php';
 
 <?php
 $currencySymbol = setting('currency_symbol', '$');
+if (cashfree_configured()) {
+    $extra_js = ['https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js'];
+}
 $extra_js_inline = "
 var cart = {};
 var CURRENCY = " . json_encode($currencySymbol) . ";
 var currentCat = 'all';
+var CF_CREATE_URL = " . json_encode(base_url('pos/cashfree_create.php')) . ";
+var CF_STATUS_URL = " . json_encode(base_url('pos/cashfree_status.php')) . ";
+var cfPollTimer = null;
+var cfReference = null;
 
 function fmt(n) { return CURRENCY + n.toFixed(2); }
 
@@ -318,16 +298,19 @@ function updateChange() {
 }
 
 function showBrowse() {
+  cancelCashfreeFlow();
   document.getElementById('posBrowseView').style.display = '';
   document.getElementById('posCheckoutView').style.display = 'none';
 }
 
 function showCheckout() {
+  cancelCashfreeFlow();
   renderCheckout();
   document.getElementById('posBrowseView').style.display = 'none';
   document.getElementById('posCheckoutView').style.display = '';
   document.getElementById('posTendered').value = '0.00';
   updateChange();
+  updateMethodUI();
 }
 
 function applyFilters() {
@@ -449,6 +432,91 @@ fsBtn.addEventListener('click', function () {
 document.addEventListener('fullscreenchange', function () {
   fsIcon.className = document.fullscreenElement ? 'fa-solid fa-compress' : 'fa-solid fa-expand';
 });
+
+var posMethodSelect = document.getElementById('posMethodSelect');
+if (posMethodSelect) {
+  posMethodSelect.addEventListener('change', updateMethodUI);
+}
+function updateMethodUI() {
+  var isCashfree = posMethodSelect && posMethodSelect.value === 'cashfree';
+  document.getElementById('posCfPhoneWrap').style.display = isCashfree ? '' : 'none';
+  document.getElementById('posTenderedWrap').style.display = isCashfree ? 'none' : '';
+  document.getElementById('posKeypadWrap').style.display = isCashfree ? 'none' : '';
+  document.getElementById('posChangeRow').style.display = isCashfree ? 'none' : '';
+  document.getElementById('posConfirmBtn').textContent = isCashfree ? 'Generate Payment QR' : 'Confirm & Complete Sale';
+}
+updateMethodUI();
+
+document.getElementById('posForm').addEventListener('submit', function (e) {
+  if (!posMethodSelect || posMethodSelect.value !== 'cashfree') return;
+  e.preventDefault();
+  startCashfreePayment();
+});
+
+function startCashfreePayment() {
+  var phone = document.getElementById('posCfPhone').value.trim();
+  if (!/^[6-9][0-9]{9}$/.test(phone)) {
+    alert('Please enter a valid 10-digit mobile number.');
+    return;
+  }
+  var btn = document.getElementById('posConfirmBtn');
+  btn.disabled = true;
+  btn.textContent = 'Generating QR...';
+
+  var formData = new FormData(document.getElementById('posForm'));
+  formData.set('customer_phone', phone);
+
+  fetch(CF_CREATE_URL, { method: 'POST', body: formData })
+    .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
+    .then(function (res) {
+      btn.disabled = false;
+      updateMethodUI();
+      if (!res.ok) { alert(res.data.error || 'Could not start the payment.'); return; }
+      showCashfreeQr(res.data);
+    })
+    .catch(function () {
+      btn.disabled = false;
+      updateMethodUI();
+      alert('Network error — please try again.');
+    });
+}
+
+function showCashfreeQr(data) {
+  cfReference = data.reference;
+  document.getElementById('posNormalCheckout').style.display = 'none';
+  document.getElementById('posCfPanel').style.display = '';
+  document.getElementById('posCfAmount').textContent = fmt(data.amount);
+  var qrEl = document.getElementById('posCfQr');
+  qrEl.innerHTML = '';
+  new QRCode(qrEl, { text: data.link_url, width: 220, height: 220 });
+  if (cfPollTimer) clearInterval(cfPollTimer);
+  cfPollTimer = setInterval(pollCashfreeStatus, 3000);
+}
+
+function pollCashfreeStatus() {
+  if (!cfReference) return;
+  fetch(CF_STATUS_URL + '?reference=' + encodeURIComponent(cfReference))
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      if (data.status === 'paid' && data.redirect) {
+        clearInterval(cfPollTimer);
+        window.location.href = data.redirect;
+      } else if (data.status === 'failed' || data.status === 'expired') {
+        clearInterval(cfPollTimer);
+        alert('Payment was not completed. Please try again.');
+        cancelCashfreeFlow();
+      }
+    });
+}
+
+document.getElementById('posCfCancel').addEventListener('click', cancelCashfreeFlow);
+function cancelCashfreeFlow() {
+  if (cfPollTimer) clearInterval(cfPollTimer);
+  cfPollTimer = null;
+  cfReference = null;
+  document.getElementById('posCfPanel').style.display = 'none';
+  document.getElementById('posNormalCheckout').style.display = '';
+}
 
 renderBrowseCart();
 ";

@@ -13,6 +13,8 @@ require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/functions.php';
 require_once __DIR__ . '/permissions.php';
 require_once __DIR__ . '/stock.php';
+require_once __DIR__ . '/cashfree.php';
+require_once __DIR__ . '/pos.php';
 
 function current_user(): ?array
 {

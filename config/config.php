@@ -25,3 +25,13 @@ define('APP_DEBUG', true);
 // string before deploying (e.g. generate one at random.org or run
 // php -r "echo bin2hex(random_bytes(32));" locally).
 define('APP_SECRET', '693d38dd22adc89cfcba59106abb25739eb6232489796b0b1e5295c6f207417e');
+
+// --- Cashfree Payment Gateway (POS online payments) ---
+// From your Cashfree merchant dashboard: Developers > API Keys.
+// Leave CASHFREE_CLIENT_ID blank to disable the "Pay via Cashfree" option in POS.
+// Do NOT commit real values here to git — add them directly on the live
+// server via File Manager instead. See the setup notes for why.
+define('CASHFREE_CLIENT_ID', '');
+define('CASHFREE_CLIENT_SECRET', '');
+// 'sandbox' or 'production'.
+define('CASHFREE_ENV', 'production');

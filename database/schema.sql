@@ -346,7 +346,7 @@ CREATE TABLE IF NOT EXISTS payments (
   invoice_id INT UNSIGNED NOT NULL,
   amount DECIMAL(14,2) NOT NULL,
   payment_date DATE NOT NULL,
-  method ENUM('cash','bank_transfer','card','cheque','other','credit_note') NOT NULL DEFAULT 'cash',
+  method ENUM('cash','bank_transfer','card','cheque','other','credit_note','upi') NOT NULL DEFAULT 'cash',
   reference VARCHAR(120) DEFAULT NULL,
   notes VARCHAR(255) DEFAULT NULL,
   created_by INT UNSIGNED DEFAULT NULL,
@@ -480,6 +480,30 @@ CREATE TABLE IF NOT EXISTS purchase_return_items (
   subtotal DECIMAL(14,2) NOT NULL,
   FOREIGN KEY (purchase_return_id) REFERENCES purchase_returns(id) ON DELETE CASCADE,
   FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Tracks a POS sale paid via an online payment gateway (Cashfree Payment
+-- Links) from QR generation until confirmed paid/failed. The Sales
+-- Order/Invoice/stock movement are only created once the gateway
+-- confirms payment via webhook - never at QR generation time.
+CREATE TABLE IF NOT EXISTS pos_gateway_payments (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  reference VARCHAR(60) NOT NULL UNIQUE,
+  gateway VARCHAR(20) NOT NULL DEFAULT 'cashfree',
+  gateway_link_id VARCHAR(60) DEFAULT NULL,
+  link_url VARCHAR(500) DEFAULT NULL,
+  customer_id INT UNSIGNED NOT NULL,
+  cart_json TEXT NOT NULL,
+  amount DECIMAL(14,2) NOT NULL,
+  status ENUM('created','paid','failed','expired') NOT NULL DEFAULT 'created',
+  sales_order_id INT UNSIGNED DEFAULT NULL,
+  last_webhook_payload TEXT DEFAULT NULL,
+  created_by INT UNSIGNED DEFAULT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
+  FOREIGN KEY (sales_order_id) REFERENCES sales_orders(id) ON DELETE SET NULL,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS expenses (
