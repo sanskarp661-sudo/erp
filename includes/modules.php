@@ -74,6 +74,7 @@ $MODULES = [
             ['label' => 'Price Lists',    'icon' => 'fa-solid fa-tags',       'url' => 'sales/price_lists.php', 'match' => 'sales/price_list'],
             ['label' => 'Tax Templates',  'icon' => 'fa-solid fa-percent',    'url' => 'sales/tax_templates.php', 'match' => 'sales/tax_template'],
             ['label' => 'Shipping Partners', 'icon' => 'fa-solid fa-truck-fast', 'url' => 'sales/shipping_partners.php', 'match' => 'sales/shipping_partner'],
+            ['label' => 'Payment Terms',  'icon' => 'fa-solid fa-file-contract', 'url' => 'sales/payment_terms_templates.php', 'match' => 'sales/payment_terms'],
             ['label' => 'Sales Report',   'icon' => 'fa-solid fa-chart-line', 'url' => 'reports/sales_report.php', 'match' => 'reports/sales'],
         ],
     ],

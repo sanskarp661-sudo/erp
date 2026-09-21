@@ -164,6 +164,7 @@ CREATE TABLE IF NOT EXISTS customers (
   email VARCHAR(150) DEFAULT NULL,
   phone VARCHAR(40) DEFAULT NULL,
   address VARCHAR(255) DEFAULT NULL,
+  credit_limit DECIMAL(14,2) DEFAULT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -252,6 +253,28 @@ CREATE TABLE IF NOT EXISTS shipping_partners (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- A reusable payment schedule, applied to a Sales Order in one click via
+-- "Apply Template" (sales_order_payment_schedule then holds a frozen
+-- copy, same pattern as tax_templates / sales_order_taxes).
+CREATE TABLE IF NOT EXISTS payment_terms_templates (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(120) NOT NULL UNIQUE,
+  status ENUM('active','inactive') NOT NULL DEFAULT 'active',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS payment_terms_template_items (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  template_id INT UNSIGNED NOT NULL,
+  due_on ENUM('order_date','on_delivery','fixed_days') NOT NULL DEFAULT 'order_date',
+  days_from INT NOT NULL DEFAULT 0,
+  payment_type ENUM('advance','part_payment','balance') NOT NULL DEFAULT 'balance',
+  percentage DECIMAL(5,2) NOT NULL DEFAULT 0,
+  remarks VARCHAR(120) DEFAULT NULL,
+  sort_order INT NOT NULL DEFAULT 0,
+  FOREIGN KEY (template_id) REFERENCES payment_terms_templates(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- warehouse_id is optional and only used for the Stock Balance Report's
 -- "Reserved Qty" column — a Sales Order never moves stock itself, that's
 -- still exclusively the job of its Delivery Note. It's kept in sync with
@@ -313,12 +336,29 @@ CREATE TABLE IF NOT EXISTS sales_orders (
   adjustment_type ENUM('none','add','subtract') NOT NULL DEFAULT 'none',
   adjustment_amount DECIMAL(14,2) NOT NULL DEFAULT 0,
   adjustment_remarks VARCHAR(255) DEFAULT NULL,
+  payment_terms_template_id INT UNSIGNED DEFAULT NULL,
+  payment_terms VARCHAR(120) DEFAULT NULL,
+  payment_method VARCHAR(60) DEFAULT NULL,
+  payment_due_date_basis ENUM('against_delivery','against_order_date','fixed_date') NOT NULL DEFAULT 'against_delivery',
+  payment_instructions TEXT DEFAULT NULL,
+  require_advance_payment TINYINT(1) NOT NULL DEFAULT 0,
+  advance_percentage DECIMAL(5,2) NOT NULL DEFAULT 0,
+  advance_valid_till DATE DEFAULT NULL,
+  interest_on_late_payment TINYINT(1) NOT NULL DEFAULT 0,
+  late_interest_rate DECIMAL(5,2) NOT NULL DEFAULT 0,
+  late_grace_period_days INT NOT NULL DEFAULT 0,
+  late_payment_terms VARCHAR(255) DEFAULT NULL,
+  payment_reference VARCHAR(120) DEFAULT NULL,
+  special_payment_terms VARCHAR(255) DEFAULT NULL,
+  allow_partial_payments TINYINT(1) NOT NULL DEFAULT 1,
+  send_payment_reminder TINYINT(1) NOT NULL DEFAULT 0,
   created_by INT UNSIGNED DEFAULT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
   FOREIGN KEY (customer_address_id) REFERENCES customer_addresses(id) ON DELETE SET NULL,
   FOREIGN KEY (ship_to_address_id) REFERENCES customer_addresses(id) ON DELETE SET NULL,
   FOREIGN KEY (shipping_partner_id) REFERENCES shipping_partners(id) ON DELETE SET NULL,
+  FOREIGN KEY (payment_terms_template_id) REFERENCES payment_terms_templates(id) ON DELETE SET NULL,
   FOREIGN KEY (warehouse_id) REFERENCES warehouses(id) ON DELETE SET NULL,
   FOREIGN KEY (price_list_id) REFERENCES price_lists(id) ON DELETE SET NULL,
   FOREIGN KEY (sales_person_id) REFERENCES users(id) ON DELETE SET NULL,
@@ -354,6 +394,19 @@ CREATE TABLE IF NOT EXISTS sales_order_items (
   FOREIGN KEY (order_id) REFERENCES sales_orders(id) ON DELETE CASCADE,
   FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
   FOREIGN KEY (warehouse_id) REFERENCES warehouses(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS sales_order_payment_schedule (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  order_id INT UNSIGNED NOT NULL,
+  due_on ENUM('order_date','on_delivery','fixed_days') NOT NULL DEFAULT 'order_date',
+  days_from INT NOT NULL DEFAULT 0,
+  payment_type ENUM('advance','part_payment','balance') NOT NULL DEFAULT 'balance',
+  percentage DECIMAL(5,2) NOT NULL DEFAULT 0,
+  amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+  remarks VARCHAR(120) DEFAULT NULL,
+  sort_order INT NOT NULL DEFAULT 0,
+  FOREIGN KEY (order_id) REFERENCES sales_orders(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- A Delivery Note is what actually deducts stock for a sale (Sales Orders
@@ -808,6 +861,11 @@ INSERT INTO tax_templates (id, name) VALUES (1, 'GST - Standard (Sales)');
 INSERT INTO tax_template_items (tax_template_id, type, account_head_id, description, based_on, rate_or_amount, sort_order) VALUES
 (1, 'on_item', 1, 'CGST @ 9%', 'net_amount', 9, 1),
 (1, 'on_item', 2, 'SGST @ 9%', 'net_amount', 9, 2);
+
+INSERT INTO payment_terms_templates (id, name) VALUES (1, 'Standard 30 Days');
+INSERT INTO payment_terms_template_items (template_id, due_on, days_from, payment_type, percentage, remarks, sort_order) VALUES
+(1, 'order_date', 0, 'advance', 30, 'Advance payment', 1),
+(1, 'fixed_days', 30, 'balance', 70, 'Balance within 30 days', 2);
 
 INSERT INTO departments (name, description) VALUES
 ('General', 'Default department');

@@ -20,9 +20,14 @@ $order = [
     'expected_dispatch_date' => '', 'expected_delivery_date' => '', 'create_dn_after_submit' => 1,
     'update_stock_on_submit' => 1, 'allow_partial_delivery' => 0, 'notify_customer' => 0,
     'print_picking_list' => 0, 'print_shipping_label' => 0, 'include_shipping_in_total' => 1,
+    'payment_terms_template_id' => '', 'payment_terms' => '', 'payment_method' => '', 'payment_due_date_basis' => 'against_delivery',
+    'payment_instructions' => '', 'require_advance_payment' => 0, 'advance_percentage' => 0, 'advance_valid_till' => '',
+    'interest_on_late_payment' => 0, 'late_interest_rate' => 0, 'late_grace_period_days' => 0, 'late_payment_terms' => '',
+    'payment_reference' => '', 'special_payment_terms' => '', 'allow_partial_payments' => 1, 'send_payment_reminder' => 0,
 ];
 $items = [];
 $taxRows = [];
+$paymentSchedule = [];
 
 if ($id) {
     $stmt = db()->prepare('SELECT * FROM sales_orders WHERE id = ?');
@@ -42,10 +47,13 @@ if ($id) {
     $stmt = db()->prepare('SELECT * FROM sales_order_taxes WHERE order_id = ? ORDER BY sort_order, id');
     $stmt->execute([$id]);
     $taxRows = $stmt->fetchAll();
+    $stmt = db()->prepare('SELECT * FROM sales_order_payment_schedule WHERE order_id = ? ORDER BY sort_order, id');
+    $stmt->execute([$id]);
+    $paymentSchedule = $stmt->fetchAll();
 }
 
 $error = '';
-$activeTab = in_array(input('tab'), ['items', 'taxes', 'shipping'], true) ? input('tab') : 'details';
+$activeTab = in_array(input('tab'), ['items', 'taxes', 'shipping', 'payment'], true) ? input('tab') : 'details';
 
 /** Rounds $amount to the nearest multiple of $precision, per $method ('nearest'|'up'|'down'). */
 function so_round(float $amount, float $precision, string $method): float
@@ -107,6 +115,23 @@ if (is_post()) {
     $printPickingList = input('print_picking_list') ? 1 : 0;
     $printShippingLabel = input('print_shipping_label') ? 1 : 0;
     $includeShippingInTotal = input('include_shipping_in_total') ? 1 : 0;
+
+    $paymentTermsTemplateId = (int)input('payment_terms_template_id') ?: null;
+    $paymentTerms = input('payment_terms') ?: null;
+    $paymentMethod = input('payment_method') ?: null;
+    $paymentDueDateBasis = in_array(input('payment_due_date_basis'), ['against_delivery', 'against_order_date', 'fixed_date'], true) ? input('payment_due_date_basis') : 'against_delivery';
+    $paymentInstructions = input('payment_instructions') ?: null;
+    $requireAdvancePayment = input('require_advance_payment') ? 1 : 0;
+    $advancePercentage = max(0, min(100, (float)input('advance_percentage')));
+    $advanceValidTill = input('advance_valid_till') ?: null;
+    $interestOnLatePayment = input('interest_on_late_payment') ? 1 : 0;
+    $lateInterestRate = max(0, (float)input('late_interest_rate'));
+    $lateGracePeriodDays = max(0, (int)input('late_grace_period_days'));
+    $latePaymentTerms = input('late_payment_terms') ?: null;
+    $paymentReference = input('payment_reference') ?: null;
+    $specialPaymentTerms = input('special_payment_terms') ?: null;
+    $allowPartialPayments = input('allow_partial_payments') ? 1 : 0;
+    $sendPaymentReminder = input('send_payment_reminder') ? 1 : 0;
 
     $productIds = $_POST['product_id'] ?? [];
     $descriptions = $_POST['description'] ?? [];
@@ -190,6 +215,30 @@ if (is_post()) {
     }
     $grandTotal = so_round($grandTotal, $roundingPrecision, $roundingMethod);
 
+    // Payment schedule row amounts are always computed server-side from
+    // the server-computed grand total, same discipline as tax rows.
+    $scheduleDueOns = $_POST['sched_due_on'] ?? [];
+    $scheduleDaysFroms = $_POST['sched_days_from'] ?? [];
+    $schedulePaymentTypes = $_POST['sched_payment_type'] ?? [];
+    $schedulePercentages = $_POST['sched_percentage'] ?? [];
+    $scheduleRemarksArr = $_POST['sched_remarks'] ?? [];
+    $paymentScheduleToSave = [];
+    $sort = 0;
+    foreach ($schedulePercentages as $i => $pct) {
+        $pct = max(0, min(100, (float)$pct));
+        $remarks = trim($scheduleRemarksArr[$i] ?? '');
+        if ($pct == 0 && $remarks === '') {
+            continue;
+        }
+        $dueOn = in_array($scheduleDueOns[$i] ?? '', ['order_date', 'on_delivery', 'fixed_days'], true) ? $scheduleDueOns[$i] : 'order_date';
+        $paymentType = in_array($schedulePaymentTypes[$i] ?? '', ['advance', 'part_payment', 'balance'], true) ? $schedulePaymentTypes[$i] : 'balance';
+        $daysFrom = (int)($scheduleDaysFroms[$i] ?? 0);
+        $paymentScheduleToSave[] = [
+            'due_on' => $dueOn, 'days_from' => $daysFrom, 'payment_type' => $paymentType,
+            'percentage' => $pct, 'amount' => round($grandTotal * $pct / 100, 2), 'remarks' => $remarks, 'sort_order' => $sort++,
+        ];
+    }
+
     if (!$customerId) {
         $error = 'Please select a customer.';
         $activeTab = 'details';
@@ -200,13 +249,14 @@ if (is_post()) {
         $pdo = db();
         $pdo->beginTransaction();
         try {
-            $headerColNames = ['customer_id', 'contact_person', 'customer_address_id', 'warehouse_id', 'order_date', 'required_delivery_date', 'price_list_id', 'currency', 'sales_channel', 'territory', 'sales_person_id', 'customer_po_no', 'project', 'notes', 'total_amount', 'net_amount', 'tax_template_id', 'place_of_supply', 'gst_category', 'reverse_charge', 'tax_remarks', 'rounding_method', 'rounding_precision', 'additional_discount', 'additional_charge', 'adjustment_type', 'adjustment_amount', 'adjustment_remarks', 'promised_delivery_date', 'delivery_priority', 'fulfillment_type', 'delivery_terms', 'shipping_rule', 'delivery_remarks', 'ship_to_address_id', 'shipping_partner_id', 'shipping_service_type', 'shipping_method', 'tracking_no', 'expected_dispatch_date', 'expected_delivery_date', 'create_dn_after_submit', 'update_stock_on_submit', 'allow_partial_delivery', 'notify_customer', 'print_picking_list', 'print_shipping_label', 'include_shipping_in_total'];
-            $headerVals = [$customerId, $contactPerson, $customerAddressId, $firstWarehouseId, $orderDate, $requiredDeliveryDate, $priceListId, $currency, $salesChannel, $territory, $salesPersonId, $customerPoNo, $project, $notes, $grandTotal, $netAmount, $taxTemplateId, $placeOfSupply, $gstCategory, $reverseCharge, $taxRemarks, $roundingMethod, $roundingPrecision, $additionalDiscount, $additionalCharge, $adjustmentType, $adjustmentAmount, $adjustmentRemarks, $promisedDeliveryDate, $deliveryPriority, $fulfillmentType, $deliveryTerms, $shippingRule, $deliveryRemarks, $shipToAddressId, $shippingPartnerId, $shippingServiceType, $shippingMethod, $trackingNo, $expectedDispatchDate, $expectedDeliveryDate, $createDnAfterSubmit, $updateStockOnSubmit, $allowPartialDelivery, $notifyCustomer, $printPickingList, $printShippingLabel, $includeShippingInTotal];
+            $headerColNames = ['customer_id', 'contact_person', 'customer_address_id', 'warehouse_id', 'order_date', 'required_delivery_date', 'price_list_id', 'currency', 'sales_channel', 'territory', 'sales_person_id', 'customer_po_no', 'project', 'notes', 'total_amount', 'net_amount', 'tax_template_id', 'place_of_supply', 'gst_category', 'reverse_charge', 'tax_remarks', 'rounding_method', 'rounding_precision', 'additional_discount', 'additional_charge', 'adjustment_type', 'adjustment_amount', 'adjustment_remarks', 'promised_delivery_date', 'delivery_priority', 'fulfillment_type', 'delivery_terms', 'shipping_rule', 'delivery_remarks', 'ship_to_address_id', 'shipping_partner_id', 'shipping_service_type', 'shipping_method', 'tracking_no', 'expected_dispatch_date', 'expected_delivery_date', 'create_dn_after_submit', 'update_stock_on_submit', 'allow_partial_delivery', 'notify_customer', 'print_picking_list', 'print_shipping_label', 'include_shipping_in_total', 'payment_terms_template_id', 'payment_terms', 'payment_method', 'payment_due_date_basis', 'payment_instructions', 'require_advance_payment', 'advance_percentage', 'advance_valid_till', 'interest_on_late_payment', 'late_interest_rate', 'late_grace_period_days', 'late_payment_terms', 'payment_reference', 'special_payment_terms', 'allow_partial_payments', 'send_payment_reminder'];
+            $headerVals = [$customerId, $contactPerson, $customerAddressId, $firstWarehouseId, $orderDate, $requiredDeliveryDate, $priceListId, $currency, $salesChannel, $territory, $salesPersonId, $customerPoNo, $project, $notes, $grandTotal, $netAmount, $taxTemplateId, $placeOfSupply, $gstCategory, $reverseCharge, $taxRemarks, $roundingMethod, $roundingPrecision, $additionalDiscount, $additionalCharge, $adjustmentType, $adjustmentAmount, $adjustmentRemarks, $promisedDeliveryDate, $deliveryPriority, $fulfillmentType, $deliveryTerms, $shippingRule, $deliveryRemarks, $shipToAddressId, $shippingPartnerId, $shippingServiceType, $shippingMethod, $trackingNo, $expectedDispatchDate, $expectedDeliveryDate, $createDnAfterSubmit, $updateStockOnSubmit, $allowPartialDelivery, $notifyCustomer, $printPickingList, $printShippingLabel, $includeShippingInTotal, $paymentTermsTemplateId, $paymentTerms, $paymentMethod, $paymentDueDateBasis, $paymentInstructions, $requireAdvancePayment, $advancePercentage, $advanceValidTill, $interestOnLatePayment, $lateInterestRate, $lateGracePeriodDays, $latePaymentTerms, $paymentReference, $specialPaymentTerms, $allowPartialPayments, $sendPaymentReminder];
             if ($id) {
                 $setClause = implode(', ', array_map(fn($c) => "$c=?", $headerColNames));
                 $pdo->prepare("UPDATE sales_orders SET $setClause WHERE id=?")->execute([...$headerVals, $id]);
                 $pdo->prepare('DELETE FROM sales_order_items WHERE order_id=?')->execute([$id]);
                 $pdo->prepare('DELETE FROM sales_order_taxes WHERE order_id=?')->execute([$id]);
+                $pdo->prepare('DELETE FROM sales_order_payment_schedule WHERE order_id=?')->execute([$id]);
                 $orderId = $id;
             } else {
                 $orderNo = next_code('SO', 'sales_orders', 'order_no');
@@ -223,6 +273,10 @@ if (is_post()) {
             $taxStmt = $pdo->prepare('INSERT INTO sales_order_taxes (order_id, type, account_head_id, description, based_on, rate_or_amount, amount, sort_order) VALUES (?,?,?,?,?,?,?,?)');
             foreach ($taxRowsToSave as $tr) {
                 $taxStmt->execute([$orderId, $tr['type'], $tr['account_head_id'], $tr['description'], $tr['based_on'], $tr['rate_or_amount'], $tr['amount'], $tr['sort_order']]);
+            }
+            $scheduleStmt = $pdo->prepare('INSERT INTO sales_order_payment_schedule (order_id, due_on, days_from, payment_type, percentage, amount, remarks, sort_order) VALUES (?,?,?,?,?,?,?,?)');
+            foreach ($paymentScheduleToSave as $ps) {
+                $scheduleStmt->execute([$orderId, $ps['due_on'], $ps['days_from'], $ps['payment_type'], $ps['percentage'], $ps['amount'], $ps['remarks'], $ps['sort_order']]);
             }
             $pdo->commit();
             flash('success', $id ? 'Sales order updated.' : 'Sales order created.');
@@ -251,9 +305,17 @@ if (is_post()) {
         'update_stock_on_submit' => $updateStockOnSubmit, 'allow_partial_delivery' => $allowPartialDelivery,
         'notify_customer' => $notifyCustomer, 'print_picking_list' => $printPickingList, 'print_shipping_label' => $printShippingLabel,
         'include_shipping_in_total' => $includeShippingInTotal,
+        'payment_terms_template_id' => $paymentTermsTemplateId, 'payment_terms' => $paymentTerms, 'payment_method' => $paymentMethod,
+        'payment_due_date_basis' => $paymentDueDateBasis, 'payment_instructions' => $paymentInstructions,
+        'require_advance_payment' => $requireAdvancePayment, 'advance_percentage' => $advancePercentage, 'advance_valid_till' => $advanceValidTill,
+        'interest_on_late_payment' => $interestOnLatePayment, 'late_interest_rate' => $lateInterestRate,
+        'late_grace_period_days' => $lateGracePeriodDays, 'late_payment_terms' => $latePaymentTerms,
+        'payment_reference' => $paymentReference, 'special_payment_terms' => $specialPaymentTerms,
+        'allow_partial_payments' => $allowPartialPayments, 'send_payment_reminder' => $sendPaymentReminder,
     ];
     $items = $lineItems;
     $taxRows = $taxRowsToSave;
+    $paymentSchedule = $paymentScheduleToSave;
 }
 
 $newAddressId = (int)input('new_address_id');
@@ -261,7 +323,11 @@ if ($newAddressId) {
     $order['customer_address_id'] = $newAddressId;
 }
 
-$customers = db()->query('SELECT id, name FROM customers ORDER BY name')->fetchAll();
+$customers = db()->query('SELECT id, name, credit_limit FROM customers ORDER BY name')->fetchAll();
+$customerCreditLimits = [];
+foreach ($customers as $c) {
+    $customerCreditLimits[(int)$c['id']] = $c['credit_limit'] !== null ? (float)$c['credit_limit'] : null;
+}
 $products = db()->query("SELECT p.id, p.sku, p.name, p.selling_price, p.quantity, p.unit, c.name category_name FROM products p LEFT JOIN categories c ON c.id = p.category_id WHERE p.status='active' ORDER BY p.name")->fetchAll();
 $warehouses = leaf_warehouses();
 $priceLists = db()->query("SELECT id, name, currency FROM price_lists WHERE status='active' ORDER BY is_default DESC, name")->fetchAll();
@@ -280,6 +346,16 @@ foreach ($addrStmt as $a) {
 }
 
 $shippingPartners = db()->query("SELECT id, name FROM shipping_partners WHERE status='active' ORDER BY name")->fetchAll();
+
+$paymentTermsTemplates = db()->query("SELECT id, name FROM payment_terms_templates WHERE status='active' ORDER BY name")->fetchAll();
+$paymentTermsTemplateRows = [];
+$pttStmt = db()->query('SELECT template_id, due_on, days_from, payment_type, percentage, remarks FROM payment_terms_template_items ORDER BY template_id, sort_order, id');
+foreach ($pttStmt as $r) {
+    $paymentTermsTemplateRows[(int)$r['template_id']][] = [
+        'due_on' => $r['due_on'], 'days_from' => (int)$r['days_from'], 'payment_type' => $r['payment_type'],
+        'percentage' => (float)$r['percentage'], 'remarks' => $r['remarks'],
+    ];
+}
 
 $warehouseNames = [];
 foreach ($warehouses as $w) {
@@ -335,6 +411,7 @@ require __DIR__ . '/../includes/header.php';
     <li class="nav-item"><button class="nav-link <?= $activeTab === 'items' ? 'active' : '' ?>" id="tab-items" data-bs-toggle="tab" data-bs-target="#pane-items" type="button">Items</button></li>
     <li class="nav-item"><button class="nav-link <?= $activeTab === 'taxes' ? 'active' : '' ?>" id="tab-taxes" data-bs-toggle="tab" data-bs-target="#pane-taxes" type="button">Taxes &amp; Charges</button></li>
     <li class="nav-item"><button class="nav-link <?= $activeTab === 'shipping' ? 'active' : '' ?>" id="tab-shipping" data-bs-toggle="tab" data-bs-target="#pane-shipping" type="button">Shipping &amp; Delivery</button></li>
+    <li class="nav-item"><button class="nav-link <?= $activeTab === 'payment' ? 'active' : '' ?>" id="tab-payment" data-bs-toggle="tab" data-bs-target="#pane-payment" type="button">Payment Terms</button></li>
   </ul>
 
   <form method="post" id="soForm">
@@ -826,6 +903,197 @@ require __DIR__ . '/../includes/header.php';
           </div>
         </div>
       </div>
+
+      <div class="tab-pane fade <?= $activeTab === 'payment' ? 'show active' : '' ?>" id="pane-payment">
+        <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+          <h6 class="text-muted mb-0"><i class="fa-solid fa-credit-card"></i> Payment Terms</h6>
+          <div class="d-flex gap-2 align-items-end">
+            <div>
+              <label class="form-label small mb-1">Payment Terms Template</label>
+              <select id="paymentTermsTemplateSelect" class="form-select form-select-sm">
+                <option value="">— None —</option>
+                <?php foreach ($paymentTermsTemplates as $pt): ?>
+                  <option value="<?= (int)$pt['id'] ?>" <?= (string)$order['payment_terms_template_id'] === (string)$pt['id'] ? 'selected' : '' ?>><?= e($pt['name']) ?></option>
+                <?php endforeach; ?>
+              </select>
+            </div>
+            <button type="button" id="applyPaymentTemplateBtn" class="btn btn-sm btn-outline-brand"><i class="fa-solid fa-download"></i> Apply Template</button>
+          </div>
+        </div>
+        <input type="hidden" name="payment_terms_template_id" id="paymentTermsTemplateIdInput" value="<?= e($order['payment_terms_template_id'] ?? '') ?>">
+
+        <div class="row g-3 mb-3">
+          <div class="col-lg-6">
+            <div class="card p-3 h-100">
+              <h6 class="mb-3">General Terms</h6>
+              <div class="row g-2 mb-2">
+                <div class="col-sm-7">
+                  <label class="form-label">Payment Terms</label>
+                  <input type="text" name="payment_terms" class="form-control" placeholder="e.g. 30% Advance, 70% Within 30 Days" value="<?= e($order['payment_terms'] ?? '') ?>">
+                </div>
+                <div class="col-sm-5">
+                  <label class="form-label">Credit Limit</label>
+                  <input type="text" id="creditLimitDisplay" class="form-control" value="<?= $order['customer_id'] && isset($customerCreditLimits[(int)$order['customer_id']]) && $customerCreditLimits[(int)$order['customer_id']] !== null ? money($customerCreditLimits[(int)$order['customer_id']]) : '—' ?>" disabled>
+                </div>
+              </div>
+              <div class="row g-2 mb-2">
+                <div class="col-sm-6">
+                  <label class="form-label">Payment Method</label>
+                  <select name="payment_method" class="form-select">
+                    <option value="">— Select —</option>
+                    <?php foreach (['Bank Transfer', 'Cash', 'Cheque', 'UPI', 'Card'] as $pm): ?>
+                      <option value="<?= $pm ?>" <?= $order['payment_method'] === $pm ? 'selected' : '' ?>><?= $pm ?></option>
+                    <?php endforeach; ?>
+                  </select>
+                </div>
+                <div class="col-sm-6">
+                  <label class="form-label">Payment Due Date Basis</label>
+                  <select name="payment_due_date_basis" class="form-select">
+                    <option value="against_delivery" <?= $order['payment_due_date_basis'] === 'against_delivery' ? 'selected' : '' ?>>Against Delivery</option>
+                    <option value="against_order_date" <?= $order['payment_due_date_basis'] === 'against_order_date' ? 'selected' : '' ?>>Against Order Date</option>
+                    <option value="fixed_date" <?= $order['payment_due_date_basis'] === 'fixed_date' ? 'selected' : '' ?>>Fixed Date</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label class="form-label">Payment Instructions (for customer)</label>
+                <textarea name="payment_instructions" class="form-control" rows="3"><?= e($order['payment_instructions'] ?? '') ?></textarea>
+              </div>
+            </div>
+          </div>
+          <div class="col-lg-6">
+            <div class="card p-3 h-100">
+              <h6 class="mb-3">Payment Schedule <span class="text-muted small fw-normal">— % of order total, must total 100</span></h6>
+              <div class="table-responsive mb-2">
+                <table class="table table-sm">
+                  <thead><tr><th>Due On</th><th style="width:70px">Days</th><th>Type</th><th style="width:90px">%</th><th class="text-end" style="width:100px">Amount</th><th></th></tr></thead>
+                  <tbody class="pts-tbody">
+                  <?php if (!$paymentSchedule): $paymentSchedule = []; endif; ?>
+                  <?php foreach ($paymentSchedule as $ps): ?>
+                    <tr data-row>
+                      <td>
+                        <select class="form-select form-select-sm pts-due-on" name="sched_due_on[]">
+                          <option value="order_date" <?= $ps['due_on'] === 'order_date' ? 'selected' : '' ?>>Order Date</option>
+                          <option value="on_delivery" <?= $ps['due_on'] === 'on_delivery' ? 'selected' : '' ?>>Delivery</option>
+                          <option value="fixed_days" <?= $ps['due_on'] === 'fixed_days' ? 'selected' : '' ?>>Fixed Days</option>
+                        </select>
+                      </td>
+                      <td><input type="number" min="0" class="form-control form-control-sm" name="sched_days_from[]" value="<?= e($ps['days_from']) ?>"></td>
+                      <td>
+                        <select class="form-select form-select-sm" name="sched_payment_type[]">
+                          <option value="advance" <?= $ps['payment_type'] === 'advance' ? 'selected' : '' ?>>Advance</option>
+                          <option value="part_payment" <?= $ps['payment_type'] === 'part_payment' ? 'selected' : '' ?>>Part Payment</option>
+                          <option value="balance" <?= $ps['payment_type'] === 'balance' ? 'selected' : '' ?>>Balance</option>
+                        </select>
+                      </td>
+                      <td><input type="number" step="0.01" min="0" max="100" class="form-control form-control-sm pts-percentage" name="sched_percentage[]" value="<?= e($ps['percentage']) ?>"></td>
+                      <td class="text-end pts-amount"><?= number_format((float)($ps['amount'] ?? 0), 2) ?></td>
+                      <td><button type="button" class="btn btn-sm btn-outline-danger pts-remove-row"><i class="fa-solid fa-xmark"></i></button></td>
+                    </tr>
+                  <?php endforeach; ?>
+                  <?php if (!$paymentSchedule): ?>
+                    <tr data-row>
+                      <td>
+                        <select class="form-select form-select-sm pts-due-on" name="sched_due_on[]">
+                          <option value="order_date">Order Date</option>
+                          <option value="on_delivery">Delivery</option>
+                          <option value="fixed_days">Fixed Days</option>
+                        </select>
+                      </td>
+                      <td><input type="number" min="0" class="form-control form-control-sm" name="sched_days_from[]" value="0"></td>
+                      <td>
+                        <select class="form-select form-select-sm" name="sched_payment_type[]">
+                          <option value="advance">Advance</option>
+                          <option value="part_payment">Part Payment</option>
+                          <option value="balance" selected>Balance</option>
+                        </select>
+                      </td>
+                      <td><input type="number" step="0.01" min="0" max="100" class="form-control form-control-sm pts-percentage" name="sched_percentage[]" value="100"></td>
+                      <td class="text-end pts-amount">0.00</td>
+                      <td><button type="button" class="btn btn-sm btn-outline-danger pts-remove-row"><i class="fa-solid fa-xmark"></i></button></td>
+                    </tr>
+                  <?php endif; ?>
+                  </tbody>
+                </table>
+              </div>
+              <div class="d-flex justify-content-between align-items-center">
+                <button type="button" class="btn btn-sm btn-outline-brand pts-add-row"><i class="fa-solid fa-plus"></i> Add Payment Term</button>
+                <div class="small">Total: <strong id="ptsPercentTotal">0</strong>% · <strong id="ptsAmountTotal">0.00</strong></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row g-3 mb-3">
+          <div class="col-lg-4">
+            <div class="card p-3 h-100">
+              <h6 class="mb-3">Advance Payment</h6>
+              <div class="form-check form-switch mb-2">
+                <input type="checkbox" class="form-check-input" id="requireAdvanceChk" name="require_advance_payment" value="1" <?= !empty($order['require_advance_payment']) ? 'checked' : '' ?>>
+                <label class="form-check-label" for="requireAdvanceChk">Require Advance Payment?</label>
+              </div>
+              <div class="row g-2 mb-2">
+                <div class="col-sm-6">
+                  <label class="form-label">Advance %</label>
+                  <input type="number" step="0.01" min="0" max="100" name="advance_percentage" id="advancePercentageInput" class="form-control" value="<?= e($order['advance_percentage'] ?? 0) ?>">
+                </div>
+                <div class="col-sm-6">
+                  <label class="form-label">Advance Amount</label>
+                  <input type="text" id="advanceAmountDisplay" class="form-control" disabled value="0.00">
+                </div>
+              </div>
+              <div>
+                <label class="form-label">Advance Valid Till</label>
+                <input type="date" name="advance_valid_till" class="form-control" value="<?= e($order['advance_valid_till'] ?? '') ?>">
+              </div>
+            </div>
+          </div>
+          <div class="col-lg-4">
+            <div class="card p-3 h-100">
+              <h6 class="mb-3">Late Payment</h6>
+              <div class="form-check form-switch mb-2">
+                <input type="checkbox" class="form-check-input" id="lateInterestChk" name="interest_on_late_payment" value="1" <?= !empty($order['interest_on_late_payment']) ? 'checked' : '' ?>>
+                <label class="form-check-label" for="lateInterestChk">Interest on Late Payment</label>
+              </div>
+              <div class="row g-2 mb-2">
+                <div class="col-sm-6">
+                  <label class="form-label">Interest Rate %</label>
+                  <input type="number" step="0.01" min="0" name="late_interest_rate" class="form-control" value="<?= e($order['late_interest_rate'] ?? 0) ?>">
+                </div>
+                <div class="col-sm-6">
+                  <label class="form-label">Grace Period (Days)</label>
+                  <input type="number" min="0" name="late_grace_period_days" class="form-control" value="<?= e($order['late_grace_period_days'] ?? 0) ?>">
+                </div>
+              </div>
+              <div>
+                <label class="form-label">Late Payment Terms</label>
+                <textarea name="late_payment_terms" class="form-control" rows="2"><?= e($order['late_payment_terms'] ?? '') ?></textarea>
+              </div>
+            </div>
+          </div>
+          <div class="col-lg-4">
+            <div class="card p-3 h-100">
+              <h6 class="mb-3">Additional Information</h6>
+              <div class="mb-2">
+                <label class="form-label">Payment Reference</label>
+                <input type="text" name="payment_reference" class="form-control" value="<?= e($order['payment_reference'] ?? '') ?>">
+              </div>
+              <div class="mb-2">
+                <label class="form-label">Special Terms</label>
+                <textarea name="special_payment_terms" class="form-control" rows="2"><?= e($order['special_payment_terms'] ?? '') ?></textarea>
+              </div>
+              <div class="form-check mb-1">
+                <input type="checkbox" class="form-check-input" id="allowPartialPayChk" name="allow_partial_payments" value="1" <?= !empty($order['allow_partial_payments']) ? 'checked' : '' ?>>
+                <label class="form-check-label" for="allowPartialPayChk">Allow Partial Payments</label>
+              </div>
+              <div class="form-check">
+                <input type="checkbox" class="form-check-input" id="sendReminderChk" name="send_payment_reminder" value="1" <?= !empty($order['send_payment_reminder']) ? 'checked' : '' ?>>
+                <label class="form-check-label" for="sendReminderChk">Send Payment Reminder to Customer</label>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="page-actions mt-3">
@@ -1054,6 +1322,8 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('taxSummaryTax').textContent = totalTax.toFixed(2);
     document.getElementById('taxSummaryGrandTotal').textContent = grand.toFixed(2);
     document.getElementById('taxSummaryRate').textContent = (net > 0 ? (totalTax / net * 100) : 0).toFixed(2) + '%';
+    window.soGrandTotal = grand;
+    if (window.soRecalcPaymentSchedule) window.soRecalcPaymentSchedule();
   };
 
   wrap.addEventListener('input', window.soRecalcTaxes);
@@ -1123,6 +1393,103 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   window.soRecalcTaxes();
+});
+
+var paymentTermsTemplateRows = " . json_encode($paymentTermsTemplateRows) . ";
+var customerCreditLimits = " . json_encode($customerCreditLimits) . ";
+
+document.addEventListener('DOMContentLoaded', function () {
+  var wrap = document.querySelector('.pts-tbody');
+  if (!wrap) return;
+
+  window.soRecalcPaymentSchedule = function () {
+    var grand = window.soGrandTotal || 0;
+    var pctTotal = 0, amtTotal = 0;
+    wrap.querySelectorAll('tr[data-row]').forEach(function (row) {
+      var pct = parseFloat(row.querySelector('.pts-percentage')?.value || 0) || 0;
+      var amt = grand * pct / 100;
+      var amtEl = row.querySelector('.pts-amount');
+      if (amtEl) amtEl.textContent = amt.toFixed(2);
+      pctTotal += pct;
+      amtTotal += amt;
+    });
+    document.getElementById('ptsPercentTotal').textContent = pctTotal.toFixed(2).replace(/\\.00$/, '');
+    document.getElementById('ptsAmountTotal').textContent = amtTotal.toFixed(2);
+
+    var advancePct = parseFloat(document.getElementById('advancePercentageInput')?.value || 0) || 0;
+    var advanceAmountEl = document.getElementById('advanceAmountDisplay');
+    if (advanceAmountEl) advanceAmountEl.value = (grand * advancePct / 100).toFixed(2);
+  };
+
+  wrap.addEventListener('input', window.soRecalcPaymentSchedule);
+  wrap.addEventListener('change', window.soRecalcPaymentSchedule);
+
+  var advanceInput = document.getElementById('advancePercentageInput');
+  if (advanceInput) advanceInput.addEventListener('input', window.soRecalcPaymentSchedule);
+
+  wrap.closest('.card').addEventListener('click', function (e) {
+    if (e.target.closest('.pts-add-row')) {
+      var rows = wrap.querySelectorAll('tr[data-row]');
+      var clone = rows[rows.length - 1].cloneNode(true);
+      clone.querySelectorAll('input').forEach(function (inp) { inp.value = inp.classList.contains('pts-percentage') ? 0 : 0; });
+      clone.querySelectorAll('select').forEach(function (sel) { sel.selectedIndex = 0; });
+      clone.querySelector('.pts-amount').textContent = '0.00';
+      wrap.appendChild(clone);
+      window.soRecalcPaymentSchedule();
+      return;
+    }
+    var rm = e.target.closest('.pts-remove-row');
+    if (rm) {
+      var rows2 = wrap.querySelectorAll('tr[data-row]');
+      if (rows2.length > 1) {
+        rm.closest('tr[data-row]').remove();
+        window.soRecalcPaymentSchedule();
+      }
+    }
+  });
+
+  var applyBtn = document.getElementById('applyPaymentTemplateBtn');
+  if (applyBtn) {
+    applyBtn.addEventListener('click', function () {
+      var ptId = document.getElementById('paymentTermsTemplateSelect').value;
+      document.getElementById('paymentTermsTemplateIdInput').value = ptId;
+      var rows = paymentTermsTemplateRows[ptId] || [];
+      wrap.innerHTML = '';
+      rows.forEach(function (r) {
+        var tr = document.createElement('tr');
+        tr.setAttribute('data-row', '');
+        tr.innerHTML = '<td><select class=\"form-select form-select-sm pts-due-on\" name=\"sched_due_on[]\"><option value=\"order_date\">Order Date</option><option value=\"on_delivery\">Delivery</option><option value=\"fixed_days\">Fixed Days</option></select></td>' +
+          '<td><input type=\"number\" min=\"0\" class=\"form-control form-control-sm\" name=\"sched_days_from[]\"></td>' +
+          '<td><select class=\"form-select form-select-sm\" name=\"sched_payment_type[]\"><option value=\"advance\">Advance</option><option value=\"part_payment\">Part Payment</option><option value=\"balance\">Balance</option></select></td>' +
+          '<td><input type=\"number\" step=\"0.01\" min=\"0\" max=\"100\" class=\"form-control form-control-sm pts-percentage\" name=\"sched_percentage[]\"></td>' +
+          '<td class=\"text-end pts-amount\">0.00</td>' +
+          '<td><button type=\"button\" class=\"btn btn-sm btn-outline-danger pts-remove-row\"><i class=\"fa-solid fa-xmark\"></i></button></td>';
+        tr.querySelector('.pts-due-on').value = r.due_on;
+        tr.querySelector('input[name=\"sched_days_from[]\"]').value = r.days_from;
+        tr.querySelector('select[name=\"sched_payment_type[]\"]').value = r.payment_type;
+        tr.querySelector('.pts-percentage').value = r.percentage;
+        wrap.appendChild(tr);
+      });
+      if (!rows.length) {
+        var tr2 = document.createElement('tr');
+        tr2.setAttribute('data-row', '');
+        tr2.innerHTML = '<td><select class=\"form-select form-select-sm pts-due-on\" name=\"sched_due_on[]\"><option value=\"order_date\">Order Date</option></select></td><td><input type=\"number\" class=\"form-control form-control-sm\" name=\"sched_days_from[]\" value=\"0\"></td><td><select class=\"form-select form-select-sm\" name=\"sched_payment_type[]\"><option value=\"balance\">Balance</option></select></td><td><input type=\"number\" class=\"form-control form-control-sm pts-percentage\" name=\"sched_percentage[]\" value=\"100\"></td><td class=\"text-end pts-amount\">0.00</td><td><button type=\"button\" class=\"btn btn-sm btn-outline-danger pts-remove-row\"><i class=\"fa-solid fa-xmark\"></i></button></td>';
+        wrap.appendChild(tr2);
+      }
+      window.soRecalcPaymentSchedule();
+    });
+  }
+
+  var customerSelect = document.getElementById('customerSelect');
+  var creditLimitDisplay = document.getElementById('creditLimitDisplay');
+  if (customerSelect && creditLimitDisplay) {
+    customerSelect.addEventListener('change', function () {
+      var limit = customerCreditLimits[customerSelect.value];
+      creditLimitDisplay.value = (limit === undefined || limit === null) ? '—' : Number(limit).toFixed(2);
+    });
+  }
+
+  window.soRecalcPaymentSchedule();
 });
 ";
 require __DIR__ . '/../includes/footer.php';

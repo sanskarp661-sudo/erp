@@ -3,7 +3,7 @@ require_once __DIR__ . '/../includes/auth.php';
 require_module_edit('crm');
 
 $id = (int)input('id');
-$customer = ['id' => 0, 'name' => '', 'company' => '', 'email' => '', 'phone' => '', 'address' => ''];
+$customer = ['id' => 0, 'name' => '', 'company' => '', 'email' => '', 'phone' => '', 'address' => '', 'credit_limit' => ''];
 
 if ($id) {
     $stmt = db()->prepare('SELECT * FROM customers WHERE id = ?');
@@ -22,18 +22,19 @@ if (is_post()) {
         'email' => input('email'),
         'phone' => input('phone'),
         'address' => input('address'),
+        'credit_limit' => input('credit_limit') !== '' ? (float)input('credit_limit') : null,
     ];
 
     if ($customer['name'] === '') {
         $error = 'Name is required.';
     } else {
         if ($id) {
-            $stmt = db()->prepare('UPDATE customers SET name=?, company=?, email=?, phone=?, address=? WHERE id=?');
-            $stmt->execute([$customer['name'], $customer['company'], $customer['email'], $customer['phone'], $customer['address'], $id]);
+            $stmt = db()->prepare('UPDATE customers SET name=?, company=?, email=?, phone=?, address=?, credit_limit=? WHERE id=?');
+            $stmt->execute([$customer['name'], $customer['company'], $customer['email'], $customer['phone'], $customer['address'], $customer['credit_limit'], $id]);
             flash('success', 'Customer updated.');
         } else {
-            $stmt = db()->prepare('INSERT INTO customers (name, company, email, phone, address) VALUES (?,?,?,?,?)');
-            $stmt->execute([$customer['name'], $customer['company'], $customer['email'], $customer['phone'], $customer['address']]);
+            $stmt = db()->prepare('INSERT INTO customers (name, company, email, phone, address, credit_limit) VALUES (?,?,?,?,?,?)');
+            $stmt->execute([$customer['name'], $customer['company'], $customer['email'], $customer['phone'], $customer['address'], $customer['credit_limit']]);
             flash('success', 'Customer created.');
         }
         redirect('/crm/customers.php');
@@ -63,6 +64,10 @@ require __DIR__ . '/../includes/header.php';
       <div class="col-sm-6">
         <label class="form-label">Phone</label>
         <input type="text" name="phone" class="form-control" value="<?= e($customer['phone']) ?>">
+      </div>
+      <div class="col-sm-6">
+        <label class="form-label">Credit Limit</label>
+        <input type="number" step="0.01" min="0" name="credit_limit" class="form-control" value="<?= e($customer['credit_limit'] ?? '') ?>">
       </div>
       <div class="col-12">
         <label class="form-label">Address</label>

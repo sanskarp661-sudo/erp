@@ -65,6 +65,10 @@ $taxRows = db()->prepare('SELECT sot.*, la.name account_name FROM sales_order_ta
 $taxRows->execute([$id]);
 $taxRows = $taxRows->fetchAll();
 
+$paymentSchedule = db()->prepare('SELECT * FROM sales_order_payment_schedule WHERE order_id = ? ORDER BY sort_order, id');
+$paymentSchedule->execute([$id]);
+$paymentSchedule = $paymentSchedule->fetchAll();
+
 $dnStmt = db()->prepare('SELECT id, dn_no, status FROM delivery_notes WHERE sales_order_id = ? LIMIT 1');
 $dnStmt->execute([$id]);
 $existingDn = $dnStmt->fetch();
@@ -267,6 +271,38 @@ require __DIR__ . '/../includes/header.php';
       <div class="d-flex justify-content-between fs-5 border-top pt-2"><span>Grand Total</span><strong><?= money($order['total_amount']) ?></strong></div>
     </div>
   </div>
+</div>
+
+<div class="card p-3 mt-3">
+  <h6 class="mb-2">Payment Terms</h6>
+  <div class="row g-3 mb-2">
+    <div class="col-sm-4"><div class="small text-muted">Payment Terms</div><div><?= e($order['payment_terms'] ?: '—') ?></div></div>
+    <div class="col-sm-4"><div class="small text-muted">Payment Method</div><div><?= e($order['payment_method'] ?: '—') ?></div></div>
+    <div class="col-sm-4"><div class="small text-muted">Payment Reference</div><div><?= e($order['payment_reference'] ?: '—') ?></div></div>
+  </div>
+  <?php if ($paymentSchedule): ?>
+  <div class="table-responsive">
+    <table class="table table-sm">
+      <thead><tr><th>Due On</th><th>Payment Type</th><th class="text-end">%</th><th class="text-end">Amount</th><th>Remarks</th></tr></thead>
+      <tbody>
+      <?php foreach ($paymentSchedule as $ps): ?>
+        <tr>
+          <td><?= ['order_date' => 'Order Date', 'on_delivery' => 'Delivery', 'fixed_days' => $ps['days_from'] . ' days'][$ps['due_on']] ?? e($ps['due_on']) ?></td>
+          <td class="text-capitalize"><?= e(str_replace('_', ' ', $ps['payment_type'])) ?></td>
+          <td class="text-end"><?= e(number_format((float)$ps['percentage'], 2)) ?></td>
+          <td class="text-end"><?= money($ps['amount']) ?></td>
+          <td><?= e($ps['remarks']) ?></td>
+        </tr>
+      <?php endforeach; ?>
+      </tbody>
+    </table>
+  </div>
+  <?php else: ?>
+  <div class="text-muted small">No payment schedule set.</div>
+  <?php endif; ?>
+  <?php if ($order['require_advance_payment']): ?>
+    <div class="mt-2 small"><strong>Advance:</strong> <?= e(number_format((float)$order['advance_percentage'], 2)) ?>% due<?= $order['advance_valid_till'] ? ' (valid till ' . e($order['advance_valid_till']) . ')' : '' ?></div>
+  <?php endif; ?>
 </div>
 
 <?php if ($returns): ?>
