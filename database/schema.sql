@@ -209,11 +209,48 @@ CREATE TABLE IF NOT EXISTS customer_addresses (
   FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Chart of Accounts (kept intentionally minimal — just enough to tag a
+-- Tax Template row as a real ledger account). account_type='tax' is what
+-- separates "Total Tax Amount" from "Total Charges" in the Sales Order's
+-- Tax Summary panel.
+CREATE TABLE IF NOT EXISTS ledger_accounts (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(120) NOT NULL UNIQUE,
+  account_type ENUM('tax','income','expense','other') NOT NULL DEFAULT 'other',
+  status ENUM('active','inactive') NOT NULL DEFAULT 'active',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- A reusable set of tax/charge rows, applied to a Sales Order in one
+-- click via "Apply Template" (sales_order_taxes then holds a frozen copy).
+CREATE TABLE IF NOT EXISTS tax_templates (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(120) NOT NULL UNIQUE,
+  status ENUM('active','inactive') NOT NULL DEFAULT 'active',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS tax_template_items (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  tax_template_id INT UNSIGNED NOT NULL,
+  type ENUM('on_item','on_order') NOT NULL DEFAULT 'on_item',
+  account_head_id INT UNSIGNED DEFAULT NULL,
+  description VARCHAR(120) DEFAULT NULL,
+  based_on ENUM('net_amount','actual_amount') NOT NULL DEFAULT 'net_amount',
+  rate_or_amount DECIMAL(14,4) NOT NULL DEFAULT 0,
+  sort_order INT NOT NULL DEFAULT 0,
+  FOREIGN KEY (tax_template_id) REFERENCES tax_templates(id) ON DELETE CASCADE,
+  FOREIGN KEY (account_head_id) REFERENCES ledger_accounts(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- warehouse_id is optional and only used for the Stock Balance Report's
 -- "Reserved Qty" column — a Sales Order never moves stock itself, that's
 -- still exclusively the job of its Delivery Note. It's kept in sync with
 -- the first line item's warehouse; the real per-item warehouse lives on
 -- sales_order_items (items can ship from different warehouses).
+--
+-- total_amount is the GRAND TOTAL (net_amount + charges + tax +
+-- adjustments, rounded); net_amount is the pre-tax items sum.
 CREATE TABLE IF NOT EXISTS sales_orders (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   order_no VARCHAR(30) NOT NULL UNIQUE,
@@ -234,6 +271,19 @@ CREATE TABLE IF NOT EXISTS sales_orders (
   channel ENUM('online','pos') NOT NULL DEFAULT 'online',
   notes VARCHAR(255) DEFAULT NULL,
   total_amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+  net_amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+  tax_template_id INT UNSIGNED DEFAULT NULL,
+  place_of_supply VARCHAR(120) DEFAULT NULL,
+  gst_category ENUM('registered_business','unregistered_business','consumer','overseas','sez') DEFAULT NULL,
+  reverse_charge TINYINT(1) NOT NULL DEFAULT 0,
+  tax_remarks VARCHAR(255) DEFAULT NULL,
+  rounding_method ENUM('nearest','up','down') NOT NULL DEFAULT 'nearest',
+  rounding_precision DECIMAL(6,2) NOT NULL DEFAULT 0.01,
+  additional_discount DECIMAL(14,2) NOT NULL DEFAULT 0,
+  additional_charge DECIMAL(14,2) NOT NULL DEFAULT 0,
+  adjustment_type ENUM('none','add','subtract') NOT NULL DEFAULT 'none',
+  adjustment_amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+  adjustment_remarks VARCHAR(255) DEFAULT NULL,
   created_by INT UNSIGNED DEFAULT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
@@ -241,7 +291,22 @@ CREATE TABLE IF NOT EXISTS sales_orders (
   FOREIGN KEY (warehouse_id) REFERENCES warehouses(id) ON DELETE SET NULL,
   FOREIGN KEY (price_list_id) REFERENCES price_lists(id) ON DELETE SET NULL,
   FOREIGN KEY (sales_person_id) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (tax_template_id) REFERENCES tax_templates(id) ON DELETE SET NULL,
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS sales_order_taxes (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  order_id INT UNSIGNED NOT NULL,
+  type ENUM('on_item','on_order') NOT NULL DEFAULT 'on_item',
+  account_head_id INT UNSIGNED DEFAULT NULL,
+  description VARCHAR(120) DEFAULT NULL,
+  based_on ENUM('net_amount','actual_amount') NOT NULL DEFAULT 'net_amount',
+  rate_or_amount DECIMAL(14,4) NOT NULL DEFAULT 0,
+  amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+  sort_order INT NOT NULL DEFAULT 0,
+  FOREIGN KEY (order_id) REFERENCES sales_orders(id) ON DELETE CASCADE,
+  FOREIGN KEY (account_head_id) REFERENCES ledger_accounts(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS sales_order_items (
@@ -700,6 +765,18 @@ INSERT INTO settings (setting_key, setting_value) VALUES
 
 INSERT INTO price_lists (name, currency, is_default) VALUES
 ('Standard Selling', 'INR', 1);
+
+INSERT INTO ledger_accounts (name, account_type) VALUES
+('Output CGST', 'tax'),
+('Output SGST', 'tax'),
+('Output IGST', 'tax'),
+('Freight Charges', 'other'),
+('Packaging Charges', 'other');
+
+INSERT INTO tax_templates (id, name) VALUES (1, 'GST - Standard (Sales)');
+INSERT INTO tax_template_items (tax_template_id, type, account_head_id, description, based_on, rate_or_amount, sort_order) VALUES
+(1, 'on_item', 1, 'CGST @ 9%', 'net_amount', 9, 1),
+(1, 'on_item', 2, 'SGST @ 9%', 'net_amount', 9, 2);
 
 INSERT INTO departments (name, description) VALUES
 ('General', 'Default department');

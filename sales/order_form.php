@@ -11,8 +11,12 @@ $order = [
     'price_list_id' => $defaultPriceListId ?: '', 'currency' => setting('currency_code', 'INR'),
     'sales_channel' => '', 'territory' => '', 'sales_person_id' => '', 'customer_po_no' => '', 'project' => '',
     'status' => 'pending', 'notes' => '',
+    'tax_template_id' => '', 'place_of_supply' => '', 'gst_category' => '', 'reverse_charge' => 0, 'tax_remarks' => '',
+    'rounding_method' => 'nearest', 'rounding_precision' => '0.01', 'additional_discount' => 0, 'additional_charge' => 0,
+    'adjustment_type' => 'none', 'adjustment_amount' => 0, 'adjustment_remarks' => '',
 ];
 $items = [];
+$taxRows = [];
 
 if ($id) {
     $stmt = db()->prepare('SELECT * FROM sales_orders WHERE id = ?');
@@ -29,10 +33,24 @@ if ($id) {
     $stmt = db()->prepare('SELECT * FROM sales_order_items WHERE order_id = ?');
     $stmt->execute([$id]);
     $items = $stmt->fetchAll();
+    $stmt = db()->prepare('SELECT * FROM sales_order_taxes WHERE order_id = ? ORDER BY sort_order, id');
+    $stmt->execute([$id]);
+    $taxRows = $stmt->fetchAll();
 }
 
 $error = '';
-$activeTab = input('tab') === 'items' ? 'items' : 'details';
+$activeTab = in_array(input('tab'), ['items', 'taxes'], true) ? input('tab') : 'details';
+
+/** Rounds $amount to the nearest multiple of $precision, per $method ('nearest'|'up'|'down'). */
+function so_round(float $amount, float $precision, string $method): float
+{
+    if ($precision <= 0) {
+        return round($amount, 2);
+    }
+    $units = $amount / $precision;
+    $rounded = $method === 'up' ? ceil($units) : ($method === 'down' ? floor($units) : round($units));
+    return round($rounded * $precision, 2);
+}
 
 if (is_post()) {
     csrf_verify();
@@ -50,6 +68,19 @@ if (is_post()) {
     $project = input('project') ?: null;
     $notes = input('notes');
 
+    $taxTemplateId = (int)input('tax_template_id') ?: null;
+    $placeOfSupply = input('place_of_supply') ?: null;
+    $gstCategory = in_array(input('gst_category'), ['registered_business', 'unregistered_business', 'consumer', 'overseas', 'sez'], true) ? input('gst_category') : null;
+    $reverseCharge = input('reverse_charge') ? 1 : 0;
+    $taxRemarks = input('tax_remarks') ?: null;
+    $roundingMethod = in_array(input('rounding_method'), ['nearest', 'up', 'down'], true) ? input('rounding_method') : 'nearest';
+    $roundingPrecision = (float)input('rounding_precision') ?: 0.01;
+    $additionalDiscount = max(0, (float)input('additional_discount'));
+    $additionalCharge = max(0, (float)input('additional_charge'));
+    $adjustmentType = in_array(input('adjustment_type'), ['none', 'add', 'subtract'], true) ? input('adjustment_type') : 'none';
+    $adjustmentAmount = max(0, (float)input('adjustment_amount'));
+    $adjustmentRemarks = input('adjustment_remarks') ?: null;
+
     $productIds = $_POST['product_id'] ?? [];
     $descriptions = $_POST['description'] ?? [];
     $warehouseIds = $_POST['item_warehouse_id'] ?? [];
@@ -59,7 +90,7 @@ if (is_post()) {
     $discounts = $_POST['discount_percent'] ?? [];
 
     $lineItems = [];
-    $total = 0;
+    $netAmount = 0;
     $firstWarehouseId = null;
     foreach ($productIds as $i => $pid) {
         $pid = (int)$pid;
@@ -79,12 +110,58 @@ if (is_post()) {
                 'discount_percent' => $discount,
                 'subtotal' => $subtotal,
             ];
-            $total += $subtotal;
+            $netAmount += $subtotal;
             if ($firstWarehouseId === null) {
                 $firstWarehouseId = $warehouseId;
             }
         }
     }
+
+    // Tax/charge rows: amounts are always computed server-side from the
+    // server-computed net amount — the client's own live preview is a
+    // convenience, never trusted for the figure that gets saved.
+    $accountTypes = [];
+    foreach (db()->query('SELECT id, account_type FROM ledger_accounts') as $a) {
+        $accountTypes[(int)$a['id']] = $a['account_type'];
+    }
+    $rowTypes = $_POST['row_type'] ?? [];
+    $rowAccountIds = $_POST['row_account_head_id'] ?? [];
+    $rowDescriptions = $_POST['row_description'] ?? [];
+    $rowBasedOns = $_POST['row_based_on'] ?? [];
+    $rowRates = $_POST['row_rate_or_amount'] ?? [];
+
+    $taxRowsToSave = [];
+    $totalTaxAmount = 0;
+    $totalCharges = 0;
+    $sort = 0;
+    foreach ($rowDescriptions as $i => $desc) {
+        $desc = trim($desc);
+        $rate = (float)($rowRates[$i] ?? 0);
+        if ($desc === '' && $rate == 0) {
+            continue;
+        }
+        $type = in_array($rowTypes[$i] ?? '', ['on_item', 'on_order'], true) ? $rowTypes[$i] : 'on_item';
+        $basedOn = in_array($rowBasedOns[$i] ?? '', ['net_amount', 'actual_amount'], true) ? $rowBasedOns[$i] : 'net_amount';
+        $accountId = (int)($rowAccountIds[$i] ?? 0) ?: null;
+        $amount = $basedOn === 'net_amount' ? round($netAmount * $rate / 100, 2) : round($rate, 2);
+        $taxRowsToSave[] = [
+            'type' => $type, 'account_head_id' => $accountId, 'description' => $desc,
+            'based_on' => $basedOn, 'rate_or_amount' => $rate, 'amount' => $amount, 'sort_order' => $sort++,
+        ];
+        if ($accountId && ($accountTypes[$accountId] ?? '') === 'tax') {
+            $totalTaxAmount += $amount;
+        } else {
+            $totalCharges += $amount;
+        }
+    }
+
+    $grandTotal = $netAmount + $totalCharges + $totalTaxAmount + $additionalCharge - $additionalDiscount;
+    if ($adjustmentType === 'add') {
+        $grandTotal += $adjustmentAmount;
+    } elseif ($adjustmentType === 'subtract') {
+        $grandTotal -= $adjustmentAmount;
+    }
+    $grandTotal = so_round($grandTotal, $roundingPrecision, $roundingMethod);
 
     if (!$customerId) {
         $error = 'Please select a customer.';
@@ -96,27 +173,36 @@ if (is_post()) {
         $pdo = db();
         $pdo->beginTransaction();
         try {
+            $headerColNames = ['customer_id', 'contact_person', 'customer_address_id', 'warehouse_id', 'order_date', 'required_delivery_date', 'price_list_id', 'currency', 'sales_channel', 'territory', 'sales_person_id', 'customer_po_no', 'project', 'notes', 'total_amount', 'net_amount', 'tax_template_id', 'place_of_supply', 'gst_category', 'reverse_charge', 'tax_remarks', 'rounding_method', 'rounding_precision', 'additional_discount', 'additional_charge', 'adjustment_type', 'adjustment_amount', 'adjustment_remarks'];
+            $headerVals = [$customerId, $contactPerson, $customerAddressId, $firstWarehouseId, $orderDate, $requiredDeliveryDate, $priceListId, $currency, $salesChannel, $territory, $salesPersonId, $customerPoNo, $project, $notes, $grandTotal, $netAmount, $taxTemplateId, $placeOfSupply, $gstCategory, $reverseCharge, $taxRemarks, $roundingMethod, $roundingPrecision, $additionalDiscount, $additionalCharge, $adjustmentType, $adjustmentAmount, $adjustmentRemarks];
             if ($id) {
-                $pdo->prepare('UPDATE sales_orders SET customer_id=?, contact_person=?, customer_address_id=?, warehouse_id=?, order_date=?, required_delivery_date=?, price_list_id=?, currency=?, sales_channel=?, territory=?, sales_person_id=?, customer_po_no=?, project=?, notes=?, total_amount=? WHERE id=?')
-                    ->execute([$customerId, $contactPerson, $customerAddressId, $firstWarehouseId, $orderDate, $requiredDeliveryDate, $priceListId, $currency, $salesChannel, $territory, $salesPersonId, $customerPoNo, $project, $notes, $total, $id]);
+                $setClause = implode(', ', array_map(fn($c) => "$c=?", $headerColNames));
+                $pdo->prepare("UPDATE sales_orders SET $setClause WHERE id=?")->execute([...$headerVals, $id]);
                 $pdo->prepare('DELETE FROM sales_order_items WHERE order_id=?')->execute([$id]);
+                $pdo->prepare('DELETE FROM sales_order_taxes WHERE order_id=?')->execute([$id]);
                 $orderId = $id;
             } else {
                 $orderNo = next_code('SO', 'sales_orders', 'order_no');
-                $pdo->prepare('INSERT INTO sales_orders (order_no, customer_id, contact_person, customer_address_id, warehouse_id, order_date, required_delivery_date, price_list_id, currency, sales_channel, territory, sales_person_id, customer_po_no, project, status, notes, total_amount, created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-                    ->execute([$orderNo, $customerId, $contactPerson, $customerAddressId, $firstWarehouseId, $orderDate, $requiredDeliveryDate, $priceListId, $currency, $salesChannel, $territory, $salesPersonId, $customerPoNo, $project, 'pending', $notes, $total, current_user()['id']]);
+                $colList = implode(', ', ['order_no', ...$headerColNames, 'status', 'created_by']);
+                $placeholders = implode(',', array_fill(0, count($headerVals) + 3, '?'));
+                $pdo->prepare("INSERT INTO sales_orders ($colList) VALUES ($placeholders)")
+                    ->execute([$orderNo, ...$headerVals, 'pending', current_user()['id']]);
                 $orderId = (int)$pdo->lastInsertId();
             }
             $itemStmt = $pdo->prepare('INSERT INTO sales_order_items (order_id, product_id, description, warehouse_id, quantity, uom, unit_price, discount_percent, subtotal) VALUES (?,?,?,?,?,?,?,?,?)');
             foreach ($lineItems as $li) {
                 $itemStmt->execute([$orderId, $li['product_id'], $li['description'], $li['warehouse_id'], $li['quantity'], $li['uom'], $li['unit_price'], $li['discount_percent'], $li['subtotal']]);
             }
+            $taxStmt = $pdo->prepare('INSERT INTO sales_order_taxes (order_id, type, account_head_id, description, based_on, rate_or_amount, amount, sort_order) VALUES (?,?,?,?,?,?,?,?)');
+            foreach ($taxRowsToSave as $tr) {
+                $taxStmt->execute([$orderId, $tr['type'], $tr['account_head_id'], $tr['description'], $tr['based_on'], $tr['rate_or_amount'], $tr['amount'], $tr['sort_order']]);
+            }
             $pdo->commit();
             flash('success', $id ? 'Sales order updated.' : 'Sales order created.');
             redirect('/sales/order_view.php?id=' . $orderId);
         } catch (Exception $e) {
             $pdo->rollBack();
-            $error = 'Could not save sales order.';
+            $error = 'Could not save sales order.' . (defined('APP_DEBUG') && APP_DEBUG ? ' DEBUG: ' . $e->getMessage() : '');
         }
     }
 
@@ -126,8 +212,13 @@ if (is_post()) {
         'required_delivery_date' => $requiredDeliveryDate, 'price_list_id' => $priceListId, 'currency' => $currency,
         'sales_channel' => $salesChannel, 'territory' => $territory, 'sales_person_id' => $salesPersonId,
         'customer_po_no' => $customerPoNo, 'project' => $project, 'status' => $order['status'] ?? 'pending', 'notes' => $notes,
+        'tax_template_id' => $taxTemplateId, 'place_of_supply' => $placeOfSupply, 'gst_category' => $gstCategory,
+        'reverse_charge' => $reverseCharge, 'tax_remarks' => $taxRemarks, 'rounding_method' => $roundingMethod,
+        'rounding_precision' => $roundingPrecision, 'additional_discount' => $additionalDiscount, 'additional_charge' => $additionalCharge,
+        'adjustment_type' => $adjustmentType, 'adjustment_amount' => $adjustmentAmount, 'adjustment_remarks' => $adjustmentRemarks,
     ];
     $items = $lineItems;
+    $taxRows = $taxRowsToSave;
 }
 
 $newAddressId = (int)input('new_address_id');
@@ -168,6 +259,24 @@ foreach ($products as $p) {
 $salesChannels = ['Direct', 'Online Store', 'Marketplace', 'Retail', 'Distributor', 'POS'];
 $statusBadge = ['pending' => 'secondary', 'confirmed' => 'info', 'shipped' => 'primary', 'completed' => 'success', 'cancelled' => 'danger'];
 
+$ledgerAccounts = db()->query("SELECT id, name, account_type FROM ledger_accounts WHERE status='active' ORDER BY account_type, name")->fetchAll();
+$accountMeta = [];
+foreach ($ledgerAccounts as $a) {
+    $accountMeta[(int)$a['id']] = ['name' => $a['name'], 'type' => $a['account_type']];
+}
+
+$taxTemplates = db()->query("SELECT id, name FROM tax_templates WHERE status='active' ORDER BY name")->fetchAll();
+$taxTemplateRows = [];
+$ttStmt = db()->query('SELECT tax_template_id, type, account_head_id, description, based_on, rate_or_amount FROM tax_template_items ORDER BY tax_template_id, sort_order, id');
+foreach ($ttStmt as $r) {
+    $taxTemplateRows[(int)$r['tax_template_id']][] = [
+        'type' => $r['type'], 'account_head_id' => $r['account_head_id'] ? (int)$r['account_head_id'] : null,
+        'description' => $r['description'], 'based_on' => $r['based_on'], 'rate_or_amount' => (float)$r['rate_or_amount'],
+    ];
+}
+
+$gstCategories = ['registered_business' => 'Registered Business', 'unregistered_business' => 'Unregistered Business', 'consumer' => 'Consumer', 'overseas' => 'Overseas', 'sez' => 'SEZ'];
+
 $page_title = $id ? 'Edit Sales Order' : 'New Sales Order';
 require __DIR__ . '/../includes/header.php';
 ?>
@@ -180,6 +289,7 @@ require __DIR__ . '/../includes/header.php';
   <ul class="nav nav-tabs mb-3">
     <li class="nav-item"><button class="nav-link <?= $activeTab === 'details' ? 'active' : '' ?>" id="tab-details" data-bs-toggle="tab" data-bs-target="#pane-details" type="button">Details</button></li>
     <li class="nav-item"><button class="nav-link <?= $activeTab === 'items' ? 'active' : '' ?>" id="tab-items" data-bs-toggle="tab" data-bs-target="#pane-items" type="button">Items</button></li>
+    <li class="nav-item"><button class="nav-link <?= $activeTab === 'taxes' ? 'active' : '' ?>" id="tab-taxes" data-bs-toggle="tab" data-bs-target="#pane-taxes" type="button">Taxes &amp; Charges</button></li>
   </ul>
 
   <form method="post" id="soForm">
@@ -338,6 +448,164 @@ require __DIR__ . '/../includes/header.php';
           </div>
         </div>
       </div>
+
+      <div class="tab-pane fade <?= $activeTab === 'taxes' ? 'show active' : '' ?>" id="pane-taxes">
+        <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+          <div>
+            <h6 class="text-muted mb-0"><i class="fa-solid fa-percent"></i> Taxes and Charges</h6>
+            <div class="small text-muted">Apply taxes, charges and additional costs to this sales order.</div>
+          </div>
+          <div class="d-flex gap-2 align-items-end">
+            <div>
+              <label class="form-label small mb-1">Tax Template</label>
+              <select id="taxTemplateSelect" class="form-select form-select-sm">
+                <option value="">— None —</option>
+                <?php foreach ($taxTemplates as $tt): ?>
+                  <option value="<?= (int)$tt['id'] ?>" <?= (string)$order['tax_template_id'] === (string)$tt['id'] ? 'selected' : '' ?>><?= e($tt['name']) ?></option>
+                <?php endforeach; ?>
+              </select>
+            </div>
+            <button type="button" id="applyTemplateBtn" class="btn btn-sm btn-outline-brand"><i class="fa-solid fa-download"></i> Apply Template</button>
+          </div>
+        </div>
+        <input type="hidden" name="tax_template_id" id="taxTemplateIdInput" value="<?= e($order['tax_template_id'] ?? '') ?>">
+
+        <div class="so-tax-rows">
+          <div class="table-responsive mb-2">
+            <table class="table table-sm">
+              <thead><tr><th>Type</th><th>Account Head</th><th>Description</th><th style="width:130px">Rate / Amount</th><th>Based On</th><th class="text-end" style="width:110px">Amount</th><th></th></tr></thead>
+              <tbody>
+              <?php if (!$taxRows): $taxRows = []; endif; ?>
+              <?php foreach ($taxRows as $tr): ?>
+                <tr data-row>
+                  <td>
+                    <select class="form-select form-select-sm" name="row_type[]">
+                      <option value="on_item" <?= $tr['type'] === 'on_item' ? 'selected' : '' ?>>On Item</option>
+                      <option value="on_order" <?= $tr['type'] === 'on_order' ? 'selected' : '' ?>>On Order</option>
+                    </select>
+                  </td>
+                  <td>
+                    <select class="form-select form-select-sm js-tax-account" name="row_account_head_id[]">
+                      <option value="">— None —</option>
+                      <?php foreach ($ledgerAccounts as $a): ?>
+                        <option value="<?= (int)$a['id'] ?>" <?= (string)($tr['account_head_id'] ?? '') === (string)$a['id'] ? 'selected' : '' ?>><?= e($a['name']) ?></option>
+                      <?php endforeach; ?>
+                    </select>
+                  </td>
+                  <td><input type="text" class="form-control form-control-sm" name="row_description[]" value="<?= e($tr['description'] ?? '') ?>"></td>
+                  <td><input type="number" step="0.01" class="form-control form-control-sm js-tax-rate" name="row_rate_or_amount[]" value="<?= e($tr['rate_or_amount']) ?>"></td>
+                  <td>
+                    <select class="form-select form-select-sm js-tax-basedon" name="row_based_on[]">
+                      <option value="net_amount" <?= $tr['based_on'] === 'net_amount' ? 'selected' : '' ?>>Net Amount</option>
+                      <option value="actual_amount" <?= $tr['based_on'] === 'actual_amount' ? 'selected' : '' ?>>Actual Amount</option>
+                    </select>
+                  </td>
+                  <td class="text-end js-tax-amount"><?= number_format((float)($tr['amount'] ?? 0), 2) ?></td>
+                  <td><button type="button" class="btn btn-sm btn-outline-danger so-tax-remove-row"><i class="fa-solid fa-xmark"></i></button></td>
+                </tr>
+              <?php endforeach; ?>
+              </tbody>
+            </table>
+          </div>
+          <div class="d-flex gap-2 mb-3">
+            <button type="button" class="btn btn-sm btn-outline-brand so-tax-add-row"><i class="fa-solid fa-plus"></i> Add Row</button>
+            <button type="button" id="calcTaxesBtn" class="btn btn-sm btn-outline-secondary"><i class="fa-solid fa-percent"></i> Calculate Taxes</button>
+          </div>
+        </div>
+
+        <div class="row g-3">
+          <div class="col-lg-4">
+            <div class="card p-3 h-100">
+              <h6 class="mb-3"><i class="fa-solid fa-circle-info"></i> Additional Information</h6>
+              <div class="mb-3">
+                <label class="form-label">Place of Supply</label>
+                <input type="text" name="place_of_supply" class="form-control" value="<?= e($order['place_of_supply'] ?? '') ?>">
+              </div>
+              <div class="row g-2">
+                <div class="col-sm-8">
+                  <label class="form-label">GST Category</label>
+                  <select name="gst_category" class="form-select">
+                    <option value="">— Select —</option>
+                    <?php foreach ($gstCategories as $val => $label): ?>
+                      <option value="<?= e($val) ?>" <?= $order['gst_category'] === $val ? 'selected' : '' ?>><?= e($label) ?></option>
+                    <?php endforeach; ?>
+                  </select>
+                </div>
+                <div class="col-sm-4">
+                  <label class="form-label d-block">Reverse Charge?</label>
+                  <div class="form-check form-switch mt-2">
+                    <input type="checkbox" class="form-check-input" name="reverse_charge" value="1" <?= !empty($order['reverse_charge']) ? 'checked' : '' ?>>
+                  </div>
+                </div>
+              </div>
+              <div class="mt-3">
+                <label class="form-label">Remarks (for tax)</label>
+                <textarea name="tax_remarks" class="form-control" rows="2"><?= e($order['tax_remarks'] ?? '') ?></textarea>
+              </div>
+            </div>
+          </div>
+          <div class="col-lg-4">
+            <div class="card p-3 h-100">
+              <h6 class="mb-3"><i class="fa-solid fa-calculator"></i> Rounding and Adjustment</h6>
+              <div class="row g-2 mb-2">
+                <div class="col-sm-7">
+                  <label class="form-label">Rounding Method</label>
+                  <select name="rounding_method" id="roundingMethodSelect" class="form-select">
+                    <option value="nearest" <?= $order['rounding_method'] === 'nearest' ? 'selected' : '' ?>>Nearest</option>
+                    <option value="up" <?= $order['rounding_method'] === 'up' ? 'selected' : '' ?>>Up</option>
+                    <option value="down" <?= $order['rounding_method'] === 'down' ? 'selected' : '' ?>>Down</option>
+                  </select>
+                </div>
+                <div class="col-sm-5">
+                  <label class="form-label">Precision</label>
+                  <input type="number" step="0.01" min="0" name="rounding_precision" id="roundingPrecisionInput" class="form-control" value="<?= e($order['rounding_precision'] ?? '0.01') ?>">
+                </div>
+              </div>
+              <div class="row g-2 mb-2">
+                <div class="col-sm-6">
+                  <label class="form-label">Additional Discount</label>
+                  <input type="number" step="0.01" min="0" name="additional_discount" id="additionalDiscountInput" class="form-control" value="<?= e($order['additional_discount'] ?? 0) ?>">
+                </div>
+                <div class="col-sm-6">
+                  <label class="form-label">Additional Charge</label>
+                  <input type="number" step="0.01" min="0" name="additional_charge" id="additionalChargeInput" class="form-control" value="<?= e($order['additional_charge'] ?? 0) ?>">
+                </div>
+              </div>
+              <div class="row g-2">
+                <div class="col-sm-5">
+                  <label class="form-label">Adjustment Type</label>
+                  <select name="adjustment_type" id="adjustmentTypeSelect" class="form-select">
+                    <option value="none" <?= $order['adjustment_type'] === 'none' ? 'selected' : '' ?>>None</option>
+                    <option value="add" <?= $order['adjustment_type'] === 'add' ? 'selected' : '' ?>>Add</option>
+                    <option value="subtract" <?= $order['adjustment_type'] === 'subtract' ? 'selected' : '' ?>>Subtract</option>
+                  </select>
+                </div>
+                <div class="col-sm-7">
+                  <label class="form-label">Adjustment Amount</label>
+                  <input type="number" step="0.01" min="0" name="adjustment_amount" id="adjustmentAmountInput" class="form-control" value="<?= e($order['adjustment_amount'] ?? 0) ?>">
+                </div>
+              </div>
+              <div class="mt-2">
+                <label class="form-label">Adjustment Remarks</label>
+                <input type="text" name="adjustment_remarks" class="form-control" value="<?= e($order['adjustment_remarks'] ?? '') ?>">
+              </div>
+            </div>
+          </div>
+          <div class="col-lg-4">
+            <div class="card p-3 h-100">
+              <h6 class="mb-3"><i class="fa-solid fa-chart-pie"></i> Tax Summary</h6>
+              <div class="d-flex justify-content-between mb-1"><span class="text-muted">Net Amount</span><strong id="taxSummaryNet">0.00</strong></div>
+              <div class="d-flex justify-content-between mb-1"><span class="text-muted">Total Charges</span><strong id="taxSummaryCharges">0.00</strong></div>
+              <div class="d-flex justify-content-between mb-1"><span class="text-muted">Total Tax Amount</span><strong id="taxSummaryTax">0.00</strong></div>
+              <hr>
+              <div class="d-flex justify-content-between fs-5 mb-2"><span>Grand Total</span><strong id="taxSummaryGrandTotal">0.00</strong></div>
+              <div class="p-2 rounded bg-light-subtle border d-flex justify-content-between">
+                <span class="small text-muted">Effective Tax Rate</span><strong id="taxSummaryRate">0.00%</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="page-actions mt-3">
@@ -413,6 +681,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
     document.getElementById('soTotal').textContent = total.toFixed(2);
     document.getElementById('soTotalQty').textContent = totalQty;
+    if (window.soRecalcTaxes) window.soRecalcTaxes();
   }
 
   function applyProductDefaults(row) {
@@ -481,6 +750,133 @@ document.addEventListener('DOMContentLoaded', function () {
   });
 
   recalc();
+});
+
+var accountMeta = " . json_encode($accountMeta) . ";
+var taxTemplateRows = " . json_encode($taxTemplateRows) . ";
+
+function soTaxRowAmount(basedOn, rate, netAmount) {
+  return basedOn === 'net_amount' ? (netAmount * rate / 100) : rate;
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+  var wrap = document.querySelector('.so-tax-rows');
+  if (!wrap) return;
+  var tbody = wrap.querySelector('tbody');
+
+  function netAmount() {
+    var el = document.getElementById('soTotal');
+    return el ? (parseFloat(el.textContent) || 0) : 0;
+  }
+
+  function soRound(amount, precision, method) {
+    precision = parseFloat(precision) || 0;
+    if (precision <= 0) return Math.round(amount * 100) / 100;
+    var units = amount / precision;
+    var rounded = method === 'up' ? Math.ceil(units) : (method === 'down' ? Math.floor(units) : Math.round(units));
+    return Math.round(rounded * precision * 100) / 100;
+  }
+
+  window.soRecalcTaxes = function () {
+    var net = netAmount();
+    var totalCharges = 0, totalTax = 0;
+    wrap.querySelectorAll('tr[data-row]').forEach(function (row) {
+      var basedOn = row.querySelector('.js-tax-basedon').value;
+      var rate = parseFloat(row.querySelector('.js-tax-rate').value || 0) || 0;
+      var accountId = row.querySelector('.js-tax-account').value;
+      var amount = soTaxRowAmount(basedOn, rate, net);
+      row.querySelector('.js-tax-amount').textContent = amount.toFixed(2);
+      var meta = accountMeta[accountId];
+      if (meta && meta.type === 'tax') totalTax += amount;
+      else totalCharges += amount;
+    });
+
+    var additionalDiscount = parseFloat(document.getElementById('additionalDiscountInput')?.value || 0) || 0;
+    var additionalCharge = parseFloat(document.getElementById('additionalChargeInput')?.value || 0) || 0;
+    var adjustmentType = document.getElementById('adjustmentTypeSelect')?.value || 'none';
+    var adjustmentAmount = parseFloat(document.getElementById('adjustmentAmountInput')?.value || 0) || 0;
+    var roundingMethod = document.getElementById('roundingMethodSelect')?.value || 'nearest';
+    var roundingPrecision = document.getElementById('roundingPrecisionInput')?.value || '0.01';
+
+    var grand = net + totalCharges + totalTax + additionalCharge - additionalDiscount;
+    if (adjustmentType === 'add') grand += adjustmentAmount;
+    else if (adjustmentType === 'subtract') grand -= adjustmentAmount;
+    grand = soRound(grand, roundingPrecision, roundingMethod);
+
+    document.getElementById('taxSummaryNet').textContent = net.toFixed(2);
+    document.getElementById('taxSummaryCharges').textContent = totalCharges.toFixed(2);
+    document.getElementById('taxSummaryTax').textContent = totalTax.toFixed(2);
+    document.getElementById('taxSummaryGrandTotal').textContent = grand.toFixed(2);
+    document.getElementById('taxSummaryRate').textContent = (net > 0 ? (totalTax / net * 100) : 0).toFixed(2) + '%';
+  };
+
+  wrap.addEventListener('input', window.soRecalcTaxes);
+  wrap.addEventListener('change', window.soRecalcTaxes);
+  ['additionalDiscountInput', 'additionalChargeInput', 'adjustmentTypeSelect', 'adjustmentAmountInput', 'roundingMethodSelect', 'roundingPrecisionInput'].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el) { el.addEventListener('input', window.soRecalcTaxes); el.addEventListener('change', window.soRecalcTaxes); }
+  });
+
+  var calcBtn = document.getElementById('calcTaxesBtn');
+  if (calcBtn) calcBtn.addEventListener('click', window.soRecalcTaxes);
+
+  wrap.addEventListener('click', function (e) {
+    if (e.target.closest('.so-tax-add-row')) {
+      var rows = tbody.querySelectorAll('tr[data-row]');
+      if (rows.length) {
+        var clone = rows[rows.length - 1].cloneNode(true);
+        clone.querySelectorAll('input').forEach(function (inp) { inp.value = ''; });
+        clone.querySelectorAll('select').forEach(function (sel) { sel.selectedIndex = 0; });
+        clone.querySelector('.js-tax-amount').textContent = '0.00';
+        tbody.appendChild(clone);
+        window.soRecalcTaxes();
+      }
+      return;
+    }
+    var rm = e.target.closest('.so-tax-remove-row');
+    if (rm) {
+      rm.closest('tr[data-row]').remove();
+      window.soRecalcTaxes();
+    }
+  });
+
+  var applyBtn = document.getElementById('applyTemplateBtn');
+  if (applyBtn) {
+    applyBtn.addEventListener('click', function () {
+      var ttId = document.getElementById('taxTemplateSelect').value;
+      document.getElementById('taxTemplateIdInput').value = ttId;
+      var rows = taxTemplateRows[ttId] || [];
+      tbody.innerHTML = '';
+      if (!rows.length) { window.soRecalcTaxes(); return; }
+      rows.forEach(function (r) {
+        var tr = document.createElement('tr');
+        tr.setAttribute('data-row', '');
+        tr.innerHTML = '<td><select class=\"form-select form-select-sm\" name=\"row_type[]\"><option value=\"on_item\">On Item</option><option value=\"on_order\">On Order</option></select></td>' +
+          '<td><select class=\"form-select form-select-sm js-tax-account\" name=\"row_account_head_id[]\"><option value=\"\">— None —</option></select></td>' +
+          '<td><input type=\"text\" class=\"form-control form-control-sm\" name=\"row_description[]\"></td>' +
+          '<td><input type=\"number\" step=\"0.01\" class=\"form-control form-control-sm js-tax-rate\" name=\"row_rate_or_amount[]\"></td>' +
+          '<td><select class=\"form-select form-select-sm js-tax-basedon\" name=\"row_based_on[]\"><option value=\"net_amount\">Net Amount</option><option value=\"actual_amount\">Actual Amount</option></select></td>' +
+          '<td class=\"text-end js-tax-amount\">0.00</td>' +
+          '<td><button type=\"button\" class=\"btn btn-sm btn-outline-danger so-tax-remove-row\"><i class=\"fa-solid fa-xmark\"></i></button></td>';
+        var accountSelect = tr.querySelector('.js-tax-account');
+        Object.keys(accountMeta).forEach(function (accId) {
+          var opt = document.createElement('option');
+          opt.value = accId;
+          opt.textContent = accountMeta[accId].name;
+          if (r.account_head_id && String(r.account_head_id) === String(accId)) opt.selected = true;
+          accountSelect.appendChild(opt);
+        });
+        tr.querySelector('select[name=\"row_type[]\"]').value = r.type;
+        tr.querySelector('.js-tax-basedon').value = r.based_on;
+        tr.querySelector('input[name=\"row_description[]\"]').value = r.description || '';
+        tr.querySelector('.js-tax-rate').value = r.rate_or_amount;
+        tbody.appendChild(tr);
+      });
+      window.soRecalcTaxes();
+    });
+  }
+
+  window.soRecalcTaxes();
 });
 ";
 require __DIR__ . '/../includes/footer.php';

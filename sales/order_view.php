@@ -57,6 +57,10 @@ $items = db()->prepare('SELECT soi.*, p.name product_name, p.sku, w.name item_wa
 $items->execute([$id]);
 $items = $items->fetchAll();
 
+$taxRows = db()->prepare('SELECT sot.*, la.name account_name FROM sales_order_taxes sot LEFT JOIN ledger_accounts la ON la.id = sot.account_head_id WHERE order_id = ? ORDER BY sort_order, id');
+$taxRows->execute([$id]);
+$taxRows = $taxRows->fetchAll();
+
 $dnStmt = db()->prepare('SELECT id, dn_no, status FROM delivery_notes WHERE sales_order_id = ? LIMIT 1');
 $dnStmt->execute([$id]);
 $existingDn = $dnStmt->fetch();
@@ -205,11 +209,46 @@ require __DIR__ . '/../includes/header.php';
       <?php endforeach; ?>
       </tbody>
       <tfoot>
-        <tr><th colspan="6" class="text-end">Total</th><th class="text-end"><?= money($order['total_amount']) ?></th></tr>
+        <tr><th colspan="6" class="text-end">Net Amount</th><th class="text-end"><?= money($order['net_amount']) ?></th></tr>
       </tfoot>
     </table>
   </div>
   <?php if ($order['notes']): ?><div class="mt-2"><strong>Notes:</strong> <?= e($order['notes']) ?></div><?php endif; ?>
+</div>
+
+<div class="card p-3 mt-3">
+  <h6 class="mb-2">Taxes and Charges</h6>
+  <?php if ($taxRows): ?>
+  <div class="table-responsive">
+    <table class="table table-sm">
+      <thead><tr><th>Type</th><th>Account Head</th><th>Description</th><th class="text-end">Rate / Amount</th><th>Based On</th><th class="text-end">Amount</th></tr></thead>
+      <tbody>
+      <?php foreach ($taxRows as $tr): ?>
+        <tr>
+          <td><?= $tr['type'] === 'on_item' ? 'On Item' : 'On Order' ?></td>
+          <td><?= e($tr['account_name'] ?: '—') ?></td>
+          <td><?= e($tr['description']) ?></td>
+          <td class="text-end"><?= $tr['based_on'] === 'net_amount' ? e(number_format((float)$tr['rate_or_amount'], 2)) . '%' : money($tr['rate_or_amount']) ?></td>
+          <td><?= $tr['based_on'] === 'net_amount' ? 'Net Amount' : 'Actual Amount' ?></td>
+          <td class="text-end"><?= money($tr['amount']) ?></td>
+        </tr>
+      <?php endforeach; ?>
+      </tbody>
+    </table>
+  </div>
+  <?php else: ?>
+  <div class="text-muted small mb-2">No taxes or charges applied.</div>
+  <?php endif; ?>
+  <div class="row justify-content-end mt-2">
+    <div class="col-sm-6 col-lg-4">
+      <?php if ($order['additional_discount'] > 0): ?><div class="d-flex justify-content-between mb-1"><span class="text-muted">Additional Discount</span><span>-<?= money($order['additional_discount']) ?></span></div><?php endif; ?>
+      <?php if ($order['additional_charge'] > 0): ?><div class="d-flex justify-content-between mb-1"><span class="text-muted">Additional Charge</span><span><?= money($order['additional_charge']) ?></span></div><?php endif; ?>
+      <?php if ($order['adjustment_type'] !== 'none' && $order['adjustment_amount'] > 0): ?>
+        <div class="d-flex justify-content-between mb-1"><span class="text-muted">Adjustment (<?= $order['adjustment_type'] === 'add' ? '+' : '-' ?>)</span><span><?= money($order['adjustment_amount']) ?></span></div>
+      <?php endif; ?>
+      <div class="d-flex justify-content-between fs-5 border-top pt-2"><span>Grand Total</span><strong><?= money($order['total_amount']) ?></strong></div>
+    </div>
+  </div>
 </div>
 
 <?php if ($returns): ?>
