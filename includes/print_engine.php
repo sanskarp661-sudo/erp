@@ -213,6 +213,7 @@ function pf_doctypes(): array
                 return pf_common_tokens() + [
                     'sku' => e($p['sku']),
                     'name' => e($p['name']),
+                    'image' => $p['image'] ? '<img src="' . e(base_url($p['image'])) . '" style="max-width:150px;max-height:150px;object-fit:cover">' : '',
                     'category_name' => e($p['category_name'] ?? '—'),
                     'unit' => e($p['unit']),
                     'cost_price' => money($p['cost_price']),
@@ -223,7 +224,7 @@ function pf_doctypes(): array
                 ];
             },
             'tokens' => [
-                'sku' => 'SKU', 'name' => 'Product name', 'category_name' => 'Category', 'unit' => 'Unit',
+                'sku' => 'SKU', 'name' => 'Product name', 'image' => 'Product photo', 'category_name' => 'Category', 'unit' => 'Unit',
                 'cost_price' => 'Cost price', 'selling_price' => 'Selling price', 'quantity' => 'Quantity in stock',
                 'reorder_level' => 'Reorder level', 'status' => 'Status',
             ],

@@ -1,0 +1,5 @@
+# User-uploaded content lives outside version control — only the
+# directory structure (via .gitkeep) is tracked, not what gets uploaded
+# through the app at runtime.
+/uploads/products/*
+!/uploads/products/.gitkeep
