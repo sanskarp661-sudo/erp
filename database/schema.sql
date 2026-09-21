@@ -164,6 +164,7 @@ CREATE TABLE IF NOT EXISTS sales_orders (
   warehouse_id INT UNSIGNED DEFAULT NULL,
   order_date DATE NOT NULL,
   status ENUM('pending','confirmed','shipped','completed','cancelled') NOT NULL DEFAULT 'pending',
+  channel ENUM('online','pos') NOT NULL DEFAULT 'online',
   notes VARCHAR(255) DEFAULT NULL,
   total_amount DECIMAL(14,2) NOT NULL DEFAULT 0,
   created_by INT UNSIGNED DEFAULT NULL,

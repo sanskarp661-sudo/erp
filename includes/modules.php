@@ -81,7 +81,7 @@ $MODULES = [
         'match' => '/pos/',
         'items' => [
             ['label' => 'New Sale',      'icon' => 'fa-solid fa-cash-register', 'url' => 'pos/index.php',   'match' => 'pos/index.php'],
-            ['label' => 'Sales History',  'icon' => 'fa-solid fa-receipt',       'url' => 'sales/orders.php', 'match' => 'sales/order'],
+            ['label' => 'POS Orders',    'icon' => 'fa-solid fa-receipt',       'url' => 'pos/orders.php',  'match' => 'pos/order'],
         ],
     ],
     'hrms' => [
