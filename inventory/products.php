@@ -17,11 +17,34 @@ if (is_post() && input('action') === 'delete') {
     redirect('/inventory/products.php');
 }
 
-$products = db()->query("
-  SELECT p.*, c.name category_name
-  FROM products p LEFT JOIN categories c ON c.id = p.category_id
-  ORDER BY p.name
-")->fetchAll();
+$categoryFilter = (int)input('category');
+$statusFilter = in_array(input('status'), ['active', 'inactive'], true) ? input('status') : '';
+$stockFilter = in_array(input('stock'), ['in_stock', 'low_stock', 'out_of_stock'], true) ? input('stock') : '';
+
+$sql = "SELECT p.*, c.name category_name FROM products p LEFT JOIN categories c ON c.id = p.category_id WHERE 1=1";
+$params = [];
+if ($categoryFilter) {
+    $sql .= " AND p.category_id = ?";
+    $params[] = $categoryFilter;
+}
+if ($statusFilter) {
+    $sql .= " AND p.status = ?";
+    $params[] = $statusFilter;
+}
+if ($stockFilter === 'out_of_stock') {
+    $sql .= " AND p.quantity <= 0";
+} elseif ($stockFilter === 'low_stock') {
+    $sql .= " AND p.quantity > 0 AND p.quantity <= p.reorder_level";
+} elseif ($stockFilter === 'in_stock') {
+    $sql .= " AND p.quantity > p.reorder_level";
+}
+$sql .= " ORDER BY p.name";
+$stmt = db()->prepare($sql);
+$stmt->execute($params);
+$products = $stmt->fetchAll();
+
+$categories = db()->query('SELECT id, name FROM categories ORDER BY name')->fetchAll();
+$filtersActive = $categoryFilter || $statusFilter || $stockFilter;
 
 $page_title = 'Products';
 require __DIR__ . '/../includes/header.php';
@@ -30,6 +53,41 @@ require __DIR__ . '/../includes/header.php';
   <input type="text" class="form-control" style="max-width:280px" placeholder="Search products..." data-table-search="#prodTable">
   <?php if ($canEdit): ?><a href="product_form.php" class="btn btn-brand"><i class="fa-solid fa-plus"></i> Add Product</a><?php endif; ?>
 </div>
+
+<form method="get" class="card p-3 mb-3">
+  <div class="row g-2 align-items-end">
+    <div class="col-sm-3">
+      <label class="form-label small mb-1">Category</label>
+      <select name="category" class="form-select form-select-sm" onchange="this.form.submit()">
+        <option value="">All categories</option>
+        <?php foreach ($categories as $c): ?>
+          <option value="<?= (int)$c['id'] ?>" <?= $categoryFilter === (int)$c['id'] ? 'selected' : '' ?>><?= e($c['name']) ?></option>
+        <?php endforeach; ?>
+      </select>
+    </div>
+    <div class="col-sm-3">
+      <label class="form-label small mb-1">Status</label>
+      <select name="status" class="form-select form-select-sm" onchange="this.form.submit()">
+        <option value="">All statuses</option>
+        <option value="active" <?= $statusFilter === 'active' ? 'selected' : '' ?>>Active</option>
+        <option value="inactive" <?= $statusFilter === 'inactive' ? 'selected' : '' ?>>Inactive</option>
+      </select>
+    </div>
+    <div class="col-sm-3">
+      <label class="form-label small mb-1">Stock</label>
+      <select name="stock" class="form-select form-select-sm" onchange="this.form.submit()">
+        <option value="">Any stock level</option>
+        <option value="in_stock" <?= $stockFilter === 'in_stock' ? 'selected' : '' ?>>In stock</option>
+        <option value="low_stock" <?= $stockFilter === 'low_stock' ? 'selected' : '' ?>>Low stock</option>
+        <option value="out_of_stock" <?= $stockFilter === 'out_of_stock' ? 'selected' : '' ?>>Out of stock</option>
+      </select>
+    </div>
+    <div class="col-sm-3">
+      <button type="submit" class="btn btn-outline-brand btn-sm">Apply</button>
+      <?php if ($filtersActive): ?><a href="products.php" class="btn btn-outline-secondary btn-sm">Clear</a><?php endif; ?>
+    </div>
+  </div>
+</form>
 <div class="card p-3">
   <div class="table-responsive">
     <table class="table table-hover" id="prodTable">
@@ -66,7 +124,7 @@ require __DIR__ . '/../includes/header.php';
           </td>
         </tr>
       <?php endforeach; ?>
-      <?php if (!$products): ?><tr><td colspan="9" class="text-muted text-center">No products yet.</td></tr><?php endif; ?>
+      <?php if (!$products): ?><tr><td colspan="9" class="text-muted text-center"><?= $filtersActive ? 'No products match these filters.' : 'No products yet.' ?></td></tr><?php endif; ?>
       </tbody>
     </table>
   </div>
