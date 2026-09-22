@@ -21,6 +21,13 @@ $product = [
     'price_last_updated_at' => null, 'price_updated_by' => null,
     'is_price_editable_in_transactions' => 1, 'include_in_price_suggestions' => 1, 'allow_zero_price' => 0, 'show_in_website' => 0,
     'minimum_selling_price' => 0, 'maximum_selling_price' => 0,
+    'income_account_id' => '', 'cogs_account_id' => '', 'purchase_expense_account_id' => '', 'stock_in_hand_account_id' => '',
+    'stock_adjustment_account_id' => '', 'under_over_valuation_account_id' => '', 'scrap_expense_account_id' => '', 'gain_loss_account_id' => '',
+    'capitalization_threshold' => 0, 'include_in_period_closing_entry' => 1,
+    'cost_center' => '', 'default_project' => '', 'activity_type' => '', 'budget' => '',
+    'tax_category' => '', 'is_nil_rated' => 0, 'is_exempt_from_tax' => 0, 'reverse_charge_applicable' => 0, 'tds_applicable' => 0,
+    'default_tax_template_id' => '', 'price_includes_tax' => 0, 'tax_calculation_based_on' => 'Net Amount',
+    'tax_exemption_reason' => '', 'tax_exemption_applicable_from' => '', 'tax_notes' => '',
     'standard_weight_kg' => 0, 'standard_volume_ltr' => 0, 'gross_weight_kg' => 0, 'net_weight_kg' => 0, 'tags' => '',
     'cost_price' => '0', 'selling_price' => '0', 'quantity' => '0',
     'reorder_level' => '0', 'reorder_qty' => 0, 'safety_stock' => 0, 'enable_reorder_notifications' => 1, 'consider_in_mrp' => 1,
@@ -34,6 +41,8 @@ $barcodes = [];
 $stockByWarehouse = [];
 $priceListRates = [];
 $customerPrices = [];
+$productTaxes = [];
+$productCharges = [];
 
 if ($id) {
     $stmt = db()->prepare('SELECT * FROM products WHERE id = ?');
@@ -59,6 +68,12 @@ if ($id) {
     $stmt = db()->prepare('SELECT * FROM product_customer_prices WHERE product_id = ? ORDER BY sort_order, id');
     $stmt->execute([$id]);
     $customerPrices = $stmt->fetchAll();
+    $stmt = db()->prepare('SELECT * FROM product_taxes WHERE product_id = ? ORDER BY sort_order, id');
+    $stmt->execute([$id]);
+    $productTaxes = $stmt->fetchAll();
+    $stmt = db()->prepare('SELECT * FROM product_charges WHERE product_id = ? ORDER BY sort_order, id');
+    $stmt->execute([$id]);
+    $productCharges = $stmt->fetchAll();
 }
 // Captured before any POST handling touches $product — quantity and the
 // current image are never taken from client input on an edit; quantity
@@ -68,7 +83,7 @@ if ($id) {
 $existingQuantity = $id ? (int)$product['quantity'] : 0;
 $existingImage = $id ? $product['image'] : null;
 
-$activeTab = in_array(input('tab'), ['inventory', 'pricing'], true) ? input('tab') : 'details';
+$activeTab = in_array(input('tab'), ['inventory', 'pricing', 'accounting', 'tax'], true) ? input('tab') : 'details';
 $error = '';
 $maxImageBytes = 3 * 1024 * 1024;
 $mimeToExt = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp', 'image/gif' => 'gif'];
@@ -166,6 +181,31 @@ if (is_post()) {
         'show_in_website' => input('show_in_website') === '1' ? 1 : 0,
         'minimum_selling_price' => (float)input('minimum_selling_price'),
         'maximum_selling_price' => (float)input('maximum_selling_price'),
+        'income_account_id' => input('income_account_id') ?: null,
+        'cogs_account_id' => input('cogs_account_id') ?: null,
+        'purchase_expense_account_id' => input('purchase_expense_account_id') ?: null,
+        'stock_in_hand_account_id' => input('stock_in_hand_account_id') ?: null,
+        'stock_adjustment_account_id' => input('stock_adjustment_account_id') ?: null,
+        'under_over_valuation_account_id' => input('under_over_valuation_account_id') ?: null,
+        'scrap_expense_account_id' => input('scrap_expense_account_id') ?: null,
+        'gain_loss_account_id' => input('gain_loss_account_id') ?: null,
+        'capitalization_threshold' => (float)input('capitalization_threshold'),
+        'include_in_period_closing_entry' => input('include_in_period_closing_entry') === '1' ? 1 : 0,
+        'cost_center' => input('cost_center') ?: null,
+        'default_project' => input('default_project') ?: null,
+        'activity_type' => input('activity_type') ?: null,
+        'budget' => input('budget') ?: null,
+        'tax_category' => input('tax_category') ?: null,
+        'is_nil_rated' => input('is_nil_rated') === '1' ? 1 : 0,
+        'is_exempt_from_tax' => input('is_exempt_from_tax') === '1' ? 1 : 0,
+        'reverse_charge_applicable' => input('reverse_charge_applicable') === '1' ? 1 : 0,
+        'tds_applicable' => input('tds_applicable') === '1' ? 1 : 0,
+        'default_tax_template_id' => input('default_tax_template_id') ?: null,
+        'price_includes_tax' => input('price_includes_tax') === '1' ? 1 : 0,
+        'tax_calculation_based_on' => in_array(input('tax_calculation_based_on'), ['Net Amount', 'Gross Amount'], true) ? input('tax_calculation_based_on') : 'Net Amount',
+        'tax_exemption_reason' => input('tax_exemption_reason') ?: null,
+        'tax_exemption_applicable_from' => input('tax_exemption_applicable_from') ?: null,
+        'tax_notes' => input('tax_notes') ?: null,
         'standard_weight_kg' => (float)input('standard_weight_kg'),
         'standard_volume_ltr' => (float)input('standard_volume_ltr'),
         'gross_weight_kg' => (float)input('gross_weight_kg'),
@@ -250,6 +290,48 @@ if (is_post()) {
         ];
     }
 
+    $txTypes = $_POST['tax_charge_type'] ?? [];
+    $txAccounts = $_POST['tax_account_head_id'] ?? [];
+    $txRates = $_POST['tax_rate_or_amount'] ?? [];
+    $txIncluded = $_POST['tax_included_in_price'] ?? []; // one entry per row, kept in sync with the checkbox via a hidden field (see product-tax-rows JS)
+    $txApplicable = $_POST['tax_applicable_on'] ?? [];
+    $productTaxesToSave = [];
+    $txSort = 0;
+    foreach ($txTypes as $i => $type) {
+        $type = trim($type);
+        $accountId = (int)($txAccounts[$i] ?? 0);
+        if ($type === '' && $accountId <= 0) {
+            continue;
+        }
+        $productTaxesToSave[] = [
+            'tax_charge_type' => $type ?: null, 'account_head_id' => $accountId ?: null,
+            'rate_or_amount' => (float)($txRates[$i] ?? 0),
+            'included_in_price' => ((string)($txIncluded[$i] ?? '0') === '1') ? 1 : 0,
+            'applicable_on' => in_array($txApplicable[$i] ?? '', ['net_total', 'grand_total'], true) ? $txApplicable[$i] : 'net_total',
+            'sort_order' => $txSort++,
+        ];
+    }
+
+    $chTypes = $_POST['charge_type'] ?? [];
+    $chAccounts = $_POST['charge_account_head_id'] ?? [];
+    $chRates = $_POST['charge_rate_or_amount'] ?? [];
+    $chApplicable = $_POST['charge_applicable_on'] ?? [];
+    $productChargesToSave = [];
+    $chSort = 0;
+    foreach ($chTypes as $i => $type) {
+        $type = trim($type);
+        $accountId = (int)($chAccounts[$i] ?? 0);
+        if ($type === '' && $accountId <= 0) {
+            continue;
+        }
+        $productChargesToSave[] = [
+            'charge_type' => $type ?: null, 'account_head_id' => $accountId ?: null,
+            'rate_or_amount' => (float)($chRates[$i] ?? 0),
+            'applicable_on' => in_array($chApplicable[$i] ?? '', ['net_total', 'grand_total'], true) ? $chApplicable[$i] : 'net_total',
+            'sort_order' => $chSort++,
+        ];
+    }
+
     if ($error) {
         // Image error already set above.
     } elseif ($product['sku'] === '' || $product['name'] === '') {
@@ -275,6 +357,13 @@ if (is_post()) {
                 'allow_discount', 'max_discount_percent', 'discount_account_id', 'apply_discount_on', 'enable_additional_discount_sales',
                 'price_last_updated_at', 'price_updated_by', 'is_price_editable_in_transactions', 'include_in_price_suggestions',
                 'allow_zero_price', 'show_in_website', 'minimum_selling_price', 'maximum_selling_price',
+                'income_account_id', 'cogs_account_id', 'purchase_expense_account_id', 'stock_in_hand_account_id',
+                'stock_adjustment_account_id', 'under_over_valuation_account_id', 'scrap_expense_account_id', 'gain_loss_account_id',
+                'capitalization_threshold', 'include_in_period_closing_entry',
+                'cost_center', 'default_project', 'activity_type', 'budget',
+                'tax_category', 'is_nil_rated', 'is_exempt_from_tax', 'reverse_charge_applicable', 'tds_applicable',
+                'default_tax_template_id', 'price_includes_tax', 'tax_calculation_based_on',
+                'tax_exemption_reason', 'tax_exemption_applicable_from', 'tax_notes',
                 'standard_weight_kg', 'standard_volume_ltr', 'gross_weight_kg', 'net_weight_kg', 'tags',
                 'cost_price', 'selling_price', 'reorder_level', 'reorder_qty', 'safety_stock', 'enable_reorder_notifications', 'consider_in_mrp',
                 'has_batch_no', 'has_serial_no', 'batch_expiry_required', 'batch_number_series',
@@ -314,6 +403,18 @@ if (is_post()) {
                 $cpStmt->execute([$newId, $cp['customer_id'], $cp['price_list_id'], $cp['rate'], $cp['discount_percent'], $cp['valid_from'], $cp['valid_to'], $cp['sort_order']]);
             }
 
+            $pdo->prepare('DELETE FROM product_taxes WHERE product_id=?')->execute([$newId]);
+            $txStmt = $pdo->prepare('INSERT INTO product_taxes (product_id, tax_charge_type, account_head_id, rate_or_amount, included_in_price, applicable_on, sort_order) VALUES (?,?,?,?,?,?,?)');
+            foreach ($productTaxesToSave as $tx) {
+                $txStmt->execute([$newId, $tx['tax_charge_type'], $tx['account_head_id'], $tx['rate_or_amount'], $tx['included_in_price'], $tx['applicable_on'], $tx['sort_order']]);
+            }
+
+            $pdo->prepare('DELETE FROM product_charges WHERE product_id=?')->execute([$newId]);
+            $chStmt = $pdo->prepare('INSERT INTO product_charges (product_id, charge_type, account_head_id, rate_or_amount, applicable_on, sort_order) VALUES (?,?,?,?,?,?)');
+            foreach ($productChargesToSave as $ch) {
+                $chStmt->execute([$newId, $ch['charge_type'], $ch['account_head_id'], $ch['rate_or_amount'], $ch['applicable_on'], $ch['sort_order']]);
+            }
+
             if (!$id && $openingQty > 0 && $openingWarehouseId) {
                 stock_move($newId, $openingWarehouseId, $openingQty, 'in', 'Initial stock', 'Opening balance on product creation', current_user()['id']);
             }
@@ -334,6 +435,8 @@ if (is_post()) {
     $barcodes = $barcodesToSave;
     $priceListRates = $ratesToSave;
     $customerPrices = $customerPricesToSave;
+    $productTaxes = $productTaxesToSave;
+    $productCharges = $productChargesToSave;
 }
 
 $categories = db()->query('SELECT id, name FROM categories ORDER BY name')->fetchAll();
@@ -344,6 +447,7 @@ $warehouses = leaf_warehouses();
 $priceLists = db()->query("SELECT id, name, currency FROM price_lists WHERE status='active' ORDER BY name")->fetchAll();
 $customers = db()->query('SELECT id, name FROM customers ORDER BY name')->fetchAll();
 $ledgerAccounts = db()->query("SELECT id, name FROM ledger_accounts WHERE status='active' ORDER BY name")->fetchAll();
+$taxTemplates = db()->query("SELECT id, name FROM tax_templates WHERE status='active' ORDER BY name")->fetchAll();
 
 $page_title = $id ? 'Edit Item' : 'New Item';
 require __DIR__ . '/../includes/header.php';
@@ -358,6 +462,8 @@ require __DIR__ . '/../includes/header.php';
     <li class="nav-item"><button class="nav-link <?= $activeTab === 'details' ? 'active' : '' ?>" id="tab-details" data-bs-toggle="tab" data-bs-target="#pane-details" type="button">Details</button></li>
     <li class="nav-item"><button class="nav-link <?= $activeTab === 'inventory' ? 'active' : '' ?>" id="tab-inventory" data-bs-toggle="tab" data-bs-target="#pane-inventory" type="button">Inventory</button></li>
     <li class="nav-item"><button class="nav-link <?= $activeTab === 'pricing' ? 'active' : '' ?>" id="tab-pricing" data-bs-toggle="tab" data-bs-target="#pane-pricing" type="button">Pricing</button></li>
+    <li class="nav-item"><button class="nav-link <?= $activeTab === 'accounting' ? 'active' : '' ?>" id="tab-accounting" data-bs-toggle="tab" data-bs-target="#pane-accounting" type="button">Accounting</button></li>
+    <li class="nav-item"><button class="nav-link <?= $activeTab === 'tax' ? 'active' : '' ?>" id="tab-tax" data-bs-toggle="tab" data-bs-target="#pane-tax" type="button">Tax &amp; Charges</button></li>
   </ul>
 
   <form method="post" enctype="multipart/form-data">
@@ -1002,6 +1108,254 @@ require __DIR__ . '/../includes/header.php';
           </div>
         </div>
       </div>
+
+      <div class="tab-pane fade <?= $activeTab === 'accounting' ? 'show active' : '' ?>" id="pane-accounting">
+        <div class="row g-3">
+          <div class="col-lg-6">
+            <div class="card p-3 mb-3">
+              <h6 class="mb-1">Account Head Mapping</h6>
+              <p class="text-muted small mb-3">Define the default accounts to be used in transactions for this item.</p>
+              <div class="row g-3">
+                <?php
+                $acctFields = [
+                    'income_account_id' => 'Income Account (Sales)', 'cogs_account_id' => 'Cost of Goods Sold (COGS)',
+                    'purchase_expense_account_id' => 'Expense Account (Purchase)', 'stock_in_hand_account_id' => 'Stock in Hand Account',
+                    'stock_adjustment_account_id' => 'Stock Adjustment Account', 'under_over_valuation_account_id' => 'Under/Over Valuation Account',
+                ];
+                ?>
+                <?php foreach ($acctFields as $afKey => $afLabel): ?>
+                  <div class="col-sm-6">
+                    <label class="form-label"><?= e($afLabel) ?></label>
+                    <select name="<?= e($afKey) ?>" class="form-select">
+                      <option value="">— None —</option>
+                      <?php foreach ($ledgerAccounts as $la): ?>
+                        <option value="<?= (int)$la['id'] ?>" <?= (string)$product[$afKey] === (string)$la['id'] ? 'selected' : '' ?>><?= e($la['name']) ?></option>
+                      <?php endforeach; ?>
+                    </select>
+                  </div>
+                <?php endforeach; ?>
+              </div>
+            </div>
+
+            <div class="card p-3 mb-3">
+              <h6 class="mb-1">Valuation Settings</h6>
+              <p class="text-muted small mb-3">Define how the item value is calculated in accounting.</p>
+              <div class="row g-3">
+                <div class="col-sm-6">
+                  <label class="form-label">Expense Account for Scrap</label>
+                  <select name="scrap_expense_account_id" class="form-select">
+                    <option value="">— None —</option>
+                    <?php foreach ($ledgerAccounts as $la): ?>
+                      <option value="<?= (int)$la['id'] ?>" <?= (string)$product['scrap_expense_account_id'] === (string)$la['id'] ? 'selected' : '' ?>><?= e($la['name']) ?></option>
+                    <?php endforeach; ?>
+                  </select>
+                </div>
+                <div class="col-sm-6">
+                  <label class="form-label">Gain/Loss Account</label>
+                  <select name="gain_loss_account_id" class="form-select">
+                    <option value="">— None —</option>
+                    <?php foreach ($ledgerAccounts as $la): ?>
+                      <option value="<?= (int)$la['id'] ?>" <?= (string)$product['gain_loss_account_id'] === (string)$la['id'] ? 'selected' : '' ?>><?= e($la['name']) ?></option>
+                    <?php endforeach; ?>
+                  </select>
+                </div>
+                <div class="col-sm-6">
+                  <label class="form-label">Capitalization Threshold</label>
+                  <input type="number" step="0.01" min="0" name="capitalization_threshold" class="form-control" value="<?= e($product['capitalization_threshold']) ?>">
+                </div>
+                <div class="col-sm-6 d-flex align-items-end">
+                  <div class="form-check form-switch mb-2">
+                    <input type="checkbox" class="form-check-input" id="includePeriodClosing" name="include_in_period_closing_entry" value="1" <?= !empty($product['include_in_period_closing_entry']) ? 'checked' : '' ?>>
+                    <label class="form-check-label" for="includePeriodClosing">Include in Period Closing Entry</label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-lg-6">
+            <div class="card p-3 mb-3">
+              <h6 class="mb-1">Cost Allocation</h6>
+              <p class="text-muted small mb-3">Configure additional costing parameters.</p>
+              <div class="row g-3">
+                <div class="col-sm-6">
+                  <label class="form-label">Cost Center</label>
+                  <input type="text" name="cost_center" class="form-control" value="<?= e($product['cost_center'] ?? '') ?>">
+                </div>
+                <div class="col-sm-6">
+                  <label class="form-label">Project (Default)</label>
+                  <input type="text" name="default_project" class="form-control" value="<?= e($product['default_project'] ?? '') ?>">
+                </div>
+                <div class="col-sm-6">
+                  <label class="form-label">Activity Type</label>
+                  <input type="text" name="activity_type" class="form-control" value="<?= e($product['activity_type'] ?? '') ?>">
+                </div>
+                <div class="col-sm-6">
+                  <label class="form-label">Budget (Optional)</label>
+                  <input type="text" name="budget" class="form-control" value="<?= e($product['budget'] ?? '') ?>">
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-pane fade <?= $activeTab === 'tax' ? 'show active' : '' ?>" id="pane-tax">
+        <div class="row g-3">
+          <div class="col-lg-6">
+            <div class="card p-3 mb-3">
+              <h6 class="mb-1">Tax Category</h6>
+              <p class="text-muted small mb-3">Define the default tax category for this item.</p>
+              <div class="row g-3">
+                <div class="col-sm-6">
+                  <label class="form-label">Tax Category</label>
+                  <input type="text" name="tax_category" class="form-control" value="<?= e($product['tax_category'] ?? '') ?>">
+                </div>
+                <div class="col-sm-6">
+                  <label class="form-label">HSN/SAC Code</label>
+                  <input type="text" class="form-control" value="<?= e($product['hsn_sac_code'] ?? '') ?>" disabled>
+                  <div class="form-text">Set on the Details tab.</div>
+                </div>
+                <div class="col-sm-6 form-check">
+                  <input type="checkbox" class="form-check-input" id="isNilRated" name="is_nil_rated" value="1" <?= !empty($product['is_nil_rated']) ? 'checked' : '' ?>>
+                  <label class="form-check-label" for="isNilRated">Is Nil Rated</label>
+                </div>
+                <div class="col-sm-6 form-check">
+                  <input type="checkbox" class="form-check-input" id="isExemptFromTax" name="is_exempt_from_tax" value="1" <?= !empty($product['is_exempt_from_tax']) ? 'checked' : '' ?>>
+                  <label class="form-check-label" for="isExemptFromTax">Is Exempt from Tax</label>
+                </div>
+                <div class="col-sm-6 form-check">
+                  <input type="checkbox" class="form-check-input" id="reverseChargeApplicable" name="reverse_charge_applicable" value="1" <?= !empty($product['reverse_charge_applicable']) ? 'checked' : '' ?>>
+                  <label class="form-check-label" for="reverseChargeApplicable">Reverse Charge Applicable</label>
+                </div>
+                <div class="col-sm-6 form-check">
+                  <input type="checkbox" class="form-check-input" id="tdsApplicable" name="tds_applicable" value="1" <?= !empty($product['tds_applicable']) ? 'checked' : '' ?>>
+                  <label class="form-check-label" for="tdsApplicable">TDS Applicable</label>
+                </div>
+              </div>
+            </div>
+
+            <div class="card p-3 mb-3">
+              <h6 class="mb-1">Tax Template</h6>
+              <p class="text-muted small mb-3">Select a tax template to automatically apply taxes and charges.</p>
+              <select name="default_tax_template_id" class="form-select">
+                <option value="">— None —</option>
+                <?php foreach ($taxTemplates as $tt): ?>
+                  <option value="<?= (int)$tt['id'] ?>" <?= (string)$product['default_tax_template_id'] === (string)$tt['id'] ? 'selected' : '' ?>><?= e($tt['name']) ?></option>
+                <?php endforeach; ?>
+              </select>
+              <div class="form-text mt-1">Manage templates under Sales &rsaquo; Tax Templates.</div>
+            </div>
+
+            <div class="card p-3 mb-3">
+              <h6 class="mb-1">Price Includes Tax</h6>
+              <p class="text-muted small mb-3">Define whether the item price includes applicable taxes.</p>
+              <div class="form-check form-switch mb-2">
+                <input type="checkbox" class="form-check-input" id="priceIncludesTax" name="price_includes_tax" value="1" <?= !empty($product['price_includes_tax']) ? 'checked' : '' ?>>
+                <label class="form-check-label" for="priceIncludesTax">Price Includes Tax</label>
+              </div>
+              <label class="form-label">Tax Calculation Based On</label>
+              <select name="tax_calculation_based_on" class="form-select">
+                <option value="Net Amount" <?= $product['tax_calculation_based_on'] === 'Net Amount' ? 'selected' : '' ?>>Net Amount</option>
+                <option value="Gross Amount" <?= $product['tax_calculation_based_on'] === 'Gross Amount' ? 'selected' : '' ?>>Gross Amount</option>
+              </select>
+            </div>
+
+            <div class="card p-3 mb-3">
+              <h6 class="mb-1">Tax Exemptions &amp; Conditions</h6>
+              <p class="text-muted small mb-3">Define tax exemptions or special conditions for this item (if any).</p>
+              <div class="row g-3 mb-2">
+                <div class="col-sm-6">
+                  <label class="form-label">Tax Exemption Reason</label>
+                  <input type="text" name="tax_exemption_reason" class="form-control" value="<?= e($product['tax_exemption_reason'] ?? '') ?>">
+                </div>
+                <div class="col-sm-6">
+                  <label class="form-label">Applicable From</label>
+                  <input type="date" name="tax_exemption_applicable_from" class="form-control" value="<?= e($product['tax_exemption_applicable_from'] ?? '') ?>">
+                </div>
+              </div>
+              <label class="form-label">Notes</label>
+              <textarea name="tax_notes" class="form-control" rows="2"><?= e($product['tax_notes'] ?? '') ?></textarea>
+            </div>
+          </div>
+
+          <div class="col-lg-6">
+            <div class="card p-3 mb-3">
+              <h6 class="mb-1">Default Taxes and Charges</h6>
+              <p class="text-muted small mb-3">Set default taxes and charges applied when this item is used in transactions.</p>
+              <div class="table-responsive">
+                <table class="table table-sm product-tax-rows">
+                  <thead><tr><th>Tax / Charge Type</th><th>Account Head</th><th>Rate/Amount</th><th class="text-center">Incl.</th><th>Applicable On</th><th></th></tr></thead>
+                  <tbody>
+                  <?php if (!$productTaxes): $productTaxes = [['tax_charge_type' => '', 'account_head_id' => '', 'rate_or_amount' => 0, 'included_in_price' => 0, 'applicable_on' => 'net_total']]; endif; ?>
+                  <?php foreach ($productTaxes as $ti => $tx): ?>
+                    <tr data-row>
+                      <td><input type="text" class="form-control form-control-sm" name="tax_charge_type[]" value="<?= e($tx['tax_charge_type'] ?? '') ?>"></td>
+                      <td>
+                        <select class="form-select form-select-sm" name="tax_account_head_id[]">
+                          <option value="">— None —</option>
+                          <?php foreach ($ledgerAccounts as $la): ?>
+                            <option value="<?= (int)$la['id'] ?>" <?= (string)($tx['account_head_id'] ?? '') === (string)$la['id'] ? 'selected' : '' ?>><?= e($la['name']) ?></option>
+                          <?php endforeach; ?>
+                        </select>
+                      </td>
+                      <td><input type="number" step="0.01" min="0" class="form-control form-control-sm" name="tax_rate_or_amount[]" value="<?= e($tx['rate_or_amount'] ?? 0) ?>"></td>
+                      <td class="text-center">
+                        <input type="hidden" class="js-tax-included-hidden" name="tax_included_in_price[]" value="<?= !empty($tx['included_in_price']) ? '1' : '0' ?>">
+                        <input type="checkbox" class="form-check-input js-tax-included-checkbox" <?= !empty($tx['included_in_price']) ? 'checked' : '' ?>>
+                      </td>
+                      <td>
+                        <select class="form-select form-select-sm" name="tax_applicable_on[]">
+                          <option value="net_total" <?= ($tx['applicable_on'] ?? 'net_total') === 'net_total' ? 'selected' : '' ?>>Net Total</option>
+                          <option value="grand_total" <?= ($tx['applicable_on'] ?? '') === 'grand_total' ? 'selected' : '' ?>>Grand Total</option>
+                        </select>
+                      </td>
+                      <td><button type="button" class="btn btn-sm btn-outline-danger product-tax-remove-row"><i class="fa-solid fa-xmark"></i></button></td>
+                    </tr>
+                  <?php endforeach; ?>
+                  </tbody>
+                </table>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-brand product-tax-add-row"><i class="fa-solid fa-plus"></i> Add Tax/Charge</button>
+            </div>
+
+            <div class="card p-3 mb-3">
+              <h6 class="mb-1">Additional Charges</h6>
+              <p class="text-muted small mb-3">Set any additional charges (freight, handling, etc.) for this item.</p>
+              <div class="table-responsive">
+                <table class="table table-sm product-charge-rows">
+                  <thead><tr><th>Charge Type</th><th>Account Head</th><th>Rate/Amount</th><th>Applicable On</th><th></th></tr></thead>
+                  <tbody>
+                  <?php if (!$productCharges): $productCharges = [['charge_type' => '', 'account_head_id' => '', 'rate_or_amount' => 0, 'applicable_on' => 'net_total']]; endif; ?>
+                  <?php foreach ($productCharges as $ch): ?>
+                    <tr data-row>
+                      <td><input type="text" class="form-control form-control-sm" name="charge_type[]" value="<?= e($ch['charge_type'] ?? '') ?>"></td>
+                      <td>
+                        <select class="form-select form-select-sm" name="charge_account_head_id[]">
+                          <option value="">— None —</option>
+                          <?php foreach ($ledgerAccounts as $la): ?>
+                            <option value="<?= (int)$la['id'] ?>" <?= (string)($ch['account_head_id'] ?? '') === (string)$la['id'] ? 'selected' : '' ?>><?= e($la['name']) ?></option>
+                          <?php endforeach; ?>
+                        </select>
+                      </td>
+                      <td><input type="number" step="0.01" min="0" class="form-control form-control-sm" name="charge_rate_or_amount[]" value="<?= e($ch['rate_or_amount'] ?? 0) ?>"></td>
+                      <td>
+                        <select class="form-select form-select-sm" name="charge_applicable_on[]">
+                          <option value="net_total" <?= ($ch['applicable_on'] ?? 'net_total') === 'net_total' ? 'selected' : '' ?>>Net Total</option>
+                          <option value="grand_total" <?= ($ch['applicable_on'] ?? '') === 'grand_total' ? 'selected' : '' ?>>Grand Total</option>
+                        </select>
+                      </td>
+                      <td><button type="button" class="btn btn-sm btn-outline-danger product-charge-remove-row"><i class="fa-solid fa-xmark"></i></button></td>
+                    </tr>
+                  <?php endforeach; ?>
+                  </tbody>
+                </table>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-brand product-charge-add-row"><i class="fa-solid fa-plus"></i> Add Charge</button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="page-actions mt-3">
@@ -1051,6 +1405,68 @@ document.addEventListener('DOMContentLoaded', function () {
       return;
     }
     var rm = e.target.closest('.product-cp-remove-row');
+    if (rm) {
+      var rows2 = tbody.querySelectorAll('tr[data-row]');
+      if (rows2.length > 1) {
+        rm.closest('tr[data-row]').remove();
+      }
+    }
+  });
+});
+
+document.addEventListener('DOMContentLoaded', function () {
+  var wrap = document.querySelector('.product-tax-rows');
+  if (!wrap) return;
+  var tbody = wrap.querySelector('tbody');
+
+  function syncIncludedHidden(row) {
+    var hidden = row.querySelector('.js-tax-included-hidden');
+    var checkbox = row.querySelector('.js-tax-included-checkbox');
+    if (hidden && checkbox) hidden.value = checkbox.checked ? '1' : '0';
+  }
+
+  wrap.addEventListener('change', function (e) {
+    if (e.target.classList.contains('js-tax-included-checkbox')) {
+      syncIncludedHidden(e.target.closest('tr[data-row]'));
+    }
+  });
+
+  wrap.closest('.card').addEventListener('click', function (e) {
+    if (e.target.closest('.product-tax-add-row')) {
+      var rows = tbody.querySelectorAll('tr[data-row]');
+      var clone = rows[rows.length - 1].cloneNode(true);
+      clone.querySelectorAll('input[type=text], input[type=number]').forEach(function (inp) { inp.value = inp.name === 'tax_rate_or_amount[]' ? '0' : ''; });
+      clone.querySelectorAll('.js-tax-included-checkbox').forEach(function (cb) { cb.checked = false; });
+      clone.querySelectorAll('.js-tax-included-hidden').forEach(function (h) { h.value = '0'; });
+      clone.querySelectorAll('select').forEach(function (sel) { sel.selectedIndex = 0; });
+      tbody.appendChild(clone);
+      return;
+    }
+    var rm = e.target.closest('.product-tax-remove-row');
+    if (rm) {
+      var rows2 = tbody.querySelectorAll('tr[data-row]');
+      if (rows2.length > 1) {
+        rm.closest('tr[data-row]').remove();
+      }
+    }
+  });
+});
+
+document.addEventListener('DOMContentLoaded', function () {
+  var wrap = document.querySelector('.product-charge-rows');
+  if (!wrap) return;
+  var tbody = wrap.querySelector('tbody');
+
+  wrap.closest('.card').addEventListener('click', function (e) {
+    if (e.target.closest('.product-charge-add-row')) {
+      var rows = tbody.querySelectorAll('tr[data-row]');
+      var clone = rows[rows.length - 1].cloneNode(true);
+      clone.querySelectorAll('input[type=text], input[type=number]').forEach(function (inp) { inp.value = inp.name === 'charge_rate_or_amount[]' ? '0' : ''; });
+      clone.querySelectorAll('select').forEach(function (sel) { sel.selectedIndex = 0; });
+      tbody.appendChild(clone);
+      return;
+    }
+    var rm = e.target.closest('.product-charge-remove-row');
     if (rm) {
       var rows2 = tbody.querySelectorAll('tr[data-row]');
       if (rows2.length > 1) {

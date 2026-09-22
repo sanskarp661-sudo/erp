@@ -186,6 +186,31 @@ CREATE TABLE IF NOT EXISTS products (
   show_in_website TINYINT(1) NOT NULL DEFAULT 0,
   minimum_selling_price DECIMAL(14,2) NOT NULL DEFAULT 0,
   maximum_selling_price DECIMAL(14,2) NOT NULL DEFAULT 0,
+  income_account_id INT UNSIGNED DEFAULT NULL,
+  cogs_account_id INT UNSIGNED DEFAULT NULL,
+  purchase_expense_account_id INT UNSIGNED DEFAULT NULL,
+  stock_in_hand_account_id INT UNSIGNED DEFAULT NULL,
+  stock_adjustment_account_id INT UNSIGNED DEFAULT NULL,
+  under_over_valuation_account_id INT UNSIGNED DEFAULT NULL,
+  scrap_expense_account_id INT UNSIGNED DEFAULT NULL,
+  gain_loss_account_id INT UNSIGNED DEFAULT NULL,
+  capitalization_threshold DECIMAL(14,2) NOT NULL DEFAULT 0,
+  include_in_period_closing_entry TINYINT(1) NOT NULL DEFAULT 1,
+  cost_center VARCHAR(120) DEFAULT NULL,
+  default_project VARCHAR(120) DEFAULT NULL,
+  activity_type VARCHAR(120) DEFAULT NULL,
+  budget VARCHAR(120) DEFAULT NULL,
+  tax_category VARCHAR(60) DEFAULT NULL,
+  is_nil_rated TINYINT(1) NOT NULL DEFAULT 0,
+  is_exempt_from_tax TINYINT(1) NOT NULL DEFAULT 0,
+  reverse_charge_applicable TINYINT(1) NOT NULL DEFAULT 0,
+  tds_applicable TINYINT(1) NOT NULL DEFAULT 0,
+  default_tax_template_id INT UNSIGNED DEFAULT NULL,
+  price_includes_tax TINYINT(1) NOT NULL DEFAULT 0,
+  tax_calculation_based_on ENUM('Net Amount','Gross Amount') NOT NULL DEFAULT 'Net Amount',
+  tax_exemption_reason VARCHAR(120) DEFAULT NULL,
+  tax_exemption_applicable_from DATE DEFAULT NULL,
+  tax_notes VARCHAR(500) DEFAULT NULL,
   standard_weight_kg DECIMAL(10,3) NOT NULL DEFAULT 0,
   standard_volume_ltr DECIMAL(10,3) NOT NULL DEFAULT 0,
   gross_weight_kg DECIMAL(10,3) NOT NULL DEFAULT 0,
@@ -359,6 +384,34 @@ CREATE TABLE IF NOT EXISTS ledger_accounts (
   account_type ENUM('tax','income','expense','other') NOT NULL DEFAULT 'other',
   status ENUM('active','inactive') NOT NULL DEFAULT 'active',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Item Master Tax & Charges tab: default tax/charge rows for this item
+-- (distinct tables, mirroring the mockup's separate "Default Taxes and
+-- Charges" vs "Additional Charges" sections).
+CREATE TABLE IF NOT EXISTS product_taxes (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  product_id INT UNSIGNED NOT NULL,
+  tax_charge_type VARCHAR(60) DEFAULT NULL,
+  account_head_id INT UNSIGNED DEFAULT NULL,
+  rate_or_amount DECIMAL(14,4) NOT NULL DEFAULT 0,
+  included_in_price TINYINT(1) NOT NULL DEFAULT 0,
+  applicable_on ENUM('net_total','grand_total') NOT NULL DEFAULT 'net_total',
+  sort_order INT NOT NULL DEFAULT 0,
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+  FOREIGN KEY (account_head_id) REFERENCES ledger_accounts(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS product_charges (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  product_id INT UNSIGNED NOT NULL,
+  charge_type VARCHAR(60) DEFAULT NULL,
+  account_head_id INT UNSIGNED DEFAULT NULL,
+  rate_or_amount DECIMAL(14,4) NOT NULL DEFAULT 0,
+  applicable_on ENUM('net_total','grand_total') NOT NULL DEFAULT 'net_total',
+  sort_order INT NOT NULL DEFAULT 0,
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+  FOREIGN KEY (account_head_id) REFERENCES ledger_accounts(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- A reusable set of tax/charge rows, applied to a Sales Order in one

@@ -35,6 +35,21 @@ $customerPrices = db()->prepare('SELECT cp.*, c.name customer_name, pl.name pric
 $customerPrices->execute([$id]);
 $customerPrices = $customerPrices->fetchAll();
 
+$productTaxes = db()->prepare('SELECT pt.*, la.name account_name FROM product_taxes pt LEFT JOIN ledger_accounts la ON la.id = pt.account_head_id WHERE pt.product_id = ? ORDER BY pt.sort_order, pt.id');
+$productTaxes->execute([$id]);
+$productTaxes = $productTaxes->fetchAll();
+
+$productCharges = db()->prepare('SELECT pc.*, la.name account_name FROM product_charges pc LEFT JOIN ledger_accounts la ON la.id = pc.account_head_id WHERE pc.product_id = ? ORDER BY pc.sort_order, pc.id');
+$productCharges->execute([$id]);
+$productCharges = $productCharges->fetchAll();
+
+$defaultTaxTemplateName = null;
+if ($product['default_tax_template_id']) {
+    $stmt = db()->prepare('SELECT name FROM tax_templates WHERE id = ?');
+    $stmt->execute([$product['default_tax_template_id']]);
+    $defaultTaxTemplateName = $stmt->fetchColumn() ?: null;
+}
+
 $pdo = db();
 
 // --- Stock by warehouse ---
@@ -304,6 +319,58 @@ require __DIR__ . '/../includes/header.php';
             <td><?= e($cp['customer_name']) ?><?= $cp['price_list_name'] ? '<div class="text-muted small">' . e($cp['price_list_name']) . '</div>' : '' ?></td>
             <td class="text-end"><?= money($cp['rate']) ?></td>
             <td class="text-end"><?= e(number_format((float)$cp['discount_percent'], 2)) ?></td>
+          </tr>
+        <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div>
+    <?php endif; ?>
+    <div class="card p-3 mt-3">
+      <h6 class="mb-2">Accounting &amp; Tax</h6>
+      <div class="small">
+        <div class="d-flex justify-content-between"><span class="text-muted">Cost Center</span><span><?= e($product['cost_center'] ?: '—') ?></span></div>
+        <div class="d-flex justify-content-between"><span class="text-muted">Tax Category</span><span><?= e($product['tax_category'] ?: '—') ?></span></div>
+        <div class="d-flex justify-content-between"><span class="text-muted">Tax Template</span><span><?= e($defaultTaxTemplateName ?: '—') ?></span></div>
+        <div class="d-flex justify-content-between"><span class="text-muted">Price Includes Tax</span><span><?= $product['price_includes_tax'] ? 'Yes' : 'No' ?></span></div>
+      </div>
+      <?php if ($product['is_nil_rated'] || $product['is_exempt_from_tax'] || $product['reverse_charge_applicable'] || $product['tds_applicable']): ?>
+      <hr>
+      <div class="d-flex flex-wrap gap-1">
+        <?php if ($product['is_nil_rated']): ?><span class="badge text-bg-light border">Nil Rated</span><?php endif; ?>
+        <?php if ($product['is_exempt_from_tax']): ?><span class="badge text-bg-light border">Exempt from Tax</span><?php endif; ?>
+        <?php if ($product['reverse_charge_applicable']): ?><span class="badge text-bg-light border">Reverse Charge</span><?php endif; ?>
+        <?php if ($product['tds_applicable']): ?><span class="badge text-bg-light border">TDS Applicable</span><?php endif; ?>
+      </div>
+      <?php endif; ?>
+    </div>
+    <?php if ($productTaxes): ?>
+    <div class="card p-3 mt-3">
+      <h6 class="mb-2">Default Taxes and Charges</h6>
+      <table class="table table-sm mb-0">
+        <thead><tr><th>Type</th><th>Account Head</th><th class="text-end">Rate/Amount</th></tr></thead>
+        <tbody>
+        <?php foreach ($productTaxes as $tx): ?>
+          <tr>
+            <td><?= e($tx['tax_charge_type'] ?: '—') ?></td>
+            <td><?= e($tx['account_name'] ?: '—') ?></td>
+            <td class="text-end"><?= e(number_format((float)$tx['rate_or_amount'], 2)) ?></td>
+          </tr>
+        <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div>
+    <?php endif; ?>
+    <?php if ($productCharges): ?>
+    <div class="card p-3 mt-3">
+      <h6 class="mb-2">Additional Charges</h6>
+      <table class="table table-sm mb-0">
+        <thead><tr><th>Type</th><th>Account Head</th><th class="text-end">Rate/Amount</th></tr></thead>
+        <tbody>
+        <?php foreach ($productCharges as $ch): ?>
+          <tr>
+            <td><?= e($ch['charge_type'] ?: '—') ?></td>
+            <td><?= e($ch['account_name'] ?: '—') ?></td>
+            <td class="text-end"><?= e(number_format((float)$ch['rate_or_amount'], 2)) ?></td>
           </tr>
         <?php endforeach; ?>
         </tbody>
