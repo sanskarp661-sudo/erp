@@ -169,6 +169,23 @@ CREATE TABLE IF NOT EXISTS products (
   shelf_life_days INT NOT NULL DEFAULT 0,
   item_type ENUM('Finished Good','Raw Material','Service Item','Consumable') NOT NULL DEFAULT 'Finished Good',
   valuation_method ENUM('FIFO','LIFO','Moving Average') NOT NULL DEFAULT 'FIFO',
+  price_determination ENUM('Based on Price List','Fixed Rate') NOT NULL DEFAULT 'Based on Price List',
+  last_purchase_rate DECIMAL(14,2) NOT NULL DEFAULT 0,
+  last_purchase_date DATE DEFAULT NULL,
+  average_purchase_rate DECIMAL(14,2) NOT NULL DEFAULT 0,
+  allow_discount TINYINT(1) NOT NULL DEFAULT 1,
+  max_discount_percent DECIMAL(5,2) NOT NULL DEFAULT 0,
+  discount_account_id INT UNSIGNED DEFAULT NULL,
+  apply_discount_on ENUM('net_total','grand_total') NOT NULL DEFAULT 'net_total',
+  enable_additional_discount_sales TINYINT(1) NOT NULL DEFAULT 1,
+  price_last_updated_at DATETIME DEFAULT NULL,
+  price_updated_by INT UNSIGNED DEFAULT NULL,
+  is_price_editable_in_transactions TINYINT(1) NOT NULL DEFAULT 1,
+  include_in_price_suggestions TINYINT(1) NOT NULL DEFAULT 1,
+  allow_zero_price TINYINT(1) NOT NULL DEFAULT 0,
+  show_in_website TINYINT(1) NOT NULL DEFAULT 0,
+  minimum_selling_price DECIMAL(14,2) NOT NULL DEFAULT 0,
+  maximum_selling_price DECIMAL(14,2) NOT NULL DEFAULT 0,
   standard_weight_kg DECIMAL(10,3) NOT NULL DEFAULT 0,
   standard_volume_ltr DECIMAL(10,3) NOT NULL DEFAULT 0,
   gross_weight_kg DECIMAL(10,3) NOT NULL DEFAULT 0,
@@ -203,7 +220,8 @@ CREATE TABLE IF NOT EXISTS products (
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,
   FOREIGN KEY (item_category_id) REFERENCES item_categories(id) ON DELETE SET NULL,
-  FOREIGN KEY (brand_id) REFERENCES brands(id) ON DELETE SET NULL
+  FOREIGN KEY (brand_id) REFERENCES brands(id) ON DELETE SET NULL,
+  FOREIGN KEY (price_updated_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS product_barcodes (
@@ -291,6 +309,24 @@ CREATE TABLE IF NOT EXISTS price_list_items (
   UNIQUE KEY uniq_pricelist_product (price_list_id, product_id),
   FOREIGN KEY (price_list_id) REFERENCES price_lists(id) ON DELETE CASCADE,
   FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Item Master Pricing tab: per-customer rate/discount overrides. Unlike
+-- price_list_items (shared, rate-only), this is item-scoped and carries
+-- its own discount/date-range since only this tab edits it.
+CREATE TABLE IF NOT EXISTS product_customer_prices (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  product_id INT UNSIGNED NOT NULL,
+  customer_id INT UNSIGNED NOT NULL,
+  price_list_id INT UNSIGNED DEFAULT NULL,
+  rate DECIMAL(14,2) NOT NULL DEFAULT 0,
+  discount_percent DECIMAL(5,2) NOT NULL DEFAULT 0,
+  valid_from DATE DEFAULT NULL,
+  valid_to DATE DEFAULT NULL,
+  sort_order INT NOT NULL DEFAULT 0,
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+  FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
+  FOREIGN KEY (price_list_id) REFERENCES price_lists(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Additive multi-address book for a customer. customers.address stays as

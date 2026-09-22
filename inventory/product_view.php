@@ -5,13 +5,14 @@ $canEdit = can_edit_module('inventory');
 
 $id = (int)input('id');
 $stmt = db()->prepare('
-  SELECT p.*, c.name category_name, ic.name item_category_name, b.name brand_name, dw.name default_warehouse_name, dpl.name default_price_list_name
+  SELECT p.*, c.name category_name, ic.name item_category_name, b.name brand_name, dw.name default_warehouse_name, dpl.name default_price_list_name, da.name discount_account_name
   FROM products p
   LEFT JOIN categories c ON c.id = p.category_id
   LEFT JOIN item_categories ic ON ic.id = p.item_category_id
   LEFT JOIN brands b ON b.id = p.brand_id
   LEFT JOIN warehouses dw ON dw.id = p.default_warehouse_id
   LEFT JOIN price_lists dpl ON dpl.id = p.default_price_list_id
+  LEFT JOIN ledger_accounts da ON da.id = p.discount_account_id
   WHERE p.id = ?
 ');
 $stmt->execute([$id]);
@@ -25,6 +26,14 @@ if (!$product) {
 $barcodes = db()->prepare('SELECT * FROM product_barcodes WHERE product_id = ? ORDER BY sort_order, id');
 $barcodes->execute([$id]);
 $barcodes = $barcodes->fetchAll();
+
+$priceListRates = db()->prepare('SELECT pli.rate, pl.name price_list_name FROM price_list_items pli JOIN price_lists pl ON pl.id = pli.price_list_id WHERE pli.product_id = ? ORDER BY pl.name');
+$priceListRates->execute([$id]);
+$priceListRates = $priceListRates->fetchAll();
+
+$customerPrices = db()->prepare('SELECT cp.*, c.name customer_name, pl.name price_list_name FROM product_customer_prices cp JOIN customers c ON c.id = cp.customer_id LEFT JOIN price_lists pl ON pl.id = cp.price_list_id WHERE cp.product_id = ? ORDER BY cp.sort_order, cp.id');
+$customerPrices->execute([$id]);
+$customerPrices = $customerPrices->fetchAll();
 
 $pdo = db();
 
@@ -266,6 +275,41 @@ require __DIR__ . '/../includes/header.php';
       </div>
       <?php endif; ?>
     </div>
+    <div class="card p-3 mt-3">
+      <h6 class="mb-2">Pricing</h6>
+      <div class="small">
+        <div class="d-flex justify-content-between"><span class="text-muted">Last Purchase Rate</span><span><?= money($product['last_purchase_rate']) ?><?= $product['last_purchase_date'] ? ' (' . e($product['last_purchase_date']) . ')' : '' ?></span></div>
+        <div class="d-flex justify-content-between"><span class="text-muted">Average Purchase Rate</span><span><?= money($product['average_purchase_rate']) ?></span></div>
+        <div class="d-flex justify-content-between"><span class="text-muted">Discount</span><span><?= $product['allow_discount'] ? 'Up to ' . e(number_format((float)$product['max_discount_percent'], 2)) . '%' : 'Not allowed' ?></span></div>
+        <?php if ($product['minimum_selling_price'] > 0 || $product['maximum_selling_price'] > 0): ?>
+        <div class="d-flex justify-content-between"><span class="text-muted">Selling Price Range</span><span><?= money($product['minimum_selling_price']) ?> – <?= money($product['maximum_selling_price']) ?></span></div>
+        <?php endif; ?>
+      </div>
+      <?php if ($priceListRates): ?>
+      <hr>
+      <div class="small text-muted mb-1">Price List Rates</div>
+      <?php foreach ($priceListRates as $r): ?>
+        <div class="d-flex justify-content-between small"><span><?= e($r['price_list_name']) ?></span><span><?= money($r['rate']) ?></span></div>
+      <?php endforeach; ?>
+      <?php endif; ?>
+    </div>
+    <?php if ($customerPrices): ?>
+    <div class="card p-3 mt-3">
+      <h6 class="mb-2">Customer Specific Pricing</h6>
+      <table class="table table-sm mb-0">
+        <thead><tr><th>Customer</th><th class="text-end">Rate</th><th class="text-end">Disc. %</th></tr></thead>
+        <tbody>
+        <?php foreach ($customerPrices as $cp): ?>
+          <tr>
+            <td><?= e($cp['customer_name']) ?><?= $cp['price_list_name'] ? '<div class="text-muted small">' . e($cp['price_list_name']) . '</div>' : '' ?></td>
+            <td class="text-end"><?= money($cp['rate']) ?></td>
+            <td class="text-end"><?= e(number_format((float)$cp['discount_percent'], 2)) ?></td>
+          </tr>
+        <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div>
+    <?php endif; ?>
     <?php if ($barcodes): ?>
     <div class="card p-3 mt-3">
       <h6 class="mb-2">Barcodes</h6>

@@ -16,6 +16,11 @@ $product = [
     'default_price_list_id' => '', 'min_stock_level' => 0, 'max_stock_level' => 0,
     'lead_time_days' => 0, 'shelf_life_days' => 0,
     'item_type' => 'Finished Good', 'valuation_method' => 'FIFO',
+    'price_determination' => 'Based on Price List', 'last_purchase_rate' => 0, 'last_purchase_date' => '', 'average_purchase_rate' => 0,
+    'allow_discount' => 1, 'max_discount_percent' => 0, 'discount_account_id' => '', 'apply_discount_on' => 'net_total', 'enable_additional_discount_sales' => 1,
+    'price_last_updated_at' => null, 'price_updated_by' => null,
+    'is_price_editable_in_transactions' => 1, 'include_in_price_suggestions' => 1, 'allow_zero_price' => 0, 'show_in_website' => 0,
+    'minimum_selling_price' => 0, 'maximum_selling_price' => 0,
     'standard_weight_kg' => 0, 'standard_volume_ltr' => 0, 'gross_weight_kg' => 0, 'net_weight_kg' => 0, 'tags' => '',
     'cost_price' => '0', 'selling_price' => '0', 'quantity' => '0',
     'reorder_level' => '0', 'reorder_qty' => 0, 'safety_stock' => 0, 'enable_reorder_notifications' => 1, 'consider_in_mrp' => 1,
@@ -27,6 +32,8 @@ $product = [
 ];
 $barcodes = [];
 $stockByWarehouse = [];
+$priceListRates = [];
+$customerPrices = [];
 
 if ($id) {
     $stmt = db()->prepare('SELECT * FROM products WHERE id = ?');
@@ -44,6 +51,14 @@ if ($id) {
     ");
     $stmt->execute([$id]);
     $stockByWarehouse = $stmt->fetchAll();
+    $stmt = db()->prepare('SELECT price_list_id, rate FROM price_list_items WHERE product_id = ?');
+    $stmt->execute([$id]);
+    foreach ($stmt->fetchAll() as $r) {
+        $priceListRates[(int)$r['price_list_id']] = $r['rate'];
+    }
+    $stmt = db()->prepare('SELECT * FROM product_customer_prices WHERE product_id = ? ORDER BY sort_order, id');
+    $stmt->execute([$id]);
+    $customerPrices = $stmt->fetchAll();
 }
 // Captured before any POST handling touches $product — quantity and the
 // current image are never taken from client input on an edit; quantity
@@ -53,7 +68,7 @@ if ($id) {
 $existingQuantity = $id ? (int)$product['quantity'] : 0;
 $existingImage = $id ? $product['image'] : null;
 
-$activeTab = in_array(input('tab'), ['inventory'], true) ? input('tab') : 'details';
+$activeTab = in_array(input('tab'), ['inventory', 'pricing'], true) ? input('tab') : 'details';
 $error = '';
 $maxImageBytes = 3 * 1024 * 1024;
 $mimeToExt = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp', 'image/gif' => 'gif'];
@@ -134,6 +149,23 @@ if (is_post()) {
         'shelf_life_days' => (int)input('shelf_life_days'),
         'item_type' => in_array(input('item_type'), ['Finished Good', 'Raw Material', 'Service Item', 'Consumable'], true) ? input('item_type') : 'Finished Good',
         'valuation_method' => in_array(input('valuation_method'), ['FIFO', 'LIFO', 'Moving Average'], true) ? input('valuation_method') : 'FIFO',
+        'price_determination' => in_array(input('price_determination'), ['Based on Price List', 'Fixed Rate'], true) ? input('price_determination') : 'Based on Price List',
+        'last_purchase_rate' => (float)input('last_purchase_rate'),
+        'last_purchase_date' => input('last_purchase_date') ?: null,
+        'average_purchase_rate' => (float)input('average_purchase_rate'),
+        'allow_discount' => input('allow_discount') === '1' ? 1 : 0,
+        'max_discount_percent' => (float)input('max_discount_percent'),
+        'discount_account_id' => input('discount_account_id') ?: null,
+        'apply_discount_on' => in_array(input('apply_discount_on'), ['net_total', 'grand_total'], true) ? input('apply_discount_on') : 'net_total',
+        'enable_additional_discount_sales' => input('enable_additional_discount_sales') === '1' ? 1 : 0,
+        'price_last_updated_at' => date('Y-m-d H:i:s'),
+        'price_updated_by' => current_user()['id'],
+        'is_price_editable_in_transactions' => input('is_price_editable_in_transactions') === '1' ? 1 : 0,
+        'include_in_price_suggestions' => input('include_in_price_suggestions') === '1' ? 1 : 0,
+        'allow_zero_price' => input('allow_zero_price') === '1' ? 1 : 0,
+        'show_in_website' => input('show_in_website') === '1' ? 1 : 0,
+        'minimum_selling_price' => (float)input('minimum_selling_price'),
+        'maximum_selling_price' => (float)input('maximum_selling_price'),
         'standard_weight_kg' => (float)input('standard_weight_kg'),
         'standard_volume_ltr' => (float)input('standard_volume_ltr'),
         'gross_weight_kg' => (float)input('gross_weight_kg'),
@@ -188,6 +220,36 @@ if (is_post()) {
     }
     unset($bc);
 
+    $plRates = $_POST['price_list_rate'] ?? [];
+    $ratesToSave = [];
+    foreach ($plRates as $plId => $rate) {
+        $rate = (float)$rate;
+        if ($rate > 0) {
+            $ratesToSave[(int)$plId] = $rate;
+        }
+    }
+
+    $cpCustomerIds = $_POST['cp_customer_id'] ?? [];
+    $cpPriceListIds = $_POST['cp_price_list_id'] ?? [];
+    $cpRates = $_POST['cp_rate'] ?? [];
+    $cpDiscounts = $_POST['cp_discount_percent'] ?? [];
+    $cpValidFroms = $_POST['cp_valid_from'] ?? [];
+    $cpValidTos = $_POST['cp_valid_to'] ?? [];
+    $customerPricesToSave = [];
+    $cpSort = 0;
+    foreach ($cpCustomerIds as $i => $custId) {
+        $custId = (int)$custId;
+        if ($custId <= 0) {
+            continue;
+        }
+        $customerPricesToSave[] = [
+            'customer_id' => $custId, 'price_list_id' => (int)($cpPriceListIds[$i] ?? 0) ?: null,
+            'rate' => (float)($cpRates[$i] ?? 0), 'discount_percent' => (float)($cpDiscounts[$i] ?? 0),
+            'valid_from' => trim($cpValidFroms[$i] ?? '') ?: null, 'valid_to' => trim($cpValidTos[$i] ?? '') ?: null,
+            'sort_order' => $cpSort++,
+        ];
+    }
+
     if ($error) {
         // Image error already set above.
     } elseif ($product['sku'] === '' || $product['name'] === '') {
@@ -208,7 +270,12 @@ if (is_post()) {
                 'unit', 'purchase_uom', 'sales_uom', 'purchase_uom_conversion_factor', 'sales_uom_conversion_factor',
                 'default_warehouse_id', 'default_bin', 'issue_method', 'receipt_method', 'allow_negative_stock', 'auto_create_batch_serial',
                 'default_price_list_id', 'min_stock_level', 'max_stock_level', 'lead_time_days', 'shelf_life_days',
-                'item_type', 'valuation_method', 'standard_weight_kg', 'standard_volume_ltr', 'gross_weight_kg', 'net_weight_kg', 'tags',
+                'item_type', 'valuation_method',
+                'price_determination', 'last_purchase_rate', 'last_purchase_date', 'average_purchase_rate',
+                'allow_discount', 'max_discount_percent', 'discount_account_id', 'apply_discount_on', 'enable_additional_discount_sales',
+                'price_last_updated_at', 'price_updated_by', 'is_price_editable_in_transactions', 'include_in_price_suggestions',
+                'allow_zero_price', 'show_in_website', 'minimum_selling_price', 'maximum_selling_price',
+                'standard_weight_kg', 'standard_volume_ltr', 'gross_weight_kg', 'net_weight_kg', 'tags',
                 'cost_price', 'selling_price', 'reorder_level', 'reorder_qty', 'safety_stock', 'enable_reorder_notifications', 'consider_in_mrp',
                 'has_batch_no', 'has_serial_no', 'batch_expiry_required', 'batch_number_series',
                 'storage_section', 'storage_rack', 'storage_shelf', 'storage_bin',
@@ -235,6 +302,18 @@ if (is_post()) {
                 $bcStmt->execute([$newId, $bc['barcode'], $bc['barcode_type'], $bc['uom'], $bc['is_default'], $bc['sort_order']]);
             }
 
+            $pdo->prepare('DELETE FROM price_list_items WHERE product_id=?')->execute([$newId]);
+            $plStmt = $pdo->prepare('INSERT INTO price_list_items (price_list_id, product_id, rate) VALUES (?,?,?)');
+            foreach ($ratesToSave as $plId => $rate) {
+                $plStmt->execute([$plId, $newId, $rate]);
+            }
+
+            $pdo->prepare('DELETE FROM product_customer_prices WHERE product_id=?')->execute([$newId]);
+            $cpStmt = $pdo->prepare('INSERT INTO product_customer_prices (product_id, customer_id, price_list_id, rate, discount_percent, valid_from, valid_to, sort_order) VALUES (?,?,?,?,?,?,?,?)');
+            foreach ($customerPricesToSave as $cp) {
+                $cpStmt->execute([$newId, $cp['customer_id'], $cp['price_list_id'], $cp['rate'], $cp['discount_percent'], $cp['valid_from'], $cp['valid_to'], $cp['sort_order']]);
+            }
+
             if (!$id && $openingQty > 0 && $openingWarehouseId) {
                 stock_move($newId, $openingWarehouseId, $openingQty, 'in', 'Initial stock', 'Opening balance on product creation', current_user()['id']);
             }
@@ -253,6 +332,8 @@ if (is_post()) {
     }
 
     $barcodes = $barcodesToSave;
+    $priceListRates = $ratesToSave;
+    $customerPrices = $customerPricesToSave;
 }
 
 $categories = db()->query('SELECT id, name FROM categories ORDER BY name')->fetchAll();
@@ -260,7 +341,9 @@ $itemCategories = db()->query("SELECT id, name FROM item_categories WHERE status
 $brands = db()->query("SELECT id, name FROM brands WHERE status='active' ORDER BY name")->fetchAll();
 $units = db()->query("SELECT id, name FROM uom WHERE status = 'active' ORDER BY name")->fetchAll();
 $warehouses = leaf_warehouses();
-$priceLists = db()->query("SELECT id, name FROM price_lists WHERE status='active' ORDER BY name")->fetchAll();
+$priceLists = db()->query("SELECT id, name, currency FROM price_lists WHERE status='active' ORDER BY name")->fetchAll();
+$customers = db()->query('SELECT id, name FROM customers ORDER BY name')->fetchAll();
+$ledgerAccounts = db()->query("SELECT id, name FROM ledger_accounts WHERE status='active' ORDER BY name")->fetchAll();
 
 $page_title = $id ? 'Edit Item' : 'New Item';
 require __DIR__ . '/../includes/header.php';
@@ -274,6 +357,7 @@ require __DIR__ . '/../includes/header.php';
   <ul class="nav nav-tabs mb-3">
     <li class="nav-item"><button class="nav-link <?= $activeTab === 'details' ? 'active' : '' ?>" id="tab-details" data-bs-toggle="tab" data-bs-target="#pane-details" type="button">Details</button></li>
     <li class="nav-item"><button class="nav-link <?= $activeTab === 'inventory' ? 'active' : '' ?>" id="tab-inventory" data-bs-toggle="tab" data-bs-target="#pane-inventory" type="button">Inventory</button></li>
+    <li class="nav-item"><button class="nav-link <?= $activeTab === 'pricing' ? 'active' : '' ?>" id="tab-pricing" data-bs-toggle="tab" data-bs-target="#pane-pricing" type="button">Pricing</button></li>
   </ul>
 
   <form method="post" enctype="multipart/form-data">
@@ -731,6 +815,193 @@ require __DIR__ . '/../includes/header.php';
           </div>
         </div>
       </div>
+
+      <div class="tab-pane fade <?= $activeTab === 'pricing' ? 'show active' : '' ?>" id="pane-pricing">
+        <div class="row g-3">
+          <div class="col-lg-6">
+            <div class="card p-3 mb-3">
+              <h6 class="mb-1">Valuation &amp; Pricing Method</h6>
+              <p class="text-muted small mb-3">Define how the item is valued and priced.</p>
+              <div class="row g-3">
+                <div class="col-sm-6">
+                  <label class="form-label">Price Determination</label>
+                  <select name="price_determination" class="form-select">
+                    <?php foreach (['Based on Price List', 'Fixed Rate'] as $pd): ?>
+                      <option value="<?= e($pd) ?>" <?= $product['price_determination'] === $pd ? 'selected' : '' ?>><?= e($pd) ?></option>
+                    <?php endforeach; ?>
+                  </select>
+                </div>
+                <div class="col-sm-6">
+                  <label class="form-label">Standard Rate</label>
+                  <input type="number" step="0.01" min="0" name="selling_price" class="form-control" value="<?= e($product['selling_price']) ?>">
+                  <div class="form-text">Same field as Selling Price on the Details tab.</div>
+                </div>
+                <div class="col-sm-4">
+                  <label class="form-label">Last Purchase Rate</label>
+                  <input type="number" step="0.01" min="0" name="last_purchase_rate" class="form-control" value="<?= e($product['last_purchase_rate']) ?>">
+                </div>
+                <div class="col-sm-4">
+                  <label class="form-label">Last Purchase Date</label>
+                  <input type="date" name="last_purchase_date" class="form-control" value="<?= e($product['last_purchase_date'] ?? '') ?>">
+                </div>
+                <div class="col-sm-4">
+                  <label class="form-label">Average Purchase Rate</label>
+                  <input type="number" step="0.01" min="0" name="average_purchase_rate" class="form-control" value="<?= e($product['average_purchase_rate']) ?>">
+                </div>
+              </div>
+              <div class="form-text mt-1">These purchase-rate fields are reference values, not yet auto-updated from GRNs or Purchase Invoices.</div>
+            </div>
+
+            <div class="card p-3 mb-3">
+              <h6 class="mb-1">Default Price List Rates</h6>
+              <p class="text-muted small mb-3">Set default selling price for different price lists. Leave a rate at 0 to fall back to the Standard Rate above.</p>
+              <div class="table-responsive">
+                <table class="table table-sm mb-0">
+                  <thead><tr><th>Price List</th><th>Currency</th><th class="text-end">Rate</th></tr></thead>
+                  <tbody>
+                  <?php foreach ($priceLists as $pl): ?>
+                    <tr>
+                      <td><?= e($pl['name']) ?></td>
+                      <td><?= e($pl['currency']) ?></td>
+                      <td><input type="number" step="0.01" min="0" class="form-control form-control-sm text-end" name="price_list_rate[<?= (int)$pl['id'] ?>]" value="<?= e($priceListRates[(int)$pl['id']] ?? '') ?>"></td>
+                    </tr>
+                  <?php endforeach; ?>
+                  <?php if (!$priceLists): ?><tr><td colspan="3" class="text-muted text-center">No active price lists. Manage them under Sales &rsaquo; Price Lists.</td></tr><?php endif; ?>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="card p-3 mb-3">
+              <h6 class="mb-3">Discount Rules</h6>
+              <div class="form-check form-switch mb-2">
+                <input type="checkbox" class="form-check-input" id="allowDiscount" name="allow_discount" value="1" <?= !empty($product['allow_discount']) ? 'checked' : '' ?>>
+                <label class="form-check-label" for="allowDiscount">Allow Discount</label>
+              </div>
+              <div class="row g-2">
+                <div class="col-sm-4">
+                  <label class="form-label">Max Discount (%)</label>
+                  <input type="number" step="0.01" min="0" max="100" name="max_discount_percent" class="form-control" value="<?= e($product['max_discount_percent']) ?>">
+                </div>
+                <div class="col-sm-4">
+                  <label class="form-label">Discount Account</label>
+                  <select name="discount_account_id" class="form-select">
+                    <option value="">— None —</option>
+                    <?php foreach ($ledgerAccounts as $la): ?>
+                      <option value="<?= (int)$la['id'] ?>" <?= (string)$product['discount_account_id'] === (string)$la['id'] ? 'selected' : '' ?>><?= e($la['name']) ?></option>
+                    <?php endforeach; ?>
+                  </select>
+                </div>
+                <div class="col-sm-4">
+                  <label class="form-label">Apply Discount On</label>
+                  <select name="apply_discount_on" class="form-select">
+                    <option value="net_total" <?= $product['apply_discount_on'] === 'net_total' ? 'selected' : '' ?>>Net Total</option>
+                    <option value="grand_total" <?= $product['apply_discount_on'] === 'grand_total' ? 'selected' : '' ?>>Grand Total</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-check form-switch mt-2">
+                <input type="checkbox" class="form-check-input" id="enableAddlDiscount" name="enable_additional_discount_sales" value="1" <?= !empty($product['enable_additional_discount_sales']) ? 'checked' : '' ?>>
+                <label class="form-check-label" for="enableAddlDiscount">Enable Additional Discount in Sales Orders</label>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-lg-6">
+            <div class="card p-3 mb-3">
+              <h6 class="mb-1">Customer Specific Pricing</h6>
+              <p class="text-muted small mb-3">Set special pricing for individual customers (optional).</p>
+              <div class="table-responsive">
+                <table class="table table-sm product-cp-rows">
+                  <thead><tr><th>Customer</th><th>Price List</th><th>Rate</th><th>Disc. %</th><th>Valid From</th><th>Valid To</th><th></th></tr></thead>
+                  <tbody>
+                  <?php foreach ($customerPrices as $cp): ?>
+                    <tr data-row>
+                      <td>
+                        <select class="form-select form-select-sm" name="cp_customer_id[]">
+                          <option value="">— Select —</option>
+                          <?php foreach ($customers as $c): ?>
+                            <option value="<?= (int)$c['id'] ?>" <?= (string)($cp['customer_id'] ?? '') === (string)$c['id'] ? 'selected' : '' ?>><?= e($c['name']) ?></option>
+                          <?php endforeach; ?>
+                        </select>
+                      </td>
+                      <td>
+                        <select class="form-select form-select-sm" name="cp_price_list_id[]">
+                          <option value="">— Any —</option>
+                          <?php foreach ($priceLists as $pl): ?>
+                            <option value="<?= (int)$pl['id'] ?>" <?= (string)($cp['price_list_id'] ?? '') === (string)$pl['id'] ? 'selected' : '' ?>><?= e($pl['name']) ?></option>
+                          <?php endforeach; ?>
+                        </select>
+                      </td>
+                      <td><input type="number" step="0.01" min="0" class="form-control form-control-sm" name="cp_rate[]" value="<?= e($cp['rate'] ?? '') ?>"></td>
+                      <td><input type="number" step="0.01" min="0" max="100" class="form-control form-control-sm" name="cp_discount_percent[]" value="<?= e($cp['discount_percent'] ?? 0) ?>"></td>
+                      <td><input type="date" class="form-control form-control-sm" name="cp_valid_from[]" value="<?= e($cp['valid_from'] ?? '') ?>"></td>
+                      <td><input type="date" class="form-control form-control-sm" name="cp_valid_to[]" value="<?= e($cp['valid_to'] ?? '') ?>"></td>
+                      <td><button type="button" class="btn btn-sm btn-outline-danger product-cp-remove-row"><i class="fa-solid fa-xmark"></i></button></td>
+                    </tr>
+                  <?php endforeach; ?>
+                  <?php if (!$customerPrices): ?>
+                    <tr data-row>
+                      <td>
+                        <select class="form-select form-select-sm" name="cp_customer_id[]">
+                          <option value="">— Select —</option>
+                          <?php foreach ($customers as $c): ?><option value="<?= (int)$c['id'] ?>"><?= e($c['name']) ?></option><?php endforeach; ?>
+                        </select>
+                      </td>
+                      <td>
+                        <select class="form-select form-select-sm" name="cp_price_list_id[]">
+                          <option value="">— Any —</option>
+                          <?php foreach ($priceLists as $pl): ?><option value="<?= (int)$pl['id'] ?>"><?= e($pl['name']) ?></option><?php endforeach; ?>
+                        </select>
+                      </td>
+                      <td><input type="number" step="0.01" min="0" class="form-control form-control-sm" name="cp_rate[]"></td>
+                      <td><input type="number" step="0.01" min="0" max="100" class="form-control form-control-sm" name="cp_discount_percent[]" value="0"></td>
+                      <td><input type="date" class="form-control form-control-sm" name="cp_valid_from[]"></td>
+                      <td><input type="date" class="form-control form-control-sm" name="cp_valid_to[]"></td>
+                      <td><button type="button" class="btn btn-sm btn-outline-danger product-cp-remove-row"><i class="fa-solid fa-xmark"></i></button></td>
+                    </tr>
+                  <?php endif; ?>
+                  </tbody>
+                </table>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-brand product-cp-add-row"><i class="fa-solid fa-plus"></i> Add Customer Price</button>
+            </div>
+
+            <div class="card p-3 mb-3">
+              <h6 class="mb-3">Other Pricing Information</h6>
+              <div class="row g-2 mb-2">
+                <div class="col-sm-6">
+                  <label class="form-label">Minimum Selling Price</label>
+                  <input type="number" step="0.01" min="0" name="minimum_selling_price" class="form-control" value="<?= e($product['minimum_selling_price']) ?>">
+                </div>
+                <div class="col-sm-6">
+                  <label class="form-label">Maximum Selling Price</label>
+                  <input type="number" step="0.01" min="0" name="maximum_selling_price" class="form-control" value="<?= e($product['maximum_selling_price']) ?>">
+                </div>
+              </div>
+              <?php if ($id && $product['price_last_updated_at']): ?>
+                <div class="text-muted small mb-2">Price last updated <?= e(date('M j, Y g:ia', strtotime($product['price_last_updated_at']))) ?></div>
+              <?php endif; ?>
+              <div class="form-check form-switch">
+                <input type="checkbox" class="form-check-input" id="priceEditable" name="is_price_editable_in_transactions" value="1" <?= !empty($product['is_price_editable_in_transactions']) ? 'checked' : '' ?>>
+                <label class="form-check-label" for="priceEditable">Is Price Editable in Transactions</label>
+              </div>
+              <div class="form-check form-switch">
+                <input type="checkbox" class="form-check-input" id="includeInPriceSuggestions" name="include_in_price_suggestions" value="1" <?= !empty($product['include_in_price_suggestions']) ? 'checked' : '' ?>>
+                <label class="form-check-label" for="includeInPriceSuggestions">Include in Price Suggestions</label>
+              </div>
+              <div class="form-check form-switch">
+                <input type="checkbox" class="form-check-input" id="allowZeroPrice" name="allow_zero_price" value="1" <?= !empty($product['allow_zero_price']) ? 'checked' : '' ?>>
+                <label class="form-check-label" for="allowZeroPrice">Allow Zero Price</label>
+              </div>
+              <div class="form-check form-switch">
+                <input type="checkbox" class="form-check-input" id="showInWebsite" name="show_in_website" value="1" <?= !empty($product['show_in_website']) ? 'checked' : '' ?>>
+                <label class="form-check-label" for="showInWebsite">Show in Website</label>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="page-actions mt-3">
@@ -756,6 +1027,30 @@ document.addEventListener('DOMContentLoaded', function () {
       return;
     }
     var rm = e.target.closest('.product-barcode-remove-row');
+    if (rm) {
+      var rows2 = tbody.querySelectorAll('tr[data-row]');
+      if (rows2.length > 1) {
+        rm.closest('tr[data-row]').remove();
+      }
+    }
+  });
+});
+
+document.addEventListener('DOMContentLoaded', function () {
+  var wrap = document.querySelector('.product-cp-rows');
+  if (!wrap) return;
+  var tbody = wrap.querySelector('tbody');
+
+  wrap.closest('.card').addEventListener('click', function (e) {
+    if (e.target.closest('.product-cp-add-row')) {
+      var rows = tbody.querySelectorAll('tr[data-row]');
+      var clone = rows[rows.length - 1].cloneNode(true);
+      clone.querySelectorAll('input').forEach(function (inp) { inp.value = inp.name === 'cp_discount_percent[]' ? '0' : ''; });
+      clone.querySelectorAll('select').forEach(function (sel) { sel.selectedIndex = 0; });
+      tbody.appendChild(clone);
+      return;
+    }
+    var rm = e.target.closest('.product-cp-remove-row');
     if (rm) {
       var rows2 = tbody.querySelectorAll('tr[data-row]');
       if (rows2.length > 1) {
