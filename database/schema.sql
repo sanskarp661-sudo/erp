@@ -315,6 +315,21 @@ CREATE TABLE IF NOT EXISTS product_uoms (
   UNIQUE KEY uq_product_uom (product_id, uom)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- A batch/lot for a batch-tracked item. Created the first time its batch_no
+-- is received on a GRN (find-or-create by product_id+batch_no); stays on
+-- record afterward even if its stock later reaches zero, for traceability.
+CREATE TABLE IF NOT EXISTS product_batches (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  product_id INT UNSIGNED NOT NULL,
+  batch_no VARCHAR(60) NOT NULL,
+  manufacturing_date DATE DEFAULT NULL,
+  expiry_date DATE DEFAULT NULL,
+  notes VARCHAR(255) DEFAULT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+  UNIQUE KEY uq_product_batch (product_id, batch_no)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- Warehouses form a tree (self-referencing parent_id). A "Group" warehouse
 -- is organizational only (e.g. "All Warehouses") and can't hold stock
 -- itself — only its non-group descendants can.
@@ -328,22 +343,49 @@ CREATE TABLE IF NOT EXISTS warehouses (
   FOREIGN KEY (parent_id) REFERENCES warehouses(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Per-(product, warehouse) stock balance. products.quantity is kept as a
--- maintained total across all warehouses — see includes/stock.php.
+-- One row per physical serialized unit ever received. grn_item_id has no
+-- inline FK — goods_receipt_items is declared much later in this file
+-- (Purchases section); app code validates it instead, same convention
+-- used elsewhere in this schema for forward references.
+CREATE TABLE IF NOT EXISTS product_serials (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  product_id INT UNSIGNED NOT NULL,
+  serial_no VARCHAR(80) NOT NULL,
+  batch_id INT UNSIGNED DEFAULT NULL,
+  warehouse_id INT UNSIGNED DEFAULT NULL,
+  status ENUM('in_stock','issued','damaged') NOT NULL DEFAULT 'in_stock',
+  grn_item_id INT UNSIGNED DEFAULT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+  FOREIGN KEY (batch_id) REFERENCES product_batches(id) ON DELETE SET NULL,
+  FOREIGN KEY (warehouse_id) REFERENCES warehouses(id) ON DELETE SET NULL,
+  UNIQUE KEY uq_product_serial (product_id, serial_no)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Per-(product, warehouse, batch) stock balance — batch_id is NULL for
+-- non-batch-tracked stock, and MySQL/MariaDB treat NULL as distinct in a
+-- unique key, so any number of NULL-batch rows can coexist per
+-- product+warehouse (there's only ever one in practice, kept unique by
+-- stock_move()'s own SELECT...FOR UPDATE lookup, not this key).
+-- products.quantity is kept as a maintained total across all warehouses
+-- and batches — see includes/stock.php.
 CREATE TABLE IF NOT EXISTS stock_bins (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   product_id INT UNSIGNED NOT NULL,
   warehouse_id INT UNSIGNED NOT NULL,
+  batch_id INT UNSIGNED DEFAULT NULL,
   quantity INT NOT NULL DEFAULT 0,
-  UNIQUE KEY uniq_product_warehouse (product_id, warehouse_id),
+  UNIQUE KEY uniq_product_warehouse_batch (product_id, warehouse_id, batch_id),
   FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
-  FOREIGN KEY (warehouse_id) REFERENCES warehouses(id) ON DELETE CASCADE
+  FOREIGN KEY (warehouse_id) REFERENCES warehouses(id) ON DELETE CASCADE,
+  FOREIGN KEY (batch_id) REFERENCES product_batches(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS stock_movements (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   product_id INT UNSIGNED NOT NULL,
   warehouse_id INT UNSIGNED DEFAULT NULL,
+  batch_id INT UNSIGNED DEFAULT NULL,
   type ENUM('in','out','adjustment') NOT NULL,
   quantity INT NOT NULL,
   reference VARCHAR(120) DEFAULT NULL,
@@ -352,6 +394,7 @@ CREATE TABLE IF NOT EXISTS stock_movements (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
   FOREIGN KEY (warehouse_id) REFERENCES warehouses(id) ON DELETE SET NULL,
+  FOREIGN KEY (batch_id) REFERENCES product_batches(id) ON DELETE SET NULL,
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -844,6 +887,13 @@ CREATE TABLE IF NOT EXISTS goods_receipts (
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- batch_no/manufacturing_date/expiry_date apply when the product has batch
+-- tracking on (one batch per GRN line — split across two lines for two
+-- batches of the same product). serial_numbers is a raw newline-separated
+-- list, entered when the product has serial tracking on; it's parsed into
+-- product_serials rows (one per physical unit, count must equal quantity)
+-- only at receive time, mirroring how quantity/uom are fixed at draft time
+-- but stock_move() itself only fires on the 'received' transition.
 CREATE TABLE IF NOT EXISTS goods_receipt_items (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   grn_id INT UNSIGNED NOT NULL,
@@ -853,6 +903,10 @@ CREATE TABLE IF NOT EXISTS goods_receipt_items (
   uom_conversion_factor DECIMAL(10,3) NOT NULL DEFAULT 1.000,
   unit_cost DECIMAL(14,2) NOT NULL,
   subtotal DECIMAL(14,2) NOT NULL,
+  batch_no VARCHAR(60) DEFAULT NULL,
+  manufacturing_date DATE DEFAULT NULL,
+  expiry_date DATE DEFAULT NULL,
+  serial_numbers TEXT DEFAULT NULL,
   FOREIGN KEY (grn_id) REFERENCES goods_receipts(id) ON DELETE CASCADE,
   FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

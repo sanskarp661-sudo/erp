@@ -31,6 +31,24 @@ $productUoms = db()->prepare('SELECT * FROM product_uoms WHERE product_id = ? OR
 $productUoms->execute([$id]);
 $productUoms = $productUoms->fetchAll();
 
+$productBatches = db()->prepare('
+  SELECT pb.*, COALESCE(SUM(sb.quantity), 0) qty_in_stock
+  FROM product_batches pb
+  LEFT JOIN stock_bins sb ON sb.batch_id = pb.id
+  WHERE pb.product_id = ?
+  GROUP BY pb.id
+  ORDER BY pb.created_at DESC
+');
+$productBatches->execute([$id]);
+$productBatches = $productBatches->fetchAll();
+
+$productSerialsCount = db()->prepare("SELECT status, COUNT(*) c FROM product_serials WHERE product_id = ? GROUP BY status");
+$productSerialsCount->execute([$id]);
+$productSerialStatusCounts = [];
+foreach ($productSerialsCount->fetchAll() as $r) {
+    $productSerialStatusCounts[$r['status']] = (int)$r['c'];
+}
+
 $priceListRates = db()->prepare('SELECT pli.rate, pl.name price_list_name FROM price_list_items pli JOIN price_lists pl ON pl.id = pli.price_list_id WHERE pli.product_id = ? ORDER BY pl.name');
 $priceListRates->execute([$id]);
 $priceListRates = $priceListRates->fetchAll();
@@ -73,10 +91,11 @@ $pdo = db();
 
 // --- Stock by warehouse ---
 $stockByWarehouse = $pdo->prepare("
-  SELECT w.id, w.name, COALESCE(sb.quantity, 0) quantity
+  SELECT w.id, w.name, COALESCE(SUM(sb.quantity), 0) quantity
   FROM warehouses w
   LEFT JOIN stock_bins sb ON sb.warehouse_id = w.id AND sb.product_id = ?
   WHERE w.is_group = 0 AND w.status = 'active'
+  GROUP BY w.id, w.name
   ORDER BY w.name
 ");
 $stockByWarehouse->execute([$id]);
@@ -324,6 +343,33 @@ require __DIR__ . '/../includes/header.php';
       <?php endforeach; ?>
       <?php endif; ?>
     </div>
+    <?php if ($product['has_batch_no'] || $product['has_serial_no']): ?>
+    <div class="card p-3 mt-3">
+      <h6 class="mb-2">Batches &amp; Serial Numbers</h6>
+      <?php if ($product['has_batch_no']): ?>
+        <?php if (!$productBatches): ?>
+          <p class="text-muted small mb-0">No batches received yet.</p>
+        <?php else: ?>
+        <div class="small text-muted mb-1">Batches</div>
+        <?php foreach ($productBatches as $b): ?>
+          <div class="d-flex justify-content-between small"><span><?= e($b['batch_no']) ?><?= $b['expiry_date'] ? ' (exp. ' . e($b['expiry_date']) . ')' : '' ?></span><span><?= (int)$b['qty_in_stock'] ?> in stock</span></div>
+        <?php endforeach; ?>
+        <?php endif; ?>
+      <?php endif; ?>
+      <?php if ($product['has_serial_no']): ?>
+        <?php if ($product['has_batch_no']): ?><hr><?php endif; ?>
+        <?php if (!$productSerialStatusCounts): ?>
+          <p class="text-muted small mb-0">No serial numbers received yet.</p>
+        <?php else: ?>
+        <div class="small text-muted mb-1">Serial Numbers</div>
+        <?php foreach ($productSerialStatusCounts as $status => $count): ?>
+          <div class="d-flex justify-content-between small"><span class="text-capitalize"><?= e(str_replace('_', ' ', $status)) ?></span><span><?= $count ?></span></div>
+        <?php endforeach; ?>
+        <div class="mt-2"><a href="<?= base_url('inventory/product_form.php?id=' . (int)$id . '&tab=batch') ?>" class="small">View all serial numbers &rarr;</a></div>
+        <?php endif; ?>
+      <?php endif; ?>
+    </div>
+    <?php endif; ?>
     <div class="card p-3 mt-3">
       <h6 class="mb-2">Pricing</h6>
       <div class="small">

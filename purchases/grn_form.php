@@ -58,6 +58,9 @@ if (is_post()) {
     $quantities = $_POST['quantity'] ?? [];
     $lineUoms = $_POST['uom'] ?? [];
     $costs = $_POST['unit_cost'] ?? [];
+    $batchNos = $_POST['batch_no'] ?? [];
+    $expiryDates = $_POST['expiry_date'] ?? [];
+    $serialNumbers = $_POST['serial_numbers'] ?? [];
 
     $lineItems = [];
     $total = 0;
@@ -69,7 +72,11 @@ if (is_post()) {
             $subtotal = $qty * $cost;
             $uom = trim($lineUoms[$i] ?? '') ?: null;
             $factor = $uom !== null ? uom_conversion_factor($pid, $uom) : 1.0;
-            $lineItems[] = ['product_id' => $pid, 'quantity' => $qty, 'uom' => $uom ?? 'pcs', 'uom_conversion_factor' => $factor, 'unit_cost' => $cost, 'subtotal' => $subtotal];
+            $lineItems[] = [
+                'product_id' => $pid, 'quantity' => $qty, 'uom' => $uom ?? 'pcs', 'uom_conversion_factor' => $factor, 'unit_cost' => $cost, 'subtotal' => $subtotal,
+                'batch_no' => trim($batchNos[$i] ?? '') ?: null, 'expiry_date' => trim($expiryDates[$i] ?? '') ?: null,
+                'serial_numbers' => trim($serialNumbers[$i] ?? '') ?: null,
+            ];
             $total += $subtotal;
         }
     }
@@ -95,9 +102,9 @@ if (is_post()) {
                     ->execute([$grnNo, $purchaseOrderId, $vendorId, $warehouseId, $postingDate, 'draft', $notes, $total, current_user()['id']]);
                 $grnId = (int)$pdo->lastInsertId();
             }
-            $itemStmt = $pdo->prepare('INSERT INTO goods_receipt_items (grn_id, product_id, quantity, uom, uom_conversion_factor, unit_cost, subtotal) VALUES (?,?,?,?,?,?,?)');
+            $itemStmt = $pdo->prepare('INSERT INTO goods_receipt_items (grn_id, product_id, quantity, uom, uom_conversion_factor, unit_cost, subtotal, batch_no, expiry_date, serial_numbers) VALUES (?,?,?,?,?,?,?,?,?,?)');
             foreach ($lineItems as $li) {
-                $itemStmt->execute([$grnId, $li['product_id'], $li['quantity'], $li['uom'], $li['uom_conversion_factor'], $li['unit_cost'], $li['subtotal']]);
+                $itemStmt->execute([$grnId, $li['product_id'], $li['quantity'], $li['uom'], $li['uom_conversion_factor'], $li['unit_cost'], $li['subtotal'], $li['batch_no'], $li['expiry_date'], $li['serial_numbers']]);
             }
             $pdo->commit();
             flash('success', $id ? 'Goods receipt updated.' : 'Goods receipt created.');
@@ -113,7 +120,7 @@ if (is_post()) {
 }
 
 $vendors = db()->query('SELECT id, name FROM vendors ORDER BY name')->fetchAll();
-$products = db()->query("SELECT id, sku, name, cost_price, unit FROM products WHERE status='active' ORDER BY name")->fetchAll();
+$products = db()->query("SELECT id, sku, name, cost_price, unit, has_batch_no, has_serial_no FROM products WHERE status='active' ORDER BY name")->fetchAll();
 $warehouses = leaf_warehouses();
 $productUomsByProduct = [];
 foreach (db()->query('SELECT product_id, uom, conversion_factor FROM product_uoms ORDER BY sort_order, id') as $r) {
@@ -170,17 +177,18 @@ require __DIR__ . '/../includes/header.php';
     <div class="line-items" data-total-target="#grnTotal">
       <div class="table-responsive">
         <table class="table">
-          <thead><tr><th style="width:32%">Product</th><th style="width:12%">Qty</th><th style="width:12%">UOM</th><th style="width:16%">Unit Cost</th><th style="width:18%" class="text-end">Subtotal</th><th></th></tr></thead>
+          <thead><tr><th style="width:20%">Product</th><th style="width:8%">Qty</th><th style="width:8%">UOM</th><th style="width:10%">Unit Cost</th><th style="width:10%" class="text-end">Subtotal</th><th style="width:12%">Batch No.</th><th style="width:12%">Expiry Date</th><th style="width:16%">Serial Numbers</th><th></th></tr></thead>
           <tbody>
-          <?php if (!$items): $items = [['product_id' => '', 'quantity' => 1, 'uom' => '', 'unit_cost' => 0]]; endif; ?>
+          <?php if (!$items): $items = [['product_id' => '', 'quantity' => 1, 'uom' => '', 'unit_cost' => 0, 'batch_no' => '', 'expiry_date' => '', 'serial_numbers' => '']]; endif; ?>
           <?php foreach ($items as $it): ?>
             <tr data-row>
               <td>
                 <select class="form-select js-product" name="product_id[]">
                   <option value="">— Select product —</option>
                   <?php foreach ($products as $p): ?>
+                    <?php $hint = trim(($p['has_batch_no'] ? ' [Batch]' : '') . ($p['has_serial_no'] ? ' [Serial]' : '')); ?>
                     <option value="<?= (int)$p['id'] ?>" data-price="<?= e($p['cost_price']) ?>" data-uoms='<?= e($productUomJson[(int)$p['id']]) ?>' <?= (string)$it['product_id'] === (string)$p['id'] ? 'selected' : '' ?>>
-                      <?= e($p['name']) ?> (<?= e($p['sku']) ?>)
+                      <?= e($p['name']) ?> (<?= e($p['sku']) ?>)<?= $hint ? ' ' . e($hint) : '' ?>
                     </option>
                   <?php endforeach; ?>
                 </select>
@@ -195,12 +203,16 @@ require __DIR__ . '/../includes/header.php';
               </td>
               <td><input type="number" step="0.01" min="0" class="form-control js-price" name="unit_cost[]" value="<?= e($it['unit_cost']) ?>"></td>
               <td class="text-end js-subtotal">0.00</td>
+              <td><input type="text" class="form-control form-control-sm" name="batch_no[]" value="<?= e($it['batch_no'] ?? '') ?>" placeholder="e.g. LOT-2026-01"></td>
+              <td><input type="date" class="form-control form-control-sm" name="expiry_date[]" value="<?= e($it['expiry_date'] ?? '') ?>"></td>
+              <td><input type="text" class="form-control form-control-sm" name="serial_numbers[]" value="<?= e($it['serial_numbers'] ?? '') ?>" placeholder="comma-separated, one per unit"></td>
               <td><button type="button" class="btn btn-sm btn-outline-danger js-remove-row"><i class="fa-solid fa-xmark"></i></button></td>
             </tr>
           <?php endforeach; ?>
           </tbody>
         </table>
       </div>
+      <div class="text-muted small mb-2">Batch No. is required for batch-tracked items; Serial Numbers (comma-separated) must list exactly one serial per unit for serial-tracked items — both are validated when the receipt is marked Received.</div>
       <button type="button" class="btn btn-sm btn-outline-brand mb-3 js-add-row"><i class="fa-solid fa-plus"></i> Add line</button>
       <div class="text-end fs-5 mb-3">Total: <strong id="grnTotal">0.00</strong></div>
     </div>

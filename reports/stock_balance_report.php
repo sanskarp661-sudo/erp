@@ -10,7 +10,7 @@ $warehouses = leaf_warehouses();
 $products = db()->query("SELECT id, sku, name FROM products WHERE status = 'active' ORDER BY name")->fetchAll();
 
 $actual = [];
-foreach (db()->query('SELECT product_id, warehouse_id, quantity FROM stock_bins') as $row) {
+foreach (db()->query('SELECT product_id, warehouse_id, SUM(quantity) quantity FROM stock_bins GROUP BY product_id, warehouse_id') as $row) {
     $actual[$row['product_id']][$row['warehouse_id']] = (int)$row['quantity'];
 }
 

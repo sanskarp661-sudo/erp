@@ -14,48 +14,50 @@
 
 require_once __DIR__ . '/functions.php';
 
-/** Current quantity of a product at a specific warehouse (0 if no bin row yet). */
+/** Current quantity of a product at a specific warehouse, across all batches (0 if no bin rows yet). */
 function warehouse_stock(int $productId, int $warehouseId): int
 {
-    $stmt = db()->prepare('SELECT quantity FROM stock_bins WHERE product_id = ? AND warehouse_id = ?');
+    $stmt = db()->prepare('SELECT COALESCE(SUM(quantity), 0) FROM stock_bins WHERE product_id = ? AND warehouse_id = ?');
     $stmt->execute([$productId, $warehouseId]);
-    $qty = $stmt->fetchColumn();
-    return $qty !== false ? (int)$qty : 0;
+    return (int)$stmt->fetchColumn();
 }
 
 /**
- * Applies a signed quantity change to a product's stock at one warehouse,
- * keeps products.quantity in sync, and logs a stock_movements row. Must be
- * called inside a transaction the caller owns (it does not commit).
- * Throws RuntimeException if a negative delta would take the bin below zero.
+ * Applies a signed quantity change to a product's stock at one warehouse
+ * (optionally scoped to one batch — pass null for non-batch-tracked
+ * stock), keeps products.quantity in sync, and logs a stock_movements row.
+ * Must be called inside a transaction the caller owns (it does not
+ * commit). Throws RuntimeException if a negative delta would take the bin
+ * below zero. $batchId defaults to null so every pre-Phase-7 call site
+ * keeps working unchanged.
  */
-function stock_move(int $productId, int $warehouseId, int $delta, string $type, ?string $reference, ?string $notes, ?int $userId): void
+function stock_move(int $productId, int $warehouseId, int $delta, string $type, ?string $reference, ?string $notes, ?int $userId, ?int $batchId = null): void
 {
     $pdo = db();
 
-    $stmt = $pdo->prepare('SELECT quantity FROM stock_bins WHERE product_id = ? AND warehouse_id = ? FOR UPDATE');
-    $stmt->execute([$productId, $warehouseId]);
+    $stmt = $pdo->prepare('SELECT quantity FROM stock_bins WHERE product_id = ? AND warehouse_id = ? AND batch_id <=> ? FOR UPDATE');
+    $stmt->execute([$productId, $warehouseId, $batchId]);
     $current = $stmt->fetchColumn();
 
     if ($current === false) {
         if ($delta < 0) {
             throw new RuntimeException('Not enough stock in that warehouse.');
         }
-        $pdo->prepare('INSERT INTO stock_bins (product_id, warehouse_id, quantity) VALUES (?, ?, ?)')
-            ->execute([$productId, $warehouseId, $delta]);
+        $pdo->prepare('INSERT INTO stock_bins (product_id, warehouse_id, batch_id, quantity) VALUES (?, ?, ?, ?)')
+            ->execute([$productId, $warehouseId, $batchId, $delta]);
     } else {
         $newQty = (int)$current + $delta;
         if ($newQty < 0) {
             throw new RuntimeException('Not enough stock in that warehouse.');
         }
-        $pdo->prepare('UPDATE stock_bins SET quantity = ? WHERE product_id = ? AND warehouse_id = ?')
-            ->execute([$newQty, $productId, $warehouseId]);
+        $pdo->prepare('UPDATE stock_bins SET quantity = ? WHERE product_id = ? AND warehouse_id = ? AND batch_id <=> ?')
+            ->execute([$newQty, $productId, $warehouseId, $batchId]);
     }
 
     $pdo->prepare('UPDATE products SET quantity = quantity + ? WHERE id = ?')->execute([$delta, $productId]);
 
-    $pdo->prepare('INSERT INTO stock_movements (product_id, warehouse_id, type, quantity, reference, notes, created_by) VALUES (?,?,?,?,?,?,?)')
-        ->execute([$productId, $warehouseId, $type, $delta, $reference, $notes, $userId]);
+    $pdo->prepare('INSERT INTO stock_movements (product_id, warehouse_id, batch_id, type, quantity, reference, notes, created_by) VALUES (?,?,?,?,?,?,?,?)')
+        ->execute([$productId, $warehouseId, $batchId, $type, $delta, $reference, $notes, $userId]);
 }
 
 /**
@@ -76,6 +78,25 @@ function uom_conversion_factor(int $productId, string $uom): float
     $stmt->execute([$productId, $uom]);
     $factor = $stmt->fetchColumn();
     return $factor !== false ? (float)$factor : 1.0;
+}
+
+/**
+ * Finds a product's existing batch by batch_no, or creates it (recording
+ * manufacturing/expiry dates only the first time a batch_no is seen — a
+ * later GRN receiving the same batch_no again doesn't overwrite them).
+ * Returns the batch's id.
+ */
+function find_or_create_batch(int $productId, string $batchNo, ?string $manufacturingDate, ?string $expiryDate): int
+{
+    $stmt = db()->prepare('SELECT id FROM product_batches WHERE product_id = ? AND batch_no = ?');
+    $stmt->execute([$productId, $batchNo]);
+    $id = $stmt->fetchColumn();
+    if ($id !== false) {
+        return (int)$id;
+    }
+    db()->prepare('INSERT INTO product_batches (product_id, batch_no, manufacturing_date, expiry_date) VALUES (?,?,?,?)')
+        ->execute([$productId, $batchNo, $manufacturingDate ?: null, $expiryDate ?: null]);
+    return (int)db()->lastInsertId();
 }
 
 /** Non-group (leaf) warehouses only — the ones that can actually hold stock. */

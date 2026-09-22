@@ -31,7 +31,7 @@ if (is_post() && input('action') === 'transition') {
         redirect('/purchases/grn_view.php?id=' . $id);
     }
 
-    $itemsStmt = db()->prepare('SELECT * FROM goods_receipt_items WHERE grn_id = ?');
+    $itemsStmt = db()->prepare('SELECT gri.*, p.has_batch_no, p.has_serial_no FROM goods_receipt_items gri JOIN products p ON p.id = gri.product_id WHERE grn_id = ?');
     $itemsStmt->execute([$id]);
     $grnItems = $itemsStmt->fetchAll();
 
@@ -41,13 +41,45 @@ if (is_post() && input('action') === 'transition') {
         if ($newStatus === 'received') {
             foreach ($grnItems as $it) {
                 $stockQty = (int)round($it['quantity'] * $it['uom_conversion_factor']);
-                stock_move($it['product_id'], $grn['warehouse_id'], $stockQty, 'in', $grn['grn_no'], 'Goods receipt', current_user()['id']);
+                $batchNo = trim($it['batch_no'] ?? '');
+
+                if ($it['has_batch_no'] && $batchNo === '') {
+                    throw new RuntimeException('This receipt has a batch-tracked item with no batch number entered. Edit the receipt and fill in a batch number for every batch-tracked line.');
+                }
+
+                $batchId = $batchNo !== '' ? find_or_create_batch($it['product_id'], $batchNo, $it['manufacturing_date'] ?: null, $it['expiry_date'] ?: null) : null;
+
+                $serials = [];
+                if (trim((string)$it['serial_numbers']) !== '') {
+                    $serials = array_values(array_filter(array_map('trim', preg_split('/[\r\n,]+/', $it['serial_numbers']))));
+                }
+                if ($it['has_serial_no'] && count($serials) !== $stockQty) {
+                    throw new RuntimeException('This receipt has a serial-tracked item where the number of serial numbers entered (' . count($serials) . ') doesn\'t match the received quantity (' . $stockQty . '). Edit the receipt and list exactly one serial number per unit.');
+                }
+
+                stock_move($it['product_id'], $grn['warehouse_id'], $stockQty, 'in', $grn['grn_no'], 'Goods receipt', current_user()['id'], $batchId);
+
+                if ($serials) {
+                    $serialStmt = $pdo->prepare('INSERT INTO product_serials (product_id, serial_no, batch_id, warehouse_id, status, grn_item_id) VALUES (?,?,?,?,?,?)');
+                    foreach ($serials as $sn) {
+                        $serialStmt->execute([$it['product_id'], $sn, $batchId, $grn['warehouse_id'], 'in_stock', $it['id']]);
+                    }
+                }
             }
         } elseif ($newStatus === 'cancelled' && $grn['status'] === 'received') {
             // Reverse the receipt: stock was added when received.
             foreach ($grnItems as $it) {
                 $stockQty = (int)round($it['quantity'] * $it['uom_conversion_factor']);
-                stock_move($it['product_id'], $grn['warehouse_id'], -$stockQty, 'out', $grn['grn_no'], 'Goods receipt cancelled', current_user()['id']);
+                $batchNo = trim($it['batch_no'] ?? '');
+                $batchId = null;
+                if ($batchNo !== '') {
+                    $batchStmt = $pdo->prepare('SELECT id FROM product_batches WHERE product_id = ? AND batch_no = ?');
+                    $batchStmt->execute([$it['product_id'], $batchNo]);
+                    $found = $batchStmt->fetchColumn();
+                    $batchId = $found !== false ? (int)$found : null;
+                }
+                stock_move($it['product_id'], $grn['warehouse_id'], -$stockQty, 'out', $grn['grn_no'], 'Goods receipt cancelled', current_user()['id'], $batchId);
+                $pdo->prepare('DELETE FROM product_serials WHERE grn_item_id = ?')->execute([$it['id']]);
             }
         }
         $pdo->prepare('UPDATE goods_receipts SET status = ? WHERE id = ?')->execute([$newStatus, $id]);
@@ -120,7 +152,7 @@ require __DIR__ . '/../includes/header.php';
 <div class="card p-3">
   <div class="table-responsive">
     <table class="table">
-      <thead><tr><th>Product</th><th class="text-end">Qty</th><th>UOM</th><th class="text-end">Unit Cost</th><th class="text-end">Subtotal</th></tr></thead>
+      <thead><tr><th>Product</th><th class="text-end">Qty</th><th>UOM</th><th class="text-end">Unit Cost</th><th class="text-end">Subtotal</th><th>Batch / Serial</th></tr></thead>
       <tbody>
       <?php foreach ($items as $it): ?>
         <tr>
@@ -129,11 +161,15 @@ require __DIR__ . '/../includes/header.php';
           <td><?= e($it['uom'] ?? '') ?></td>
           <td class="text-end"><?= money($it['unit_cost']) ?></td>
           <td class="text-end"><?= money($it['subtotal']) ?></td>
+          <td class="small">
+            <?php if ($it['batch_no']): ?><div>Batch: <?= e($it['batch_no']) ?><?= $it['expiry_date'] ? ' (exp. ' . e($it['expiry_date']) . ')' : '' ?></div><?php endif; ?>
+            <?php if ($it['serial_numbers']): ?><div class="text-muted">Serials: <?= e($it['serial_numbers']) ?></div><?php endif; ?>
+          </td>
         </tr>
       <?php endforeach; ?>
       </tbody>
       <tfoot>
-        <tr><th colspan="4" class="text-end">Total</th><th class="text-end"><?= money($grn['total_amount']) ?></th></tr>
+        <tr><th colspan="5" class="text-end">Total</th><th class="text-end"><?= money($grn['total_amount']) ?></th></tr>
       </tfoot>
     </table>
   </div>

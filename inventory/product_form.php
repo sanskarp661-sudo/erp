@@ -59,6 +59,9 @@ $productCharges = [];
 $productSuppliers = [];
 $productCustomerRules = [];
 $productUoms = [];
+$productBatches = [];
+$productSerials = [];
+$productSerialsTotalCount = 0;
 
 if ($id) {
     $stmt = db()->prepare('SELECT * FROM products WHERE id = ?');
@@ -68,10 +71,11 @@ if ($id) {
     $stmt->execute([$id]);
     $barcodes = $stmt->fetchAll();
     $stmt = db()->prepare("
-      SELECT w.id, w.name, COALESCE(sb.quantity, 0) quantity
+      SELECT w.id, w.name, COALESCE(SUM(sb.quantity), 0) quantity
       FROM warehouses w
       LEFT JOIN stock_bins sb ON sb.warehouse_id = w.id AND sb.product_id = ?
       WHERE w.is_group = 0 AND w.status = 'active'
+      GROUP BY w.id, w.name
       ORDER BY w.name
     ");
     $stmt->execute([$id]);
@@ -99,6 +103,30 @@ if ($id) {
     $stmt = db()->prepare('SELECT * FROM product_uoms WHERE product_id = ? ORDER BY sort_order, id');
     $stmt->execute([$id]);
     $productUoms = $stmt->fetchAll();
+    $stmt = db()->prepare('
+      SELECT pb.*, COALESCE(SUM(sb.quantity), 0) qty_in_stock
+      FROM product_batches pb
+      LEFT JOIN stock_bins sb ON sb.batch_id = pb.id
+      WHERE pb.product_id = ?
+      GROUP BY pb.id
+      ORDER BY pb.created_at DESC
+    ');
+    $stmt->execute([$id]);
+    $productBatches = $stmt->fetchAll();
+    $stmt = db()->prepare('
+      SELECT ps.*, w.name warehouse_name, pb.batch_no
+      FROM product_serials ps
+      LEFT JOIN warehouses w ON w.id = ps.warehouse_id
+      LEFT JOIN product_batches pb ON pb.id = ps.batch_id
+      WHERE ps.product_id = ?
+      ORDER BY ps.created_at DESC
+      LIMIT 200
+    ');
+    $stmt->execute([$id]);
+    $productSerials = $stmt->fetchAll();
+    $countStmt = db()->prepare('SELECT COUNT(*) FROM product_serials WHERE product_id = ?');
+    $countStmt->execute([$id]);
+    $productSerialsTotalCount = (int)$countStmt->fetchColumn();
 }
 // Captured before any POST handling touches $product — quantity and the
 // current image are never taken from client input on an edit; quantity
@@ -108,7 +136,7 @@ if ($id) {
 $existingQuantity = $id ? (int)$product['quantity'] : 0;
 $existingImage = $id ? $product['image'] : null;
 
-$activeTab = in_array(input('tab'), ['inventory', 'uom', 'pricing', 'accounting', 'tax', 'sales', 'purchase'], true) ? input('tab') : 'details';
+$activeTab = in_array(input('tab'), ['inventory', 'uom', 'batch', 'pricing', 'accounting', 'tax', 'sales', 'purchase'], true) ? input('tab') : 'details';
 $error = '';
 $maxImageBytes = 3 * 1024 * 1024;
 $mimeToExt = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp', 'image/gif' => 'gif'];
@@ -619,6 +647,7 @@ require __DIR__ . '/../includes/header.php';
     <li class="nav-item"><button class="nav-link <?= $activeTab === 'details' ? 'active' : '' ?>" id="tab-details" data-bs-toggle="tab" data-bs-target="#pane-details" type="button">Details</button></li>
     <li class="nav-item"><button class="nav-link <?= $activeTab === 'inventory' ? 'active' : '' ?>" id="tab-inventory" data-bs-toggle="tab" data-bs-target="#pane-inventory" type="button">Inventory</button></li>
     <li class="nav-item"><button class="nav-link <?= $activeTab === 'uom' ? 'active' : '' ?>" id="tab-uom" data-bs-toggle="tab" data-bs-target="#pane-uom" type="button">Units of Measure</button></li>
+    <li class="nav-item"><button class="nav-link <?= $activeTab === 'batch' ? 'active' : '' ?>" id="tab-batch" data-bs-toggle="tab" data-bs-target="#pane-batch" type="button">Batch &amp; Serial No.</button></li>
     <li class="nav-item"><button class="nav-link <?= $activeTab === 'pricing' ? 'active' : '' ?>" id="tab-pricing" data-bs-toggle="tab" data-bs-target="#pane-pricing" type="button">Pricing</button></li>
     <li class="nav-item"><button class="nav-link <?= $activeTab === 'accounting' ? 'active' : '' ?>" id="tab-accounting" data-bs-toggle="tab" data-bs-target="#pane-accounting" type="button">Accounting</button></li>
     <li class="nav-item"><button class="nav-link <?= $activeTab === 'tax' ? 'active' : '' ?>" id="tab-tax" data-bs-toggle="tab" data-bs-target="#pane-tax" type="button">Tax &amp; Charges</button></li>
@@ -979,21 +1008,15 @@ require __DIR__ . '/../includes/header.php';
 
             <div class="card p-3 mb-3">
               <h6 class="mb-3">Batch &amp; Serial Settings</h6>
-              <p class="text-muted small mb-2">Full batch/serial configuration and tracking is on the Batch &amp; Serial No. tab, coming in a later phase.</p>
+              <p class="text-muted small mb-2">Set on the Batch &amp; Serial No. tab.</p>
               <div class="form-check form-switch">
-                <input type="checkbox" class="form-check-input" id="hasBatchNo" name="has_batch_no" value="1" <?= !empty($product['has_batch_no']) ? 'checked' : '' ?>>
-                <label class="form-check-label" for="hasBatchNo">Has Batch No.</label>
+                <input type="checkbox" class="form-check-input" disabled <?= !empty($product['has_batch_no']) ? 'checked' : '' ?>>
+                <label class="form-check-label">Has Batch No.</label>
               </div>
               <div class="form-check form-switch">
-                <input type="checkbox" class="form-check-input" id="hasSerialNo" name="has_serial_no" value="1" <?= !empty($product['has_serial_no']) ? 'checked' : '' ?>>
-                <label class="form-check-label" for="hasSerialNo">Has Serial No.</label>
+                <input type="checkbox" class="form-check-input" disabled <?= !empty($product['has_serial_no']) ? 'checked' : '' ?>>
+                <label class="form-check-label">Has Serial No.</label>
               </div>
-              <div class="form-check form-switch mb-2">
-                <input type="checkbox" class="form-check-input" id="batchExpiryRequired" name="batch_expiry_required" value="1" <?= !empty($product['batch_expiry_required']) ? 'checked' : '' ?>>
-                <label class="form-check-label" for="batchExpiryRequired">Batch Expiry Required</label>
-              </div>
-              <label class="form-label">Batch Number Series</label>
-              <input type="text" name="batch_number_series" class="form-control" placeholder="BATCH-YYYY-####" value="<?= e($product['batch_number_series'] ?? '') ?>">
             </div>
           </div>
 
@@ -1135,6 +1158,89 @@ require __DIR__ . '/../includes/header.php';
               </div>
               <button type="button" class="btn btn-sm btn-outline-brand product-uom-add-row"><i class="fa-solid fa-plus"></i> Add Alternate UOM</button>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-pane fade <?= $activeTab === 'batch' ? 'show active' : '' ?>" id="pane-batch">
+        <div class="row g-3">
+          <div class="col-lg-5">
+            <div class="card p-3 mb-3">
+              <h6 class="mb-3">Batch &amp; Serial Settings</h6>
+              <div class="form-check form-switch">
+                <input type="checkbox" class="form-check-input" id="hasBatchNo" name="has_batch_no" value="1" <?= !empty($product['has_batch_no']) ? 'checked' : '' ?>>
+                <label class="form-check-label" for="hasBatchNo">Has Batch No.</label>
+              </div>
+              <div class="form-check form-switch">
+                <input type="checkbox" class="form-check-input" id="hasSerialNo" name="has_serial_no" value="1" <?= !empty($product['has_serial_no']) ? 'checked' : '' ?>>
+                <label class="form-check-label" for="hasSerialNo">Has Serial No.</label>
+              </div>
+              <div class="form-check form-switch mb-2">
+                <input type="checkbox" class="form-check-input" id="batchExpiryRequired" name="batch_expiry_required" value="1" <?= !empty($product['batch_expiry_required']) ? 'checked' : '' ?>>
+                <label class="form-check-label" for="batchExpiryRequired">Batch Expiry Required</label>
+              </div>
+              <label class="form-label">Batch Number Series</label>
+              <input type="text" name="batch_number_series" class="form-control" placeholder="BATCH-YYYY-####" value="<?= e($product['batch_number_series'] ?? '') ?>">
+              <div class="form-text">A naming convention for this item's batch numbers — reference only, batch numbers are typed in directly on each Goods Receipt.</div>
+              <p class="text-muted small mt-3 mb-0">Batches and serial numbers themselves are captured when stock is received via a Goods Receipt Note, not here — this tab only shows what's already on record below.</p>
+            </div>
+          </div>
+          <div class="col-lg-7">
+            <?php if (!empty($product['has_batch_no'])): ?>
+            <div class="card p-3 mb-3">
+              <h6 class="mb-2">Batches on Record</h6>
+              <?php if (!$productBatches): ?>
+                <p class="text-muted small mb-0">No batches received yet.</p>
+              <?php else: ?>
+              <div class="table-responsive">
+                <table class="table table-sm mb-0">
+                  <thead><tr><th>Batch No.</th><th>Expiry</th><th class="text-end">In Stock</th></tr></thead>
+                  <tbody>
+                  <?php foreach ($productBatches as $b): ?>
+                    <tr>
+                      <td><?= e($b['batch_no']) ?></td>
+                      <td><?= e($b['expiry_date'] ?? '—') ?></td>
+                      <td class="text-end"><?= (int)$b['qty_in_stock'] ?></td>
+                    </tr>
+                  <?php endforeach; ?>
+                  </tbody>
+                </table>
+              </div>
+              <?php endif; ?>
+            </div>
+            <?php endif; ?>
+            <?php if (!empty($product['has_serial_no'])): ?>
+            <div class="card p-3 mb-3">
+              <h6 class="mb-2">Serial Numbers on Record</h6>
+              <?php if (!$productSerials): ?>
+                <p class="text-muted small mb-0">No serial numbers received yet.</p>
+              <?php else: ?>
+              <?php if ($productSerialsTotalCount > count($productSerials)): ?>
+                <p class="text-muted small">Showing the most recent <?= count($productSerials) ?> of <?= $productSerialsTotalCount ?> serial numbers.</p>
+              <?php endif; ?>
+              <div class="table-responsive" style="max-height:320px;overflow-y:auto;">
+                <table class="table table-sm mb-0">
+                  <thead><tr><th>Serial No.</th><th>Status</th><th>Warehouse</th><th>Batch</th></tr></thead>
+                  <tbody>
+                  <?php foreach ($productSerials as $s): ?>
+                    <tr>
+                      <td><?= e($s['serial_no']) ?></td>
+                      <td><span class="badge text-bg-light border"><?= e($s['status']) ?></span></td>
+                      <td><?= e($s['warehouse_name'] ?? '—') ?></td>
+                      <td><?= e($s['batch_no'] ?? '—') ?></td>
+                    </tr>
+                  <?php endforeach; ?>
+                  </tbody>
+                </table>
+              </div>
+              <?php endif; ?>
+            </div>
+            <?php endif; ?>
+            <?php if (empty($product['has_batch_no']) && empty($product['has_serial_no'])): ?>
+            <div class="card p-3 mb-3">
+              <p class="text-muted small mb-0">Turn on Has Batch No. and/or Has Serial No. to track batches/serials for this item.</p>
+            </div>
+            <?php endif; ?>
           </div>
         </div>
       </div>
