@@ -58,6 +58,26 @@ function stock_move(int $productId, int $warehouseId, int $delta, string $type, 
         ->execute([$productId, $warehouseId, $type, $delta, $reference, $notes, $userId]);
 }
 
+/**
+ * How many stock-UOM units one unit of $uom equals for a product — 1.0 if
+ * $uom is the product's own stock unit or isn't in its alternate-UOM list.
+ * Used to convert a transaction line's quantity (entered in whatever UOM
+ * the line uses) into a stock-UOM quantity before it reaches stock_move().
+ */
+function uom_conversion_factor(int $productId, string $uom): float
+{
+    $stmt = db()->prepare('SELECT unit FROM products WHERE id = ?');
+    $stmt->execute([$productId]);
+    $stockUnit = $stmt->fetchColumn();
+    if ($stockUnit !== false && $uom === $stockUnit) {
+        return 1.0;
+    }
+    $stmt = db()->prepare('SELECT conversion_factor FROM product_uoms WHERE product_id = ? AND uom = ?');
+    $stmt->execute([$productId, $uom]);
+    $factor = $stmt->fetchColumn();
+    return $factor !== false ? (float)$factor : 1.0;
+}
+
 /** Non-group (leaf) warehouses only — the ones that can actually hold stock. */
 function leaf_warehouses(): array
 {

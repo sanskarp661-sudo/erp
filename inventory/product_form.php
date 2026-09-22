@@ -58,6 +58,7 @@ $productTaxes = [];
 $productCharges = [];
 $productSuppliers = [];
 $productCustomerRules = [];
+$productUoms = [];
 
 if ($id) {
     $stmt = db()->prepare('SELECT * FROM products WHERE id = ?');
@@ -95,6 +96,9 @@ if ($id) {
     $stmt = db()->prepare('SELECT * FROM product_customer_rules WHERE product_id = ? ORDER BY sort_order, id');
     $stmt->execute([$id]);
     $productCustomerRules = $stmt->fetchAll();
+    $stmt = db()->prepare('SELECT * FROM product_uoms WHERE product_id = ? ORDER BY sort_order, id');
+    $stmt->execute([$id]);
+    $productUoms = $stmt->fetchAll();
 }
 // Captured before any POST handling touches $product — quantity and the
 // current image are never taken from client input on an edit; quantity
@@ -104,7 +108,7 @@ if ($id) {
 $existingQuantity = $id ? (int)$product['quantity'] : 0;
 $existingImage = $id ? $product['image'] : null;
 
-$activeTab = in_array(input('tab'), ['inventory', 'pricing', 'accounting', 'tax', 'sales', 'purchase'], true) ? input('tab') : 'details';
+$activeTab = in_array(input('tab'), ['inventory', 'uom', 'pricing', 'accounting', 'tax', 'sales', 'purchase'], true) ? input('tab') : 'details';
 $error = '';
 $maxImageBytes = 3 * 1024 * 1024;
 $mimeToExt = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp', 'image/gif' => 'gif'];
@@ -298,6 +302,19 @@ if (is_post()) {
         'exclude_from_inventory_valuation' => input('exclude_from_inventory_valuation') === '1' ? 1 : 0,
         'status' => in_array(input('status'), ['active', 'inactive'], true) ? input('status') : 'active',
     ];
+
+    $altUoms = $_POST['alt_uom'] ?? [];
+    $altUomFactors = $_POST['alt_uom_factor'] ?? [];
+    $productUomsToSave = [];
+    $uomSort = 0;
+    foreach ($altUoms as $i => $uomName) {
+        $uomName = trim($uomName);
+        $factor = (float)($altUomFactors[$i] ?? 0);
+        if ($uomName === '' || $factor <= 0) {
+            continue;
+        }
+        $productUomsToSave[] = ['uom' => $uomName, 'conversion_factor' => $factor, 'sort_order' => $uomSort++];
+    }
 
     $bcCodes = $_POST['barcode'] ?? [];
     $bcTypes = $_POST['barcode_type'] ?? [];
@@ -538,6 +555,12 @@ if (is_post()) {
                 $crStmt->execute([$newId, $cr['customer_id'], $cr['customer_group'], $cr['price_list_id'], $cr['discount_percent'], $cr['min_qty'], $cr['max_qty'], $cr['sort_order']]);
             }
 
+            $pdo->prepare('DELETE FROM product_uoms WHERE product_id=?')->execute([$newId]);
+            $uomStmt = $pdo->prepare('INSERT INTO product_uoms (product_id, uom, conversion_factor, sort_order) VALUES (?,?,?,?)');
+            foreach ($productUomsToSave as $pu) {
+                $uomStmt->execute([$newId, $pu['uom'], $pu['conversion_factor'], $pu['sort_order']]);
+            }
+
             if (!$id && $openingQty > 0 && $openingWarehouseId) {
                 stock_move($newId, $openingWarehouseId, $openingQty, 'in', 'Initial stock', 'Opening balance on product creation', current_user()['id']);
             }
@@ -562,6 +585,7 @@ if (is_post()) {
     $productCharges = $productChargesToSave;
     $productSuppliers = $productSuppliersToSave;
     $productCustomerRules = $productCustomerRulesToSave;
+    $productUoms = $productUomsToSave;
 }
 
 $categories = db()->query('SELECT id, name FROM categories ORDER BY name')->fetchAll();
@@ -594,6 +618,7 @@ require __DIR__ . '/../includes/header.php';
   <ul class="nav nav-tabs mb-3">
     <li class="nav-item"><button class="nav-link <?= $activeTab === 'details' ? 'active' : '' ?>" id="tab-details" data-bs-toggle="tab" data-bs-target="#pane-details" type="button">Details</button></li>
     <li class="nav-item"><button class="nav-link <?= $activeTab === 'inventory' ? 'active' : '' ?>" id="tab-inventory" data-bs-toggle="tab" data-bs-target="#pane-inventory" type="button">Inventory</button></li>
+    <li class="nav-item"><button class="nav-link <?= $activeTab === 'uom' ? 'active' : '' ?>" id="tab-uom" data-bs-toggle="tab" data-bs-target="#pane-uom" type="button">Units of Measure</button></li>
     <li class="nav-item"><button class="nav-link <?= $activeTab === 'pricing' ? 'active' : '' ?>" id="tab-pricing" data-bs-toggle="tab" data-bs-target="#pane-pricing" type="button">Pricing</button></li>
     <li class="nav-item"><button class="nav-link <?= $activeTab === 'accounting' ? 'active' : '' ?>" id="tab-accounting" data-bs-toggle="tab" data-bs-target="#pane-accounting" type="button">Accounting</button></li>
     <li class="nav-item"><button class="nav-link <?= $activeTab === 'tax' ? 'active' : '' ?>" id="tab-tax" data-bs-toggle="tab" data-bs-target="#pane-tax" type="button">Tax &amp; Charges</button></li>
@@ -1052,6 +1077,63 @@ require __DIR__ . '/../includes/header.php';
                 <?php if (!$stockByWarehouse): ?><tr><td class="text-muted text-center" colspan="2"><?= $id ? 'No warehouses set up yet.' : 'Save the item first to see stock by warehouse.' ?></td></tr><?php endif; ?>
                 </tbody>
               </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-pane fade <?= $activeTab === 'uom' ? 'show active' : '' ?>" id="pane-uom">
+        <div class="row g-3">
+          <div class="col-lg-5">
+            <div class="card p-3 mb-3">
+              <h6 class="mb-3">Default UOMs</h6>
+              <p class="text-muted small mb-3">Set on their own tabs — shown here for reference only.</p>
+              <div class="row g-3">
+                <div class="col-12">
+                  <label class="form-label">Stock UOM</label>
+                  <input type="text" class="form-control" value="<?= e($product['unit']) ?>" disabled>
+                  <div class="form-text">Set on the Details tab.</div>
+                </div>
+                <div class="col-12">
+                  <label class="form-label">Default Purchase UOM</label>
+                  <input type="text" class="form-control" value="<?= e($product['purchase_uom'] ?: $product['unit']) ?> (&times;<?= e($product['purchase_uom_conversion_factor']) ?>)" disabled>
+                  <div class="form-text">Set on the Purchase tab.</div>
+                </div>
+                <div class="col-12">
+                  <label class="form-label">Default Sales UOM</label>
+                  <input type="text" class="form-control" value="<?= e($product['sales_uom'] ?: $product['unit']) ?> (&times;<?= e($product['sales_uom_conversion_factor']) ?>)" disabled>
+                  <div class="form-text">Set on the Sales tab.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="col-lg-7">
+            <div class="card p-3 mb-3">
+              <h6 class="mb-1">Alternate UOMs</h6>
+              <p class="text-muted small mb-3">Other units this item can be bought, sold, or transferred in, and how many Stock UOM units each one equals. These are the UOMs offered on Purchase Order, GRN, Quotation, Sales Order, and Delivery Note line items.</p>
+              <div class="table-responsive">
+                <table class="table table-sm product-uom-rows">
+                  <thead><tr><th>UOM</th><th style="width:45%">1 UOM = how many Stock UOM (<?= e($product['unit']) ?>)</th><th></th></tr></thead>
+                  <tbody>
+                  <?php if (!$productUoms): $productUoms = [['uom' => '', 'conversion_factor' => '']]; endif; ?>
+                  <?php foreach ($productUoms as $pu): ?>
+                    <tr data-row>
+                      <td>
+                        <select class="form-select form-select-sm" name="alt_uom[]">
+                          <option value="">— Select —</option>
+                          <?php foreach ($units as $u): ?>
+                            <option value="<?= e($u['name']) ?>" <?= (string)($pu['uom'] ?? '') === (string)$u['name'] ? 'selected' : '' ?>><?= e($u['name']) ?></option>
+                          <?php endforeach; ?>
+                        </select>
+                      </td>
+                      <td><input type="number" step="0.001" min="0" class="form-control form-control-sm" name="alt_uom_factor[]" value="<?= e($pu['conversion_factor'] ?? '') ?>"></td>
+                      <td><button type="button" class="btn btn-sm btn-outline-danger product-uom-remove-row"><i class="fa-solid fa-xmark"></i></button></td>
+                    </tr>
+                  <?php endforeach; ?>
+                  </tbody>
+                </table>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-brand product-uom-add-row"><i class="fa-solid fa-plus"></i> Add Alternate UOM</button>
             </div>
           </div>
         </div>
@@ -1854,6 +1936,30 @@ document.addEventListener('DOMContentLoaded', function () {
       return;
     }
     var rm = e.target.closest('.product-barcode-remove-row');
+    if (rm) {
+      var rows2 = tbody.querySelectorAll('tr[data-row]');
+      if (rows2.length > 1) {
+        rm.closest('tr[data-row]').remove();
+      }
+    }
+  });
+});
+
+document.addEventListener('DOMContentLoaded', function () {
+  var wrap = document.querySelector('.product-uom-rows');
+  if (!wrap) return;
+  var tbody = wrap.querySelector('tbody');
+
+  wrap.closest('.card').addEventListener('click', function (e) {
+    if (e.target.closest('.product-uom-add-row')) {
+      var rows = tbody.querySelectorAll('tr[data-row]');
+      var clone = rows[rows.length - 1].cloneNode(true);
+      clone.querySelectorAll('input').forEach(function (inp) { inp.value = ''; });
+      clone.querySelectorAll('select').forEach(function (sel) { sel.selectedIndex = 0; });
+      tbody.appendChild(clone);
+      return;
+    }
+    var rm = e.target.closest('.product-uom-remove-row');
     if (rm) {
       var rows2 = tbody.querySelectorAll('tr[data-row]');
       if (rows2.length > 1) {

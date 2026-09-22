@@ -40,12 +40,14 @@ if (is_post() && input('action') === 'transition') {
     try {
         if ($newStatus === 'delivered') {
             foreach ($dnItems as $it) {
-                stock_move($it['product_id'], $dn['warehouse_id'], -$it['quantity'], 'out', $dn['dn_no'], 'Delivery note', current_user()['id']);
+                $stockQty = (int)round($it['quantity'] * $it['uom_conversion_factor']);
+                stock_move($it['product_id'], $dn['warehouse_id'], -$stockQty, 'out', $dn['dn_no'], 'Delivery note', current_user()['id']);
             }
         } elseif ($newStatus === 'cancelled' && $dn['status'] === 'delivered') {
             // Reverse the delivery: stock was deducted when delivered.
             foreach ($dnItems as $it) {
-                stock_move($it['product_id'], $dn['warehouse_id'], $it['quantity'], 'in', $dn['dn_no'], 'Delivery note cancelled', current_user()['id']);
+                $stockQty = (int)round($it['quantity'] * $it['uom_conversion_factor']);
+                stock_move($it['product_id'], $dn['warehouse_id'], $stockQty, 'in', $dn['dn_no'], 'Delivery note cancelled', current_user()['id']);
             }
         }
         $pdo->prepare('UPDATE delivery_notes SET status = ? WHERE id = ?')->execute([$newStatus, $id]);
@@ -118,19 +120,20 @@ require __DIR__ . '/../includes/header.php';
 <div class="card p-3">
   <div class="table-responsive">
     <table class="table">
-      <thead><tr><th>Product</th><th class="text-end">Qty</th><th class="text-end">Unit Price</th><th class="text-end">Subtotal</th></tr></thead>
+      <thead><tr><th>Product</th><th class="text-end">Qty</th><th>UOM</th><th class="text-end">Unit Price</th><th class="text-end">Subtotal</th></tr></thead>
       <tbody>
       <?php foreach ($items as $it): ?>
         <tr>
           <td><?= e($it['product_name']) ?> <span class="text-muted small">(<?= e($it['sku']) ?>)</span></td>
           <td class="text-end"><?= (int)$it['quantity'] ?></td>
+          <td><?= e($it['uom'] ?? '') ?></td>
           <td class="text-end"><?= money($it['unit_price']) ?></td>
           <td class="text-end"><?= money($it['subtotal']) ?></td>
         </tr>
       <?php endforeach; ?>
       </tbody>
       <tfoot>
-        <tr><th colspan="3" class="text-end">Total</th><th class="text-end"><?= money($dn['total_amount']) ?></th></tr>
+        <tr><th colspan="4" class="text-end">Total</th><th class="text-end"><?= money($dn['total_amount']) ?></th></tr>
       </tfoot>
     </table>
   </div>

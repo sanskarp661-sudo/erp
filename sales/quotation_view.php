@@ -98,19 +98,20 @@ require __DIR__ . '/../includes/header.php';
   </div>
   <div class="table-responsive">
     <table class="table">
-      <thead><tr><th>Product</th><th class="text-end">Qty</th><th class="text-end">Unit Price</th><th class="text-end">Subtotal</th></tr></thead>
+      <thead><tr><th>Product</th><th class="text-end">Qty</th><th>UOM</th><th class="text-end">Unit Price</th><th class="text-end">Subtotal</th></tr></thead>
       <tbody>
       <?php foreach ($items as $it): ?>
         <tr>
           <td><?= e($it['product_name']) ?> <span class="text-muted small">(<?= e($it['sku']) ?>)</span></td>
           <td class="text-end"><?= (int)$it['quantity'] ?></td>
+          <td><?= e($it['uom'] ?? '') ?></td>
           <td class="text-end"><?= money($it['unit_price']) ?></td>
           <td class="text-end"><?= money($it['subtotal']) ?></td>
         </tr>
       <?php endforeach; ?>
       </tbody>
       <tfoot>
-        <tr><th colspan="3" class="text-end">Total</th><th class="text-end"><?= money($quotation['total_amount']) ?></th></tr>
+        <tr><th colspan="4" class="text-end">Total</th><th class="text-end"><?= money($quotation['total_amount']) ?></th></tr>
       </tfoot>
     </table>
   </div>

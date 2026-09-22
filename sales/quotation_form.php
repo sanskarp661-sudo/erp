@@ -33,6 +33,7 @@ if (is_post()) {
     $notes = input('notes');
     $productIds = $_POST['product_id'] ?? [];
     $quantities = $_POST['quantity'] ?? [];
+    $lineUoms = $_POST['uom'] ?? [];
     $prices = $_POST['unit_price'] ?? [];
 
     $lineItems = [];
@@ -43,7 +44,9 @@ if (is_post()) {
         $price = (float)($prices[$i] ?? 0);
         if ($pid > 0 && $qty > 0) {
             $subtotal = $qty * $price;
-            $lineItems[] = ['product_id' => $pid, 'quantity' => $qty, 'unit_price' => $price, 'subtotal' => $subtotal];
+            $uom = trim($lineUoms[$i] ?? '') ?: null;
+            $factor = $uom !== null ? uom_conversion_factor($pid, $uom) : 1.0;
+            $lineItems[] = ['product_id' => $pid, 'quantity' => $qty, 'uom' => $uom ?? 'pcs', 'uom_conversion_factor' => $factor, 'unit_price' => $price, 'subtotal' => $subtotal];
             $total += $subtotal;
         }
     }
@@ -67,9 +70,9 @@ if (is_post()) {
                     ->execute([$qNo, $customerId, $quotationDate, $validTill, $notes, $total, current_user()['id']]);
                 $qId = (int)$pdo->lastInsertId();
             }
-            $itemStmt = $pdo->prepare('INSERT INTO quotation_items (quotation_id, product_id, quantity, unit_price, subtotal) VALUES (?,?,?,?,?)');
+            $itemStmt = $pdo->prepare('INSERT INTO quotation_items (quotation_id, product_id, quantity, uom, uom_conversion_factor, unit_price, subtotal) VALUES (?,?,?,?,?,?,?)');
             foreach ($lineItems as $li) {
-                $itemStmt->execute([$qId, $li['product_id'], $li['quantity'], $li['unit_price'], $li['subtotal']]);
+                $itemStmt->execute([$qId, $li['product_id'], $li['quantity'], $li['uom'], $li['uom_conversion_factor'], $li['unit_price'], $li['subtotal']]);
             }
             $pdo->commit();
             flash('success', $id ? 'Quotation updated.' : 'Quotation created.');
@@ -86,6 +89,18 @@ if (is_post()) {
 
 $customers = db()->query('SELECT id, name FROM customers ORDER BY name')->fetchAll();
 $products = db()->query("SELECT id, sku, name, selling_price, quantity, unit FROM products WHERE status='active' ORDER BY name")->fetchAll();
+$productUomsByProduct = [];
+foreach (db()->query('SELECT product_id, uom, conversion_factor FROM product_uoms ORDER BY sort_order, id') as $r) {
+    $productUomsByProduct[(int)$r['product_id']][] = ['uom' => $r['uom'], 'factor' => (float)$r['conversion_factor']];
+}
+$productUomJson = [];
+foreach ($products as $p) {
+    $map = [$p['unit'] => 1.0];
+    foreach ($productUomsByProduct[(int)$p['id']] ?? [] as $u) {
+        $map[$u['uom']] = $u['factor'];
+    }
+    $productUomJson[(int)$p['id']] = json_encode($map);
+}
 
 $page_title = $id ? 'Edit Quotation' : 'New Quotation';
 require __DIR__ . '/../includes/header.php';
@@ -122,22 +137,29 @@ require __DIR__ . '/../includes/header.php';
     <div class="line-items" data-total-target="#qTotal">
       <div class="table-responsive">
         <table class="table">
-          <thead><tr><th style="width:38%">Product</th><th style="width:15%">Qty</th><th style="width:18%">Unit Price</th><th style="width:18%" class="text-end">Subtotal</th><th></th></tr></thead>
+          <thead><tr><th style="width:32%">Product</th><th style="width:12%">Qty</th><th style="width:12%">UOM</th><th style="width:16%">Unit Price</th><th style="width:18%" class="text-end">Subtotal</th><th></th></tr></thead>
           <tbody>
-          <?php if (!$items): $items = [['product_id' => '', 'quantity' => 1, 'unit_price' => 0]]; endif; ?>
+          <?php if (!$items): $items = [['product_id' => '', 'quantity' => 1, 'uom' => '', 'unit_price' => 0]]; endif; ?>
           <?php foreach ($items as $it): ?>
             <tr data-row>
               <td>
                 <select class="form-select js-product" name="product_id[]">
                   <option value="">— Select product —</option>
                   <?php foreach ($products as $p): ?>
-                    <option value="<?= (int)$p['id'] ?>" data-price="<?= e($p['selling_price']) ?>" <?= (string)$it['product_id'] === (string)$p['id'] ? 'selected' : '' ?>>
+                    <option value="<?= (int)$p['id'] ?>" data-price="<?= e($p['selling_price']) ?>" data-uoms='<?= e($productUomJson[(int)$p['id']]) ?>' <?= (string)$it['product_id'] === (string)$p['id'] ? 'selected' : '' ?>>
                       <?= e($p['name']) ?> (<?= e($p['sku']) ?>)
                     </option>
                   <?php endforeach; ?>
                 </select>
               </td>
               <td><input type="number" min="1" class="form-control js-qty" name="quantity[]" value="<?= e($it['quantity']) ?>"></td>
+              <td>
+                <select class="form-select js-uom" name="uom[]">
+                  <?php if ($it['product_id']): foreach ($productUomJson[(int)$it['product_id']] ? json_decode($productUomJson[(int)$it['product_id']], true) : [] as $uomName => $factor): ?>
+                    <option value="<?= e($uomName) ?>" <?= (string)($it['uom'] ?? '') === (string)$uomName ? 'selected' : '' ?>><?= e($uomName) ?></option>
+                  <?php endforeach; endif; ?>
+                </select>
+              </td>
               <td><input type="number" step="0.01" min="0" class="form-control js-price" name="unit_price[]" value="<?= e($it['unit_price']) ?>"></td>
               <td class="text-end js-subtotal">0.00</td>
               <td><button type="button" class="btn btn-sm btn-outline-danger js-remove-row"><i class="fa-solid fa-xmark"></i></button></td>

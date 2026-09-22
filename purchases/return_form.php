@@ -70,6 +70,8 @@ foreach ($poItemsStmt->fetchAll() as $oi) {
         'sku' => $oi['sku'],
         'ordered_qty' => (int)$oi['quantity'],
         'unit_cost' => $oi['unit_cost'],
+        'uom' => $oi['uom'],
+        'uom_conversion_factor' => $oi['uom_conversion_factor'],
         'remaining' => $remaining,
         'qty' => $savedQty[$pid] ?? 0,
     ];
@@ -95,7 +97,7 @@ if (is_post()) {
             break;
         }
         $subtotal = $qty * $li['unit_cost'];
-        $lineItems[] = ['product_id' => $li['product_id'], 'quantity' => $qty, 'unit_cost' => $li['unit_cost'], 'subtotal' => $subtotal];
+        $lineItems[] = ['product_id' => $li['product_id'], 'quantity' => $qty, 'uom' => $li['uom'], 'uom_conversion_factor' => $li['uom_conversion_factor'], 'unit_cost' => $li['unit_cost'], 'subtotal' => $subtotal];
         $total += $subtotal;
     }
 
@@ -120,9 +122,9 @@ if (is_post()) {
                     ->execute([$returnNo, $fromOrder, $order['vendor_id'], $warehouseId, $returnDate, 'draft', $reason, $total, current_user()['id']]);
                 $returnId = (int)$pdo->lastInsertId();
             }
-            $itemStmt = $pdo->prepare('INSERT INTO purchase_return_items (purchase_return_id, product_id, quantity, unit_cost, subtotal) VALUES (?,?,?,?,?)');
+            $itemStmt = $pdo->prepare('INSERT INTO purchase_return_items (purchase_return_id, product_id, quantity, uom, uom_conversion_factor, unit_cost, subtotal) VALUES (?,?,?,?,?,?,?)');
             foreach ($lineItems as $li) {
-                $itemStmt->execute([$returnId, $li['product_id'], $li['quantity'], $li['unit_cost'], $li['subtotal']]);
+                $itemStmt->execute([$returnId, $li['product_id'], $li['quantity'], $li['uom'], $li['uom_conversion_factor'], $li['unit_cost'], $li['subtotal']]);
             }
             $pdo->commit();
             flash('success', $id ? 'Purchase return updated.' : 'Purchase return created as a draft.');

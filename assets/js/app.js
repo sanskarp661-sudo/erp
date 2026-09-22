@@ -33,8 +33,9 @@ document.addEventListener('DOMContentLoaded', function () {
   //   <div class="line-items" data-total-target="#totalEl">
   //     <table><tbody>
   //       <tr data-row>
-  //         <td><select class="js-product"><option data-price="12.50">...</option></select></td>
+  //         <td><select class="js-product"><option data-price="12.50" data-uoms='{"pcs":1,"box":12}'>...</option></select></td>
   //         <td><input class="js-qty" type="number" value="1"></td>
+  //         <td><select class="js-uom"><option>pcs</option></select></td> (optional — UOM-aware forms only)
   //         <td><input class="js-price" type="number"></td>
   //         <td class="js-subtotal"></td>
   //         <td><button type="button" class="js-remove-row">x</button></td>
@@ -42,6 +43,11 @@ document.addEventListener('DOMContentLoaded', function () {
   //     </tbody></table>
   //     <button type="button" class="js-add-row">Add row</button>
   //   </div>
+  // The optional .js-uom select is rebuilt from the selected product's
+  // data-uoms JSON (an {name: conversionFactor} map, stock unit first)
+  // whenever the product changes — the conversion factor itself is never
+  // trusted from the client; the server re-resolves it from product_uoms
+  // at save time using the submitted uom name.
   document.querySelectorAll('.line-items').forEach(function (wrap) {
     var tbody = wrap.querySelector('tbody');
 
@@ -61,6 +67,21 @@ document.addEventListener('DOMContentLoaded', function () {
       if (totalInput) totalInput.value = total.toFixed(2);
     }
 
+    function rebuildUomOptions(row, opt) {
+      var uomSelect = row ? row.querySelector('.js-uom') : null;
+      if (!uomSelect) return;
+      var uomsRaw = opt ? opt.getAttribute('data-uoms') : null;
+      var uoms = {};
+      try { uoms = uomsRaw ? JSON.parse(uomsRaw) : {}; } catch (err) { uoms = {}; }
+      uomSelect.innerHTML = '';
+      Object.keys(uoms).forEach(function (name) {
+        var o = document.createElement('option');
+        o.value = name;
+        o.textContent = name;
+        uomSelect.appendChild(o);
+      });
+    }
+
     wrap.addEventListener('input', recalc);
 
     wrap.addEventListener('change', function (e) {
@@ -70,6 +91,7 @@ document.addEventListener('DOMContentLoaded', function () {
         var price = opt ? opt.getAttribute('data-price') : null;
         var priceInput = row ? row.querySelector('.js-price') : null;
         if (priceInput && price !== null) priceInput.value = price;
+        rebuildUomOptions(row, opt);
       }
       recalc();
     });

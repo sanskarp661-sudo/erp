@@ -211,12 +211,14 @@ if (is_post()) {
         $warehouseId = (int)($warehouseIds[$i] ?? 0) ?: null;
         if ($pid > 0 && $qty > 0) {
             $subtotal = round($qty * $price * (1 - $discount / 100), 2);
+            $uom = trim($uoms[$i] ?? '') ?: 'pcs';
             $lineItems[] = [
                 'product_id' => $pid,
                 'description' => $descriptions[$i] ?? '',
                 'warehouse_id' => $warehouseId,
                 'quantity' => $qty,
-                'uom' => $uoms[$i] ?? 'pcs',
+                'uom' => $uom,
+                'uom_conversion_factor' => uom_conversion_factor($pid, $uom),
                 'unit_price' => $price,
                 'discount_percent' => $discount,
                 'subtotal' => $subtotal,
@@ -326,9 +328,9 @@ if (is_post()) {
                     ->execute([$orderNo, ...$headerVals, 'pending', current_user()['id']]);
                 $orderId = (int)$pdo->lastInsertId();
             }
-            $itemStmt = $pdo->prepare('INSERT INTO sales_order_items (order_id, product_id, description, warehouse_id, quantity, uom, unit_price, discount_percent, subtotal) VALUES (?,?,?,?,?,?,?,?,?)');
+            $itemStmt = $pdo->prepare('INSERT INTO sales_order_items (order_id, product_id, description, warehouse_id, quantity, uom, uom_conversion_factor, unit_price, discount_percent, subtotal) VALUES (?,?,?,?,?,?,?,?,?,?)');
             foreach ($lineItems as $li) {
-                $itemStmt->execute([$orderId, $li['product_id'], $li['description'], $li['warehouse_id'], $li['quantity'], $li['uom'], $li['unit_price'], $li['discount_percent'], $li['subtotal']]);
+                $itemStmt->execute([$orderId, $li['product_id'], $li['description'], $li['warehouse_id'], $li['quantity'], $li['uom'], $li['uom_conversion_factor'], $li['unit_price'], $li['discount_percent'], $li['subtotal']]);
             }
             $taxStmt = $pdo->prepare('INSERT INTO sales_order_taxes (order_id, type, account_head_id, description, based_on, rate_or_amount, amount, sort_order) VALUES (?,?,?,?,?,?,?,?)');
             foreach ($taxRowsToSave as $tr) {
@@ -453,11 +455,21 @@ foreach ($plRateStmt as $r) {
     $priceListRates[(int)$r['price_list_id']][(int)$r['product_id']] = (float)$r['rate'];
 }
 
+$productUomsByProduct = [];
+foreach (db()->query('SELECT product_id, uom, conversion_factor FROM product_uoms ORDER BY sort_order, id') as $r) {
+    $productUomsByProduct[(int)$r['product_id']][] = ['uom' => $r['uom'], 'factor' => (float)$r['conversion_factor']];
+}
+
 $productMeta = [];
 foreach ($products as $p) {
+    $uomMap = [$p['unit'] => 1.0];
+    foreach ($productUomsByProduct[(int)$p['id']] ?? [] as $u) {
+        $uomMap[$u['uom']] = $u['factor'];
+    }
     $productMeta[(int)$p['id']] = [
         'sku' => $p['sku'], 'name' => $p['name'], 'unit' => $p['unit'],
         'category' => $p['category_name'] ?: '', 'stock' => (int)$p['quantity'], 'rate' => (float)$p['selling_price'],
+        'uoms' => $uomMap,
     ];
 }
 
@@ -641,8 +653,9 @@ require __DIR__ . '/../includes/header.php';
                   <td><input type="number" min="1" class="form-control form-control-sm js-qty" name="quantity[]" value="<?= e($it['quantity']) ?>"></td>
                   <td>
                     <select class="form-select form-select-sm js-uom" name="uom[]">
-                      <?php foreach ($uoms as $u): ?>
-                        <option value="<?= e($u['name']) ?>" <?= (string)($it['uom'] ?? 'pcs') === (string)$u['name'] ? 'selected' : '' ?>><?= e($u['name']) ?></option>
+                      <?php $rowUoms = $it['product_id'] && isset($productMeta[(int)$it['product_id']]) ? $productMeta[(int)$it['product_id']]['uoms'] : ['pcs' => 1.0]; ?>
+                      <?php foreach ($rowUoms as $uomName => $factor): ?>
+                        <option value="<?= e($uomName) ?>" <?= (string)($it['uom'] ?? 'pcs') === (string)$uomName ? 'selected' : '' ?>><?= e($uomName) ?></option>
                       <?php endforeach; ?>
                     </select>
                   </td>
@@ -1446,11 +1459,13 @@ document.addEventListener('DOMContentLoaded', function () {
     var meta = productMeta[pid];
     var uomSelect = row.querySelector('.js-uom');
     if (uomSelect) {
-      var found = false;
-      for (var i = 0; i < uomSelect.options.length; i++) {
-        if (uomSelect.options[i].value === meta.unit) { uomSelect.selectedIndex = i; found = true; break; }
-      }
-      if (!found) uomSelect.value = meta.unit;
+      uomSelect.innerHTML = '';
+      Object.keys(meta.uoms || {}).forEach(function (name) {
+        var o = document.createElement('option');
+        o.value = name;
+        o.textContent = name;
+        uomSelect.appendChild(o);
+      });
     }
     var priceInput = row.querySelector('.js-price');
     if (priceInput) priceInput.value = rateFor(pid, priceListSelect ? priceListSelect.value : null);

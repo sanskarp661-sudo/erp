@@ -40,12 +40,14 @@ if (is_post() && input('action') === 'transition') {
     try {
         if ($newStatus === 'received') {
             foreach ($grnItems as $it) {
-                stock_move($it['product_id'], $grn['warehouse_id'], $it['quantity'], 'in', $grn['grn_no'], 'Goods receipt', current_user()['id']);
+                $stockQty = (int)round($it['quantity'] * $it['uom_conversion_factor']);
+                stock_move($it['product_id'], $grn['warehouse_id'], $stockQty, 'in', $grn['grn_no'], 'Goods receipt', current_user()['id']);
             }
         } elseif ($newStatus === 'cancelled' && $grn['status'] === 'received') {
             // Reverse the receipt: stock was added when received.
             foreach ($grnItems as $it) {
-                stock_move($it['product_id'], $grn['warehouse_id'], -$it['quantity'], 'out', $grn['grn_no'], 'Goods receipt cancelled', current_user()['id']);
+                $stockQty = (int)round($it['quantity'] * $it['uom_conversion_factor']);
+                stock_move($it['product_id'], $grn['warehouse_id'], -$stockQty, 'out', $grn['grn_no'], 'Goods receipt cancelled', current_user()['id']);
             }
         }
         $pdo->prepare('UPDATE goods_receipts SET status = ? WHERE id = ?')->execute([$newStatus, $id]);
@@ -118,19 +120,20 @@ require __DIR__ . '/../includes/header.php';
 <div class="card p-3">
   <div class="table-responsive">
     <table class="table">
-      <thead><tr><th>Product</th><th class="text-end">Qty</th><th class="text-end">Unit Cost</th><th class="text-end">Subtotal</th></tr></thead>
+      <thead><tr><th>Product</th><th class="text-end">Qty</th><th>UOM</th><th class="text-end">Unit Cost</th><th class="text-end">Subtotal</th></tr></thead>
       <tbody>
       <?php foreach ($items as $it): ?>
         <tr>
           <td><?= e($it['product_name']) ?> <span class="text-muted small">(<?= e($it['sku']) ?>)</span></td>
           <td class="text-end"><?= (int)$it['quantity'] ?></td>
+          <td><?= e($it['uom'] ?? '') ?></td>
           <td class="text-end"><?= money($it['unit_cost']) ?></td>
           <td class="text-end"><?= money($it['subtotal']) ?></td>
         </tr>
       <?php endforeach; ?>
       </tbody>
       <tfoot>
-        <tr><th colspan="3" class="text-end">Total</th><th class="text-end"><?= money($grn['total_amount']) ?></th></tr>
+        <tr><th colspan="4" class="text-end">Total</th><th class="text-end"><?= money($grn['total_amount']) ?></th></tr>
       </tfoot>
     </table>
   </div>

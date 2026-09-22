@@ -27,6 +27,10 @@ $barcodes = db()->prepare('SELECT * FROM product_barcodes WHERE product_id = ? O
 $barcodes->execute([$id]);
 $barcodes = $barcodes->fetchAll();
 
+$productUoms = db()->prepare('SELECT * FROM product_uoms WHERE product_id = ? ORDER BY sort_order, id');
+$productUoms->execute([$id]);
+$productUoms = $productUoms->fetchAll();
+
 $priceListRates = db()->prepare('SELECT pli.rate, pl.name price_list_name FROM price_list_items pli JOIN price_lists pl ON pl.id = pli.price_list_id WHERE pli.product_id = ? ORDER BY pl.name');
 $priceListRates->execute([$id]);
 $priceListRates = $priceListRates->fetchAll();
@@ -303,6 +307,21 @@ require __DIR__ . '/../includes/header.php';
         <?php if ($product['has_batch_no']): ?><span class="badge text-bg-light border">Has Batch No.</span><?php endif; ?>
         <?php if ($product['has_serial_no']): ?><span class="badge text-bg-light border">Has Serial No.</span><?php endif; ?>
       </div>
+      <?php endif; ?>
+    </div>
+    <div class="card p-3 mt-3">
+      <h6 class="mb-2">Units of Measure</h6>
+      <div class="small">
+        <div class="d-flex justify-content-between"><span class="text-muted">Stock UOM</span><span><?= e($product['unit']) ?></span></div>
+        <div class="d-flex justify-content-between"><span class="text-muted">Default Purchase UOM</span><span><?= e($product['purchase_uom'] ?: $product['unit']) ?> (&times;<?= e(number_format((float)$product['purchase_uom_conversion_factor'], 3)) ?>)</span></div>
+        <div class="d-flex justify-content-between"><span class="text-muted">Default Sales UOM</span><span><?= e($product['sales_uom'] ?: $product['unit']) ?> (&times;<?= e(number_format((float)$product['sales_uom_conversion_factor'], 3)) ?>)</span></div>
+      </div>
+      <?php if ($productUoms): ?>
+      <hr>
+      <div class="small text-muted mb-1">Alternate UOMs</div>
+      <?php foreach ($productUoms as $pu): ?>
+        <div class="d-flex justify-content-between small"><span>1 <?= e($pu['uom']) ?></span><span>= <?= e(number_format((float)$pu['conversion_factor'], 3)) ?> <?= e($product['unit']) ?></span></div>
+      <?php endforeach; ?>
       <?php endif; ?>
     </div>
     <div class="card p-3 mt-3">

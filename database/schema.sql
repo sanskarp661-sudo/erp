@@ -300,6 +300,21 @@ CREATE TABLE IF NOT EXISTS product_barcodes (
   FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- The real per-item alternate-UOM list: every UOM a line item can be
+-- transacted in for this product, and how many stock-UOM units one of
+-- it equals. Distinct from products.purchase_uom/sales_uom, which just
+-- remember which single UOM here a product's Purchase/Sales tab
+-- defaults to.
+CREATE TABLE IF NOT EXISTS product_uoms (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  product_id INT UNSIGNED NOT NULL,
+  uom VARCHAR(30) NOT NULL,
+  conversion_factor DECIMAL(10,3) NOT NULL DEFAULT 1.000,
+  sort_order INT NOT NULL DEFAULT 0,
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+  UNIQUE KEY uq_product_uom (product_id, uom)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- Warehouses form a tree (self-referencing parent_id). A "Group" warehouse
 -- is organizational only (e.g. "All Warehouses") and can't hold stock
 -- itself — only its non-group descendants can.
@@ -529,6 +544,8 @@ CREATE TABLE IF NOT EXISTS quotation_items (
   quotation_id INT UNSIGNED NOT NULL,
   product_id INT UNSIGNED NOT NULL,
   quantity INT NOT NULL,
+  uom VARCHAR(30) NOT NULL DEFAULT 'pcs',
+  uom_conversion_factor DECIMAL(10,3) NOT NULL DEFAULT 1.000,
   unit_price DECIMAL(14,2) NOT NULL,
   subtotal DECIMAL(14,2) NOT NULL,
   FOREIGN KEY (quotation_id) REFERENCES quotations(id) ON DELETE CASCADE,
@@ -667,6 +684,7 @@ CREATE TABLE IF NOT EXISTS sales_order_items (
   warehouse_id INT UNSIGNED DEFAULT NULL,
   quantity INT NOT NULL,
   uom VARCHAR(30) NOT NULL DEFAULT 'pcs',
+  uom_conversion_factor DECIMAL(10,3) NOT NULL DEFAULT 1.000,
   unit_price DECIMAL(14,2) NOT NULL,
   discount_percent DECIMAL(5,2) NOT NULL DEFAULT 0,
   subtotal DECIMAL(14,2) NOT NULL,
@@ -725,6 +743,8 @@ CREATE TABLE IF NOT EXISTS delivery_note_items (
   dn_id INT UNSIGNED NOT NULL,
   product_id INT UNSIGNED NOT NULL,
   quantity INT NOT NULL,
+  uom VARCHAR(30) NOT NULL DEFAULT 'pcs',
+  uom_conversion_factor DECIMAL(10,3) NOT NULL DEFAULT 1.000,
   unit_price DECIMAL(14,2) NOT NULL,
   subtotal DECIMAL(14,2) NOT NULL,
   FOREIGN KEY (dn_id) REFERENCES delivery_notes(id) ON DELETE CASCADE,
@@ -794,6 +814,8 @@ CREATE TABLE IF NOT EXISTS purchase_order_items (
   po_id INT UNSIGNED NOT NULL,
   product_id INT UNSIGNED NOT NULL,
   quantity INT NOT NULL,
+  uom VARCHAR(30) NOT NULL DEFAULT 'pcs',
+  uom_conversion_factor DECIMAL(10,3) NOT NULL DEFAULT 1.000,
   unit_cost DECIMAL(14,2) NOT NULL,
   subtotal DECIMAL(14,2) NOT NULL,
   FOREIGN KEY (po_id) REFERENCES purchase_orders(id) ON DELETE CASCADE,
@@ -827,6 +849,8 @@ CREATE TABLE IF NOT EXISTS goods_receipt_items (
   grn_id INT UNSIGNED NOT NULL,
   product_id INT UNSIGNED NOT NULL,
   quantity INT NOT NULL,
+  uom VARCHAR(30) NOT NULL DEFAULT 'pcs',
+  uom_conversion_factor DECIMAL(10,3) NOT NULL DEFAULT 1.000,
   unit_cost DECIMAL(14,2) NOT NULL,
   subtotal DECIMAL(14,2) NOT NULL,
   FOREIGN KEY (grn_id) REFERENCES goods_receipts(id) ON DELETE CASCADE,
@@ -971,6 +995,8 @@ CREATE TABLE IF NOT EXISTS sales_return_items (
   sales_return_id INT UNSIGNED NOT NULL,
   product_id INT UNSIGNED NOT NULL,
   quantity INT NOT NULL,
+  uom VARCHAR(30) NOT NULL DEFAULT 'pcs',
+  uom_conversion_factor DECIMAL(10,3) NOT NULL DEFAULT 1.000,
   unit_price DECIMAL(14,2) NOT NULL,
   subtotal DECIMAL(14,2) NOT NULL,
   FOREIGN KEY (sales_return_id) REFERENCES sales_returns(id) ON DELETE CASCADE,
@@ -1008,6 +1034,8 @@ CREATE TABLE IF NOT EXISTS purchase_return_items (
   purchase_return_id INT UNSIGNED NOT NULL,
   product_id INT UNSIGNED NOT NULL,
   quantity INT NOT NULL,
+  uom VARCHAR(30) NOT NULL DEFAULT 'pcs',
+  uom_conversion_factor DECIMAL(10,3) NOT NULL DEFAULT 1.000,
   unit_cost DECIMAL(14,2) NOT NULL,
   subtotal DECIMAL(14,2) NOT NULL,
   FOREIGN KEY (purchase_return_id) REFERENCES purchase_returns(id) ON DELETE CASCADE,

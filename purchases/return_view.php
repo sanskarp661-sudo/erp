@@ -40,7 +40,8 @@ if (is_post() && input('action') === 'transition') {
     try {
         if ($newStatus === 'completed') {
             foreach ($retItems as $it) {
-                stock_move($it['product_id'], $ret['warehouse_id'], -$it['quantity'], 'out', $ret['return_no'], 'Purchase return', current_user()['id']);
+                $stockQty = (int)round($it['quantity'] * $it['uom_conversion_factor']);
+                stock_move($it['product_id'], $ret['warehouse_id'], -$stockQty, 'out', $ret['return_no'], 'Purchase return', current_user()['id']);
             }
 
             $invStmt = $pdo->prepare("SELECT * FROM purchase_invoices WHERE purchase_order_id = ? AND status <> 'cancelled' ORDER BY id DESC LIMIT 1");
@@ -72,7 +73,8 @@ if (is_post() && input('action') === 'transition') {
             }
         } elseif ($newStatus === 'cancelled' && $ret['status'] === 'completed') {
             foreach ($retItems as $it) {
-                stock_move($it['product_id'], $ret['warehouse_id'], $it['quantity'], 'in', $ret['return_no'], 'Purchase return cancelled', current_user()['id']);
+                $stockQty = (int)round($it['quantity'] * $it['uom_conversion_factor']);
+                stock_move($it['product_id'], $ret['warehouse_id'], $stockQty, 'in', $ret['return_no'], 'Purchase return cancelled', current_user()['id']);
             }
             if ((float)$ret['debit_amount'] > 0.009 && $ret['purchase_invoice_id']) {
                 $invStmt = $pdo->prepare('SELECT * FROM purchase_invoices WHERE id = ?');
@@ -158,21 +160,22 @@ require __DIR__ . '/../includes/header.php';
 <div class="card p-3">
   <div class="table-responsive">
     <table class="table">
-      <thead><tr><th>Product</th><th class="text-end">Qty</th><th class="text-end">Unit Cost</th><th class="text-end">Subtotal</th></tr></thead>
+      <thead><tr><th>Product</th><th class="text-end">Qty</th><th>UOM</th><th class="text-end">Unit Cost</th><th class="text-end">Subtotal</th></tr></thead>
       <tbody>
       <?php foreach ($items as $it): ?>
         <tr>
           <td><?= e($it['product_name']) ?> <span class="text-muted small">(<?= e($it['sku']) ?>)</span></td>
           <td class="text-end"><?= (int)$it['quantity'] ?></td>
+          <td><?= e($it['uom'] ?? '') ?></td>
           <td class="text-end"><?= money($it['unit_cost']) ?></td>
           <td class="text-end"><?= money($it['subtotal']) ?></td>
         </tr>
       <?php endforeach; ?>
       </tbody>
       <tfoot>
-        <tr><th colspan="3" class="text-end">Total</th><th class="text-end"><?= money($ret['total_amount']) ?></th></tr>
+        <tr><th colspan="4" class="text-end">Total</th><th class="text-end"><?= money($ret['total_amount']) ?></th></tr>
         <?php if ($ret['debit_amount'] > 0): ?>
-        <tr><th colspan="3" class="text-end">Debit Note Applied</th><th class="text-end text-success"><?= money($ret['debit_amount']) ?></th></tr>
+        <tr><th colspan="4" class="text-end">Debit Note Applied</th><th class="text-end text-success"><?= money($ret['debit_amount']) ?></th></tr>
         <?php endif; ?>
       </tfoot>
     </table>
