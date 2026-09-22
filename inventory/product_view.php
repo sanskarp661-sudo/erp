@@ -43,6 +43,21 @@ $productCharges = db()->prepare('SELECT pc.*, la.name account_name FROM product_
 $productCharges->execute([$id]);
 $productCharges = $productCharges->fetchAll();
 
+$productSuppliers = db()->prepare('SELECT ps.*, v.name supplier_name FROM product_suppliers ps JOIN vendors v ON v.id = ps.supplier_id WHERE ps.product_id = ? ORDER BY ps.sort_order, ps.id');
+$productSuppliers->execute([$id]);
+$productSuppliers = $productSuppliers->fetchAll();
+
+$productCustomerRules = db()->prepare('SELECT cr.*, c.name customer_name, pl.name price_list_name FROM product_customer_rules cr JOIN customers c ON c.id = cr.customer_id LEFT JOIN price_lists pl ON pl.id = cr.price_list_id WHERE cr.product_id = ? ORDER BY cr.sort_order, cr.id');
+$productCustomerRules->execute([$id]);
+$productCustomerRules = $productCustomerRules->fetchAll();
+
+$defaultSupplierName = null;
+if ($product['default_supplier_id']) {
+    $stmt = db()->prepare('SELECT name FROM vendors WHERE id = ?');
+    $stmt->execute([$product['default_supplier_id']]);
+    $defaultSupplierName = $stmt->fetchColumn() ?: null;
+}
+
 $defaultTaxTemplateName = null;
 if ($product['default_tax_template_id']) {
     $stmt = db()->prepare('SELECT name FROM tax_templates WHERE id = ?');
@@ -371,6 +386,62 @@ require __DIR__ . '/../includes/header.php';
             <td><?= e($ch['charge_type'] ?: '—') ?></td>
             <td><?= e($ch['account_name'] ?: '—') ?></td>
             <td class="text-end"><?= e(number_format((float)$ch['rate_or_amount'], 2)) ?></td>
+          </tr>
+        <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div>
+    <?php endif; ?>
+    <div class="card p-3 mt-3">
+      <h6 class="mb-2">Sales &amp; Purchase</h6>
+      <div class="small">
+        <div class="d-flex justify-content-between"><span class="text-muted">Item Customer Group</span><span><?= e($product['item_customer_group'] ?: '—') ?></span></div>
+        <div class="d-flex justify-content-between"><span class="text-muted">Default Supplier</span><span><?= e($defaultSupplierName ?: '—') ?></span></div>
+        <div class="d-flex justify-content-between"><span class="text-muted">Sales Lead Time</span><span><?= (int)$product['sales_lead_time_days'] ?> days</span></div>
+        <div class="d-flex justify-content-between"><span class="text-muted">Delivery Time</span><span><?= (int)$product['delivery_time_days'] ?> days</span></div>
+      </div>
+      <hr>
+      <div class="d-flex flex-wrap gap-1">
+        <?php
+        $spBadges = [
+            'available_for_online_sales' => 'Online', 'available_for_retail_sales' => 'Retail', 'available_for_b2b_sales' => 'B2B',
+            'requires_purchase_order' => 'Requires PO', 'is_drop_ship_item' => 'Drop Ship',
+        ];
+        ?>
+        <?php foreach ($spBadges as $spKey => $spLabel): ?>
+          <?php if (!empty($product[$spKey])): ?><span class="badge text-bg-light border"><?= e($spLabel) ?></span><?php endif; ?>
+        <?php endforeach; ?>
+      </div>
+      <?php if ($product['sales_description']): ?><div class="mt-2 small text-muted"><?= e($product['sales_description']) ?></div><?php endif; ?>
+    </div>
+    <?php if ($productSuppliers): ?>
+    <div class="card p-3 mt-3">
+      <h6 class="mb-2">Preferred Suppliers</h6>
+      <table class="table table-sm mb-0">
+        <thead><tr><th>Supplier</th><th>Part No.</th><th class="text-end">Last Rate</th></tr></thead>
+        <tbody>
+        <?php foreach ($productSuppliers as $ps): ?>
+          <tr>
+            <td><?= e($ps['supplier_name']) ?><?= $ps['is_preferred'] ? ' <span class="badge text-bg-brand">Preferred</span>' : '' ?></td>
+            <td><?= e($ps['supplier_part_no'] ?: '—') ?></td>
+            <td class="text-end"><?= money($ps['last_purchase_rate']) ?></td>
+          </tr>
+        <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div>
+    <?php endif; ?>
+    <?php if ($productCustomerRules): ?>
+    <div class="card p-3 mt-3">
+      <h6 class="mb-2">Customer Specific Sales Rules</h6>
+      <table class="table table-sm mb-0">
+        <thead><tr><th>Customer</th><th class="text-end">Disc. %</th><th class="text-end">Min–Max Qty</th></tr></thead>
+        <tbody>
+        <?php foreach ($productCustomerRules as $cr): ?>
+          <tr>
+            <td><?= e($cr['customer_name']) ?><?= $cr['customer_group'] ? '<div class="text-muted small">' . e($cr['customer_group']) . '</div>' : '' ?></td>
+            <td class="text-end"><?= e(number_format((float)$cr['discount_percent'], 2)) ?></td>
+            <td class="text-end"><?= (int)$cr['min_qty'] ?>–<?= (int)$cr['max_qty'] ?></td>
           </tr>
         <?php endforeach; ?>
         </tbody>

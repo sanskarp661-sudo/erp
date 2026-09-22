@@ -211,6 +211,46 @@ CREATE TABLE IF NOT EXISTS products (
   tax_exemption_reason VARCHAR(120) DEFAULT NULL,
   tax_exemption_applicable_from DATE DEFAULT NULL,
   tax_notes VARCHAR(500) DEFAULT NULL,
+  default_supplier_id INT UNSIGNED DEFAULT NULL,
+  default_purchase_price_list_id INT UNSIGNED DEFAULT NULL,
+  purchase_min_order_qty INT NOT NULL DEFAULT 0,
+  purchase_max_order_qty INT NOT NULL DEFAULT 0,
+  purchase_order_qty_increment INT NOT NULL DEFAULT 1,
+  receipt_tolerance_percent DECIMAL(5,2) NOT NULL DEFAULT 0,
+  over_delivery_allowance_percent DECIMAL(5,2) NOT NULL DEFAULT 0,
+  default_package_type VARCHAR(60) DEFAULT NULL,
+  items_per_package INT NOT NULL DEFAULT 1,
+  purchase_description VARCHAR(500) DEFAULT NULL,
+  requires_purchase_order TINYINT(1) NOT NULL DEFAULT 1,
+  allow_receipt_without_po TINYINT(1) NOT NULL DEFAULT 0,
+  track_supplier_batch_serial TINYINT(1) NOT NULL DEFAULT 0,
+  include_in_supplier_portal TINYINT(1) NOT NULL DEFAULT 0,
+  is_drop_ship_item TINYINT(1) NOT NULL DEFAULT 0,
+  allow_subcontracting TINYINT(1) NOT NULL DEFAULT 0,
+  maintain_last_purchase_rate TINYINT(1) NOT NULL DEFAULT 0,
+  inspection_required ENUM('Yes','No') NOT NULL DEFAULT 'No',
+  sampling_rate_percent DECIMAL(5,2) NOT NULL DEFAULT 0,
+  quality_rating_default VARCHAR(30) DEFAULT NULL,
+  reject_if_quality_check_fails TINYINT(1) NOT NULL DEFAULT 0,
+  item_customer_group VARCHAR(120) DEFAULT NULL,
+  sales_min_order_qty INT NOT NULL DEFAULT 0,
+  sales_max_order_qty INT NOT NULL DEFAULT 0,
+  sales_order_qty_increment INT NOT NULL DEFAULT 1,
+  sales_lead_time_days INT NOT NULL DEFAULT 0,
+  delivery_time_days INT NOT NULL DEFAULT 0,
+  weight_for_shipping_kg DECIMAL(10,3) NOT NULL DEFAULT 0,
+  sales_description VARCHAR(500) DEFAULT NULL,
+  marketing_material VARCHAR(60) DEFAULT NULL,
+  item_website VARCHAR(255) DEFAULT NULL,
+  available_for_online_sales TINYINT(1) NOT NULL DEFAULT 1,
+  available_for_retail_sales TINYINT(1) NOT NULL DEFAULT 1,
+  available_for_b2b_sales TINYINT(1) NOT NULL DEFAULT 1,
+  not_discountable TINYINT(1) NOT NULL DEFAULT 0,
+  requires_approval_for_discount TINYINT(1) NOT NULL DEFAULT 0,
+  show_in_customer_portal TINYINT(1) NOT NULL DEFAULT 0,
+  default_monthly_sales_qty INT NOT NULL DEFAULT 0,
+  seasonal_demand ENUM('Low','Normal','High') NOT NULL DEFAULT 'Normal',
+  preferred_sales_warehouse_id INT UNSIGNED DEFAULT NULL,
   standard_weight_kg DECIMAL(10,3) NOT NULL DEFAULT 0,
   standard_volume_ltr DECIMAL(10,3) NOT NULL DEFAULT 0,
   gross_weight_kg DECIMAL(10,3) NOT NULL DEFAULT 0,
@@ -702,6 +742,37 @@ CREATE TABLE IF NOT EXISTS vendors (
   phone VARCHAR(40) DEFAULT NULL,
   address VARCHAR(255) DEFAULT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Item Master Purchase tab: preferred supplier list for this item.
+CREATE TABLE IF NOT EXISTS product_suppliers (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  product_id INT UNSIGNED NOT NULL,
+  supplier_id INT UNSIGNED NOT NULL,
+  supplier_part_no VARCHAR(60) DEFAULT NULL,
+  lead_time_days INT NOT NULL DEFAULT 0,
+  last_purchase_rate DECIMAL(14,2) NOT NULL DEFAULT 0,
+  is_preferred TINYINT(1) NOT NULL DEFAULT 0,
+  sort_order INT NOT NULL DEFAULT 0,
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+  FOREIGN KEY (supplier_id) REFERENCES vendors(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Item Master Sales tab: per-customer quantity/discount rules — distinct
+-- from product_customer_prices (Pricing tab's rate/date-range overrides).
+CREATE TABLE IF NOT EXISTS product_customer_rules (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  product_id INT UNSIGNED NOT NULL,
+  customer_id INT UNSIGNED NOT NULL,
+  customer_group VARCHAR(120) DEFAULT NULL,
+  price_list_id INT UNSIGNED DEFAULT NULL,
+  discount_percent DECIMAL(5,2) NOT NULL DEFAULT 0,
+  min_qty INT NOT NULL DEFAULT 0,
+  max_qty INT NOT NULL DEFAULT 0,
+  sort_order INT NOT NULL DEFAULT 0,
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+  FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
+  FOREIGN KEY (price_list_id) REFERENCES price_lists(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS purchase_orders (

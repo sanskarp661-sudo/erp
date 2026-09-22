@@ -28,6 +28,19 @@ $product = [
     'tax_category' => '', 'is_nil_rated' => 0, 'is_exempt_from_tax' => 0, 'reverse_charge_applicable' => 0, 'tds_applicable' => 0,
     'default_tax_template_id' => '', 'price_includes_tax' => 0, 'tax_calculation_based_on' => 'Net Amount',
     'tax_exemption_reason' => '', 'tax_exemption_applicable_from' => '', 'tax_notes' => '',
+    'default_supplier_id' => '', 'default_purchase_price_list_id' => '',
+    'purchase_min_order_qty' => 0, 'purchase_max_order_qty' => 0, 'purchase_order_qty_increment' => 1,
+    'receipt_tolerance_percent' => 0, 'over_delivery_allowance_percent' => 0,
+    'default_package_type' => '', 'items_per_package' => 1, 'purchase_description' => '',
+    'requires_purchase_order' => 1, 'allow_receipt_without_po' => 0, 'track_supplier_batch_serial' => 0,
+    'include_in_supplier_portal' => 0, 'is_drop_ship_item' => 0, 'allow_subcontracting' => 0, 'maintain_last_purchase_rate' => 0,
+    'inspection_required' => 'No', 'sampling_rate_percent' => 0, 'quality_rating_default' => '', 'reject_if_quality_check_fails' => 0,
+    'item_customer_group' => '', 'sales_min_order_qty' => 0, 'sales_max_order_qty' => 0, 'sales_order_qty_increment' => 1,
+    'sales_lead_time_days' => 0, 'delivery_time_days' => 0, 'weight_for_shipping_kg' => 0,
+    'sales_description' => '', 'marketing_material' => '', 'item_website' => '',
+    'available_for_online_sales' => 1, 'available_for_retail_sales' => 1, 'available_for_b2b_sales' => 1,
+    'not_discountable' => 0, 'requires_approval_for_discount' => 0, 'show_in_customer_portal' => 0,
+    'default_monthly_sales_qty' => 0, 'seasonal_demand' => 'Normal', 'preferred_sales_warehouse_id' => '',
     'standard_weight_kg' => 0, 'standard_volume_ltr' => 0, 'gross_weight_kg' => 0, 'net_weight_kg' => 0, 'tags' => '',
     'cost_price' => '0', 'selling_price' => '0', 'quantity' => '0',
     'reorder_level' => '0', 'reorder_qty' => 0, 'safety_stock' => 0, 'enable_reorder_notifications' => 1, 'consider_in_mrp' => 1,
@@ -43,6 +56,8 @@ $priceListRates = [];
 $customerPrices = [];
 $productTaxes = [];
 $productCharges = [];
+$productSuppliers = [];
+$productCustomerRules = [];
 
 if ($id) {
     $stmt = db()->prepare('SELECT * FROM products WHERE id = ?');
@@ -74,6 +89,12 @@ if ($id) {
     $stmt = db()->prepare('SELECT * FROM product_charges WHERE product_id = ? ORDER BY sort_order, id');
     $stmt->execute([$id]);
     $productCharges = $stmt->fetchAll();
+    $stmt = db()->prepare('SELECT * FROM product_suppliers WHERE product_id = ? ORDER BY sort_order, id');
+    $stmt->execute([$id]);
+    $productSuppliers = $stmt->fetchAll();
+    $stmt = db()->prepare('SELECT * FROM product_customer_rules WHERE product_id = ? ORDER BY sort_order, id');
+    $stmt->execute([$id]);
+    $productCustomerRules = $stmt->fetchAll();
 }
 // Captured before any POST handling touches $product — quantity and the
 // current image are never taken from client input on an edit; quantity
@@ -83,7 +104,7 @@ if ($id) {
 $existingQuantity = $id ? (int)$product['quantity'] : 0;
 $existingImage = $id ? $product['image'] : null;
 
-$activeTab = in_array(input('tab'), ['inventory', 'pricing', 'accounting', 'tax'], true) ? input('tab') : 'details';
+$activeTab = in_array(input('tab'), ['inventory', 'pricing', 'accounting', 'tax', 'sales', 'purchase'], true) ? input('tab') : 'details';
 $error = '';
 $maxImageBytes = 3 * 1024 * 1024;
 $mimeToExt = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp', 'image/gif' => 'gif'];
@@ -206,6 +227,46 @@ if (is_post()) {
         'tax_exemption_reason' => input('tax_exemption_reason') ?: null,
         'tax_exemption_applicable_from' => input('tax_exemption_applicable_from') ?: null,
         'tax_notes' => input('tax_notes') ?: null,
+        'default_supplier_id' => input('default_supplier_id') ?: null,
+        'default_purchase_price_list_id' => input('default_purchase_price_list_id') ?: null,
+        'purchase_min_order_qty' => (int)input('purchase_min_order_qty'),
+        'purchase_max_order_qty' => (int)input('purchase_max_order_qty'),
+        'purchase_order_qty_increment' => (int)input('purchase_order_qty_increment') ?: 1,
+        'receipt_tolerance_percent' => (float)input('receipt_tolerance_percent'),
+        'over_delivery_allowance_percent' => (float)input('over_delivery_allowance_percent'),
+        'default_package_type' => input('default_package_type') ?: null,
+        'items_per_package' => (int)input('items_per_package') ?: 1,
+        'purchase_description' => input('purchase_description') ?: null,
+        'requires_purchase_order' => input('requires_purchase_order') === '1' ? 1 : 0,
+        'allow_receipt_without_po' => input('allow_receipt_without_po') === '1' ? 1 : 0,
+        'track_supplier_batch_serial' => input('track_supplier_batch_serial') === '1' ? 1 : 0,
+        'include_in_supplier_portal' => input('include_in_supplier_portal') === '1' ? 1 : 0,
+        'is_drop_ship_item' => input('is_drop_ship_item') === '1' ? 1 : 0,
+        'allow_subcontracting' => input('allow_subcontracting') === '1' ? 1 : 0,
+        'maintain_last_purchase_rate' => input('maintain_last_purchase_rate') === '1' ? 1 : 0,
+        'inspection_required' => in_array(input('inspection_required'), ['Yes', 'No'], true) ? input('inspection_required') : 'No',
+        'sampling_rate_percent' => (float)input('sampling_rate_percent'),
+        'quality_rating_default' => input('quality_rating_default') ?: null,
+        'reject_if_quality_check_fails' => input('reject_if_quality_check_fails') === '1' ? 1 : 0,
+        'item_customer_group' => input('item_customer_group') ?: null,
+        'sales_min_order_qty' => (int)input('sales_min_order_qty'),
+        'sales_max_order_qty' => (int)input('sales_max_order_qty'),
+        'sales_order_qty_increment' => (int)input('sales_order_qty_increment') ?: 1,
+        'sales_lead_time_days' => (int)input('sales_lead_time_days'),
+        'delivery_time_days' => (int)input('delivery_time_days'),
+        'weight_for_shipping_kg' => (float)input('weight_for_shipping_kg'),
+        'sales_description' => input('sales_description') ?: null,
+        'marketing_material' => input('marketing_material') ?: null,
+        'item_website' => input('item_website') ?: null,
+        'available_for_online_sales' => input('available_for_online_sales') === '1' ? 1 : 0,
+        'available_for_retail_sales' => input('available_for_retail_sales') === '1' ? 1 : 0,
+        'available_for_b2b_sales' => input('available_for_b2b_sales') === '1' ? 1 : 0,
+        'not_discountable' => input('not_discountable') === '1' ? 1 : 0,
+        'requires_approval_for_discount' => input('requires_approval_for_discount') === '1' ? 1 : 0,
+        'show_in_customer_portal' => input('show_in_customer_portal') === '1' ? 1 : 0,
+        'default_monthly_sales_qty' => (int)input('default_monthly_sales_qty'),
+        'seasonal_demand' => in_array(input('seasonal_demand'), ['Low', 'Normal', 'High'], true) ? input('seasonal_demand') : 'Normal',
+        'preferred_sales_warehouse_id' => input('preferred_sales_warehouse_id') ?: null,
         'standard_weight_kg' => (float)input('standard_weight_kg'),
         'standard_volume_ltr' => (float)input('standard_volume_ltr'),
         'gross_weight_kg' => (float)input('gross_weight_kg'),
@@ -332,6 +393,45 @@ if (is_post()) {
         ];
     }
 
+    $psSupplierIds = $_POST['ps_supplier_id'] ?? [];
+    $psPartNos = $_POST['ps_supplier_part_no'] ?? [];
+    $psLeadTimes = $_POST['ps_lead_time_days'] ?? [];
+    $psRates = $_POST['ps_last_purchase_rate'] ?? [];
+    $productSuppliersToSave = [];
+    $psSort = 0;
+    $psPreferredIndex = (int)input('ps_preferred_index');
+    foreach ($psSupplierIds as $i => $supplierId) {
+        $supplierId = (int)$supplierId;
+        if ($supplierId <= 0) {
+            continue;
+        }
+        $productSuppliersToSave[] = [
+            'supplier_id' => $supplierId, 'supplier_part_no' => trim($psPartNos[$i] ?? '') ?: null,
+            'lead_time_days' => (int)($psLeadTimes[$i] ?? 0), 'last_purchase_rate' => (float)($psRates[$i] ?? 0),
+            'is_preferred' => ($i === $psPreferredIndex) ? 1 : 0, 'sort_order' => $psSort++,
+        ];
+    }
+
+    $crCustomerIds = $_POST['cr_customer_id'] ?? [];
+    $crCustomerGroups = $_POST['cr_customer_group'] ?? [];
+    $crPriceListIds = $_POST['cr_price_list_id'] ?? [];
+    $crDiscounts = $_POST['cr_discount_percent'] ?? [];
+    $crMinQtys = $_POST['cr_min_qty'] ?? [];
+    $crMaxQtys = $_POST['cr_max_qty'] ?? [];
+    $productCustomerRulesToSave = [];
+    $crSort = 0;
+    foreach ($crCustomerIds as $i => $custId) {
+        $custId = (int)$custId;
+        if ($custId <= 0) {
+            continue;
+        }
+        $productCustomerRulesToSave[] = [
+            'customer_id' => $custId, 'customer_group' => trim($crCustomerGroups[$i] ?? '') ?: null,
+            'price_list_id' => (int)($crPriceListIds[$i] ?? 0) ?: null, 'discount_percent' => (float)($crDiscounts[$i] ?? 0),
+            'min_qty' => (int)($crMinQtys[$i] ?? 0), 'max_qty' => (int)($crMaxQtys[$i] ?? 0), 'sort_order' => $crSort++,
+        ];
+    }
+
     if ($error) {
         // Image error already set above.
     } elseif ($product['sku'] === '' || $product['name'] === '') {
@@ -364,6 +464,17 @@ if (is_post()) {
                 'tax_category', 'is_nil_rated', 'is_exempt_from_tax', 'reverse_charge_applicable', 'tds_applicable',
                 'default_tax_template_id', 'price_includes_tax', 'tax_calculation_based_on',
                 'tax_exemption_reason', 'tax_exemption_applicable_from', 'tax_notes',
+                'default_supplier_id', 'default_purchase_price_list_id', 'purchase_min_order_qty', 'purchase_max_order_qty', 'purchase_order_qty_increment',
+                'receipt_tolerance_percent', 'over_delivery_allowance_percent', 'default_package_type', 'items_per_package', 'purchase_description',
+                'requires_purchase_order', 'allow_receipt_without_po', 'track_supplier_batch_serial', 'include_in_supplier_portal',
+                'is_drop_ship_item', 'allow_subcontracting', 'maintain_last_purchase_rate',
+                'inspection_required', 'sampling_rate_percent', 'quality_rating_default', 'reject_if_quality_check_fails',
+                'item_customer_group', 'sales_min_order_qty', 'sales_max_order_qty', 'sales_order_qty_increment',
+                'sales_lead_time_days', 'delivery_time_days', 'weight_for_shipping_kg',
+                'sales_description', 'marketing_material', 'item_website',
+                'available_for_online_sales', 'available_for_retail_sales', 'available_for_b2b_sales',
+                'not_discountable', 'requires_approval_for_discount', 'show_in_customer_portal',
+                'default_monthly_sales_qty', 'seasonal_demand', 'preferred_sales_warehouse_id',
                 'standard_weight_kg', 'standard_volume_ltr', 'gross_weight_kg', 'net_weight_kg', 'tags',
                 'cost_price', 'selling_price', 'reorder_level', 'reorder_qty', 'safety_stock', 'enable_reorder_notifications', 'consider_in_mrp',
                 'has_batch_no', 'has_serial_no', 'batch_expiry_required', 'batch_number_series',
@@ -415,6 +526,18 @@ if (is_post()) {
                 $chStmt->execute([$newId, $ch['charge_type'], $ch['account_head_id'], $ch['rate_or_amount'], $ch['applicable_on'], $ch['sort_order']]);
             }
 
+            $pdo->prepare('DELETE FROM product_suppliers WHERE product_id=?')->execute([$newId]);
+            $psStmt = $pdo->prepare('INSERT INTO product_suppliers (product_id, supplier_id, supplier_part_no, lead_time_days, last_purchase_rate, is_preferred, sort_order) VALUES (?,?,?,?,?,?,?)');
+            foreach ($productSuppliersToSave as $ps) {
+                $psStmt->execute([$newId, $ps['supplier_id'], $ps['supplier_part_no'], $ps['lead_time_days'], $ps['last_purchase_rate'], $ps['is_preferred'], $ps['sort_order']]);
+            }
+
+            $pdo->prepare('DELETE FROM product_customer_rules WHERE product_id=?')->execute([$newId]);
+            $crStmt = $pdo->prepare('INSERT INTO product_customer_rules (product_id, customer_id, customer_group, price_list_id, discount_percent, min_qty, max_qty, sort_order) VALUES (?,?,?,?,?,?,?,?)');
+            foreach ($productCustomerRulesToSave as $cr) {
+                $crStmt->execute([$newId, $cr['customer_id'], $cr['customer_group'], $cr['price_list_id'], $cr['discount_percent'], $cr['min_qty'], $cr['max_qty'], $cr['sort_order']]);
+            }
+
             if (!$id && $openingQty > 0 && $openingWarehouseId) {
                 stock_move($newId, $openingWarehouseId, $openingQty, 'in', 'Initial stock', 'Opening balance on product creation', current_user()['id']);
             }
@@ -437,6 +560,8 @@ if (is_post()) {
     $customerPrices = $customerPricesToSave;
     $productTaxes = $productTaxesToSave;
     $productCharges = $productChargesToSave;
+    $productSuppliers = $productSuppliersToSave;
+    $productCustomerRules = $productCustomerRulesToSave;
 }
 
 $categories = db()->query('SELECT id, name FROM categories ORDER BY name')->fetchAll();
@@ -448,6 +573,14 @@ $priceLists = db()->query("SELECT id, name, currency FROM price_lists WHERE stat
 $customers = db()->query('SELECT id, name FROM customers ORDER BY name')->fetchAll();
 $ledgerAccounts = db()->query("SELECT id, name FROM ledger_accounts WHERE status='active' ORDER BY name")->fetchAll();
 $taxTemplates = db()->query("SELECT id, name FROM tax_templates WHERE status='active' ORDER BY name")->fetchAll();
+$vendors = db()->query('SELECT id, name FROM vendors ORDER BY name')->fetchAll();
+$brandName = null;
+foreach ($brands as $b) {
+    if ((string)$b['id'] === (string)$product['brand_id']) {
+        $brandName = $b['name'];
+        break;
+    }
+}
 
 $page_title = $id ? 'Edit Item' : 'New Item';
 require __DIR__ . '/../includes/header.php';
@@ -464,6 +597,8 @@ require __DIR__ . '/../includes/header.php';
     <li class="nav-item"><button class="nav-link <?= $activeTab === 'pricing' ? 'active' : '' ?>" id="tab-pricing" data-bs-toggle="tab" data-bs-target="#pane-pricing" type="button">Pricing</button></li>
     <li class="nav-item"><button class="nav-link <?= $activeTab === 'accounting' ? 'active' : '' ?>" id="tab-accounting" data-bs-toggle="tab" data-bs-target="#pane-accounting" type="button">Accounting</button></li>
     <li class="nav-item"><button class="nav-link <?= $activeTab === 'tax' ? 'active' : '' ?>" id="tab-tax" data-bs-toggle="tab" data-bs-target="#pane-tax" type="button">Tax &amp; Charges</button></li>
+    <li class="nav-item"><button class="nav-link <?= $activeTab === 'sales' ? 'active' : '' ?>" id="tab-sales" data-bs-toggle="tab" data-bs-target="#pane-sales" type="button">Sales</button></li>
+    <li class="nav-item"><button class="nav-link <?= $activeTab === 'purchase' ? 'active' : '' ?>" id="tab-purchase" data-bs-toggle="tab" data-bs-target="#pane-purchase" type="button">Purchase</button></li>
   </ul>
 
   <form method="post" enctype="multipart/form-data">
@@ -1356,6 +1491,344 @@ require __DIR__ . '/../includes/header.php';
           </div>
         </div>
       </div>
+
+      <div class="tab-pane fade <?= $activeTab === 'sales' ? 'show active' : '' ?>" id="pane-sales">
+        <div class="row g-3">
+          <div class="col-lg-6">
+            <div class="card p-3 mb-3">
+              <h6 class="mb-1">Sales Settings</h6>
+              <p class="text-muted small mb-3">Define default sales behavior for this item.</p>
+              <div class="row g-3">
+                <div class="col-sm-6">
+                  <label class="form-label">Item Customer Group</label>
+                  <input type="text" name="item_customer_group" class="form-control" value="<?= e($product['item_customer_group'] ?? '') ?>">
+                </div>
+                <div class="col-sm-6">
+                  <label class="form-label">Preferred Warehouse for Sales</label>
+                  <select name="preferred_sales_warehouse_id" class="form-select">
+                    <option value="">— None —</option>
+                    <?php foreach ($warehouses as $w): ?>
+                      <option value="<?= (int)$w['id'] ?>" <?= (string)$product['preferred_sales_warehouse_id'] === (string)$w['id'] ? 'selected' : '' ?>><?= e($w['name']) ?></option>
+                    <?php endforeach; ?>
+                  </select>
+                </div>
+                <div class="col-sm-4">
+                  <label class="form-label">Minimum Order Qty</label>
+                  <input type="number" min="0" name="sales_min_order_qty" class="form-control" value="<?= e($product['sales_min_order_qty']) ?>">
+                </div>
+                <div class="col-sm-4">
+                  <label class="form-label">Maximum Order Qty</label>
+                  <input type="number" min="0" name="sales_max_order_qty" class="form-control" value="<?= e($product['sales_max_order_qty']) ?>">
+                </div>
+                <div class="col-sm-4">
+                  <label class="form-label">Order Qty Increment</label>
+                  <input type="number" min="1" name="sales_order_qty_increment" class="form-control" value="<?= e($product['sales_order_qty_increment']) ?>">
+                </div>
+                <div class="col-sm-4">
+                  <label class="form-label">Lead Time (Days)</label>
+                  <input type="number" min="0" name="sales_lead_time_days" class="form-control" value="<?= e($product['sales_lead_time_days']) ?>">
+                </div>
+                <div class="col-sm-4">
+                  <label class="form-label">Delivery Time (Days)</label>
+                  <input type="number" min="0" name="delivery_time_days" class="form-control" value="<?= e($product['delivery_time_days']) ?>">
+                </div>
+                <div class="col-sm-4">
+                  <label class="form-label">Weight for Shipping (kg)</label>
+                  <input type="number" step="0.001" min="0" name="weight_for_shipping_kg" class="form-control" value="<?= e($product['weight_for_shipping_kg']) ?>">
+                </div>
+              </div>
+            </div>
+
+            <div class="card p-3 mb-3">
+              <h6 class="mb-1">Sales Description</h6>
+              <p class="text-muted small mb-3">Description that will appear in sales transactions (optional).</p>
+              <textarea name="sales_description" class="form-control" rows="3"><?= e($product['sales_description'] ?? '') ?></textarea>
+            </div>
+
+            <div class="card p-3 mb-3">
+              <h6 class="mb-1">Marketing Information</h6>
+              <p class="text-muted small mb-3">Additional details for sales and customer reference.</p>
+              <div class="row g-3">
+                <div class="col-sm-4">
+                  <label class="form-label">Brand</label>
+                  <input type="text" class="form-control" value="<?= e($brandName ?? '') ?>" disabled>
+                  <div class="form-text">Set on the Details tab.</div>
+                </div>
+                <div class="col-sm-4">
+                  <label class="form-label">Marketing Material</label>
+                  <input type="text" name="marketing_material" class="form-control" value="<?= e($product['marketing_material'] ?? '') ?>">
+                </div>
+                <div class="col-sm-4">
+                  <label class="form-label">Item Website</label>
+                  <input type="text" name="item_website" class="form-control" value="<?= e($product['item_website'] ?? '') ?>">
+                </div>
+              </div>
+            </div>
+
+            <div class="card p-3 mb-3">
+              <h6 class="mb-1">Sales UOM &amp; Packaging</h6>
+              <p class="text-muted small mb-3">Sales unit and conversion factor (set on the Details tab; packaging fields are on the Purchase tab).</p>
+              <div class="row g-3">
+                <div class="col-sm-6">
+                  <label class="form-label">Sales UOM</label>
+                  <input type="text" class="form-control" value="<?= e($product['sales_uom'] ?: $product['unit']) ?>" disabled>
+                </div>
+                <div class="col-sm-6">
+                  <label class="form-label">Sales UOM Conversion Factor</label>
+                  <input type="text" class="form-control" value="<?= e($product['sales_uom_conversion_factor']) ?>" disabled>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-lg-6">
+            <div class="card p-3 mb-3">
+              <h6 class="mb-1">Customer Specific Settings</h6>
+              <p class="text-muted small mb-3">Define rules for specific customers (optional).</p>
+              <div class="table-responsive">
+                <table class="table table-sm product-cr-rows">
+                  <thead><tr><th>Customer</th><th>Group</th><th>Price List</th><th>Disc. %</th><th>Min Qty</th><th>Max Qty</th><th></th></tr></thead>
+                  <tbody>
+                  <?php if (!$productCustomerRules): $productCustomerRules = [['customer_id' => '', 'customer_group' => '', 'price_list_id' => '', 'discount_percent' => 0, 'min_qty' => '', 'max_qty' => '']]; endif; ?>
+                  <?php foreach ($productCustomerRules as $cr): ?>
+                    <tr data-row>
+                      <td>
+                        <select class="form-select form-select-sm" name="cr_customer_id[]">
+                          <option value="">— Select —</option>
+                          <?php foreach ($customers as $c): ?>
+                            <option value="<?= (int)$c['id'] ?>" <?= (string)($cr['customer_id'] ?? '') === (string)$c['id'] ? 'selected' : '' ?>><?= e($c['name']) ?></option>
+                          <?php endforeach; ?>
+                        </select>
+                      </td>
+                      <td><input type="text" class="form-control form-control-sm" name="cr_customer_group[]" value="<?= e($cr['customer_group'] ?? '') ?>"></td>
+                      <td>
+                        <select class="form-select form-select-sm" name="cr_price_list_id[]">
+                          <option value="">— Any —</option>
+                          <?php foreach ($priceLists as $pl): ?>
+                            <option value="<?= (int)$pl['id'] ?>" <?= (string)($cr['price_list_id'] ?? '') === (string)$pl['id'] ? 'selected' : '' ?>><?= e($pl['name']) ?></option>
+                          <?php endforeach; ?>
+                        </select>
+                      </td>
+                      <td><input type="number" step="0.01" min="0" max="100" class="form-control form-control-sm" name="cr_discount_percent[]" value="<?= e($cr['discount_percent'] ?? 0) ?>"></td>
+                      <td><input type="number" min="0" class="form-control form-control-sm" name="cr_min_qty[]" value="<?= e($cr['min_qty'] ?? '') ?>"></td>
+                      <td><input type="number" min="0" class="form-control form-control-sm" name="cr_max_qty[]" value="<?= e($cr['max_qty'] ?? '') ?>"></td>
+                      <td><button type="button" class="btn btn-sm btn-outline-danger product-cr-remove-row"><i class="fa-solid fa-xmark"></i></button></td>
+                    </tr>
+                  <?php endforeach; ?>
+                  </tbody>
+                </table>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-brand product-cr-add-row"><i class="fa-solid fa-plus"></i> Add Customer Rule</button>
+            </div>
+
+            <div class="card p-3 mb-3">
+              <h6 class="mb-1">Item Availability for Sales</h6>
+              <p class="text-muted small mb-3">Control item availability in different sales channels.</p>
+              <?php
+              $availFields = [
+                  'available_for_online_sales' => 'Available for Online Sales', 'available_for_retail_sales' => 'Available for Retail Sales',
+                  'available_for_b2b_sales' => 'Available for B2B Sales', 'not_discountable' => 'Not Discountable',
+                  'requires_approval_for_discount' => 'Requires Approval for Discount', 'show_in_customer_portal' => 'Show in Customer Portal',
+              ];
+              ?>
+              <div class="row g-1">
+                <?php foreach ($availFields as $avKey => $avLabel): ?>
+                  <div class="col-6 form-check">
+                    <input type="checkbox" class="form-check-input" id="av_<?= e($avKey) ?>" name="<?= e($avKey) ?>" value="1" <?= !empty($product[$avKey]) ? 'checked' : '' ?>>
+                    <label class="form-check-label" for="av_<?= e($avKey) ?>"><?= e($avLabel) ?></label>
+                  </div>
+                <?php endforeach; ?>
+              </div>
+            </div>
+
+            <div class="card p-3 mb-3">
+              <h6 class="mb-1">Sales Forecasting (Optional)</h6>
+              <p class="text-muted small mb-3">Helps in demand planning and availability.</p>
+              <div class="row g-3">
+                <div class="col-sm-6">
+                  <label class="form-label">Default Monthly Sales Qty</label>
+                  <input type="number" min="0" name="default_monthly_sales_qty" class="form-control" value="<?= e($product['default_monthly_sales_qty']) ?>">
+                </div>
+                <div class="col-sm-6">
+                  <label class="form-label">Seasonal Demand</label>
+                  <select name="seasonal_demand" class="form-select">
+                    <?php foreach (['Low', 'Normal', 'High'] as $sd): ?>
+                      <option value="<?= e($sd) ?>" <?= $product['seasonal_demand'] === $sd ? 'selected' : '' ?>><?= e($sd) ?></option>
+                    <?php endforeach; ?>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-pane fade <?= $activeTab === 'purchase' ? 'show active' : '' ?>" id="pane-purchase">
+        <div class="row g-3">
+          <div class="col-lg-6">
+            <div class="card p-3 mb-3">
+              <h6 class="mb-1">Purchase Settings</h6>
+              <p class="text-muted small mb-3">Define default purchase behavior for this item.</p>
+              <div class="row g-3">
+                <div class="col-sm-6">
+                  <label class="form-label">Default Supplier</label>
+                  <select name="default_supplier_id" class="form-select">
+                    <option value="">— None —</option>
+                    <?php foreach ($vendors as $v): ?>
+                      <option value="<?= (int)$v['id'] ?>" <?= (string)$product['default_supplier_id'] === (string)$v['id'] ? 'selected' : '' ?>><?= e($v['name']) ?></option>
+                    <?php endforeach; ?>
+                  </select>
+                </div>
+                <div class="col-sm-6">
+                  <label class="form-label">Default Purchase Price List</label>
+                  <select name="default_purchase_price_list_id" class="form-select">
+                    <option value="">— None —</option>
+                    <?php foreach ($priceLists as $pl): ?>
+                      <option value="<?= (int)$pl['id'] ?>" <?= (string)$product['default_purchase_price_list_id'] === (string)$pl['id'] ? 'selected' : '' ?>><?= e($pl['name']) ?></option>
+                    <?php endforeach; ?>
+                  </select>
+                </div>
+                <div class="col-sm-4">
+                  <label class="form-label">Minimum Order Qty</label>
+                  <input type="number" min="0" name="purchase_min_order_qty" class="form-control" value="<?= e($product['purchase_min_order_qty']) ?>">
+                </div>
+                <div class="col-sm-4">
+                  <label class="form-label">Maximum Order Qty</label>
+                  <input type="number" min="0" name="purchase_max_order_qty" class="form-control" value="<?= e($product['purchase_max_order_qty']) ?>">
+                </div>
+                <div class="col-sm-4">
+                  <label class="form-label">Order Qty Increment</label>
+                  <input type="number" min="1" name="purchase_order_qty_increment" class="form-control" value="<?= e($product['purchase_order_qty_increment']) ?>">
+                </div>
+                <div class="col-sm-4">
+                  <label class="form-label">Lead Time (Days)</label>
+                  <input type="number" min="0" name="lead_time_days" class="form-control" value="<?= e($product['lead_time_days']) ?>">
+                  <div class="form-text">Same field as Lead Time on the Details tab.</div>
+                </div>
+                <div class="col-sm-4">
+                  <label class="form-label">Receipt Tolerance (%)</label>
+                  <input type="number" step="0.01" min="0" name="receipt_tolerance_percent" class="form-control" value="<?= e($product['receipt_tolerance_percent']) ?>">
+                </div>
+                <div class="col-sm-4">
+                  <label class="form-label">Over Delivery Allowance (%)</label>
+                  <input type="number" step="0.01" min="0" name="over_delivery_allowance_percent" class="form-control" value="<?= e($product['over_delivery_allowance_percent']) ?>">
+                </div>
+              </div>
+            </div>
+
+            <div class="card p-3 mb-3">
+              <h6 class="mb-1">Purchase UOM &amp; Packaging</h6>
+              <p class="text-muted small mb-3">Define purchase unit and packaging details.</p>
+              <div class="row g-3">
+                <div class="col-sm-6">
+                  <label class="form-label">Purchase UOM</label>
+                  <input type="text" class="form-control" value="<?= e($product['purchase_uom'] ?: $product['unit']) ?>" disabled>
+                  <div class="form-text">Set on the Details tab.</div>
+                </div>
+                <div class="col-sm-6">
+                  <label class="form-label">Conversion Factor (to Stock UOM)</label>
+                  <input type="text" class="form-control" value="<?= e($product['purchase_uom_conversion_factor']) ?>" disabled>
+                </div>
+                <div class="col-sm-6">
+                  <label class="form-label">Default Package Type</label>
+                  <input type="text" name="default_package_type" class="form-control" value="<?= e($product['default_package_type'] ?? '') ?>">
+                </div>
+                <div class="col-sm-6">
+                  <label class="form-label">Items per Package</label>
+                  <input type="number" min="1" name="items_per_package" class="form-control" value="<?= e($product['items_per_package']) ?>">
+                </div>
+              </div>
+            </div>
+
+            <div class="card p-3 mb-3">
+              <h6 class="mb-1">Purchase Description</h6>
+              <p class="text-muted small mb-3">Description for purchase orders (optional).</p>
+              <textarea name="purchase_description" class="form-control" rows="3"><?= e($product['purchase_description'] ?? '') ?></textarea>
+            </div>
+          </div>
+
+          <div class="col-lg-6">
+            <div class="card p-3 mb-3">
+              <h6 class="mb-1">Preferred Suppliers</h6>
+              <p class="text-muted small mb-3">Maintain preferred suppliers and their purchase terms.</p>
+              <div class="table-responsive">
+                <table class="table table-sm product-ps-rows">
+                  <thead><tr><th>Supplier</th><th>Part No.</th><th>Lead Time</th><th>Last Rate</th><th class="text-center">Preferred</th><th></th></tr></thead>
+                  <tbody>
+                  <?php if (!$productSuppliers): $productSuppliers = [['supplier_id' => '', 'supplier_part_no' => '', 'lead_time_days' => '', 'last_purchase_rate' => '', 'is_preferred' => 1]]; endif; ?>
+                  <?php foreach ($productSuppliers as $pi => $ps): ?>
+                    <tr data-row>
+                      <td>
+                        <select class="form-select form-select-sm" name="ps_supplier_id[]">
+                          <option value="">— Select —</option>
+                          <?php foreach ($vendors as $v): ?>
+                            <option value="<?= (int)$v['id'] ?>" <?= (string)($ps['supplier_id'] ?? '') === (string)$v['id'] ? 'selected' : '' ?>><?= e($v['name']) ?></option>
+                          <?php endforeach; ?>
+                        </select>
+                      </td>
+                      <td><input type="text" class="form-control form-control-sm" name="ps_supplier_part_no[]" value="<?= e($ps['supplier_part_no'] ?? '') ?>"></td>
+                      <td><input type="number" min="0" class="form-control form-control-sm" name="ps_lead_time_days[]" value="<?= e($ps['lead_time_days'] ?? '') ?>"></td>
+                      <td><input type="number" step="0.01" min="0" class="form-control form-control-sm" name="ps_last_purchase_rate[]" value="<?= e($ps['last_purchase_rate'] ?? '') ?>"></td>
+                      <td class="text-center"><input type="radio" name="ps_preferred_index" value="<?= (int)$pi ?>" <?= !empty($ps['is_preferred']) ? 'checked' : '' ?>></td>
+                      <td><button type="button" class="btn btn-sm btn-outline-danger product-ps-remove-row"><i class="fa-solid fa-xmark"></i></button></td>
+                    </tr>
+                  <?php endforeach; ?>
+                  </tbody>
+                </table>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-brand product-ps-add-row"><i class="fa-solid fa-plus"></i> Add Supplier</button>
+            </div>
+
+            <div class="card p-3 mb-3">
+              <h6 class="mb-1">Additional Purchase Options</h6>
+              <?php
+              $purchOptions = [
+                  'requires_purchase_order' => 'Requires Purchase Order', 'allow_receipt_without_po' => 'Allow Receipt without Purchase Order',
+                  'track_supplier_batch_serial' => 'Track Supplier Batch / Serial No.', 'include_in_supplier_portal' => 'Include in Supplier Portal',
+                  'is_drop_ship_item' => 'Is Drop Ship Item', 'allow_subcontracting' => 'Allow Subcontracting',
+                  'maintain_last_purchase_rate' => 'Maintain Last Purchase Rate',
+              ];
+              ?>
+              <div class="row g-1">
+                <?php foreach ($purchOptions as $poKey => $poLabel): ?>
+                  <div class="col-6 form-check">
+                    <input type="checkbox" class="form-check-input" id="po_<?= e($poKey) ?>" name="<?= e($poKey) ?>" value="1" <?= !empty($product[$poKey]) ? 'checked' : '' ?>>
+                    <label class="form-check-label" for="po_<?= e($poKey) ?>"><?= e($poLabel) ?></label>
+                  </div>
+                <?php endforeach; ?>
+              </div>
+            </div>
+
+            <div class="card p-3 mb-3">
+              <h6 class="mb-1">Quality &amp; Inspection</h6>
+              <p class="text-muted small mb-3">Define quality inspection settings for purchase receipts.</p>
+              <div class="row g-3">
+                <div class="col-sm-6">
+                  <label class="form-label">Inspection Required</label>
+                  <select name="inspection_required" class="form-select">
+                    <option value="No" <?= $product['inspection_required'] === 'No' ? 'selected' : '' ?>>No</option>
+                    <option value="Yes" <?= $product['inspection_required'] === 'Yes' ? 'selected' : '' ?>>Yes</option>
+                  </select>
+                </div>
+                <div class="col-sm-6">
+                  <label class="form-label">Sampling Rate (%)</label>
+                  <input type="number" step="0.01" min="0" max="100" name="sampling_rate_percent" class="form-control" value="<?= e($product['sampling_rate_percent']) ?>">
+                </div>
+                <div class="col-sm-6">
+                  <label class="form-label">Quality Rating (Default)</label>
+                  <input type="text" name="quality_rating_default" class="form-control" value="<?= e($product['quality_rating_default'] ?? '') ?>">
+                </div>
+                <div class="col-sm-6 d-flex align-items-end">
+                  <div class="form-check mb-2">
+                    <input type="checkbox" class="form-check-input" id="rejectIfQcFails" name="reject_if_quality_check_fails" value="1" <?= !empty($product['reject_if_quality_check_fails']) ? 'checked' : '' ?>>
+                    <label class="form-check-label" for="rejectIfQcFails">Reject if Quality Check Fails</label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="page-actions mt-3">
@@ -1467,6 +1940,55 @@ document.addEventListener('DOMContentLoaded', function () {
       return;
     }
     var rm = e.target.closest('.product-charge-remove-row');
+    if (rm) {
+      var rows2 = tbody.querySelectorAll('tr[data-row]');
+      if (rows2.length > 1) {
+        rm.closest('tr[data-row]').remove();
+      }
+    }
+  });
+});
+
+document.addEventListener('DOMContentLoaded', function () {
+  var wrap = document.querySelector('.product-cr-rows');
+  if (!wrap) return;
+  var tbody = wrap.querySelector('tbody');
+
+  wrap.closest('.card').addEventListener('click', function (e) {
+    if (e.target.closest('.product-cr-add-row')) {
+      var rows = tbody.querySelectorAll('tr[data-row]');
+      var clone = rows[rows.length - 1].cloneNode(true);
+      clone.querySelectorAll('input').forEach(function (inp) { inp.value = inp.name === 'cr_discount_percent[]' ? '0' : ''; });
+      clone.querySelectorAll('select').forEach(function (sel) { sel.selectedIndex = 0; });
+      tbody.appendChild(clone);
+      return;
+    }
+    var rm = e.target.closest('.product-cr-remove-row');
+    if (rm) {
+      var rows2 = tbody.querySelectorAll('tr[data-row]');
+      if (rows2.length > 1) {
+        rm.closest('tr[data-row]').remove();
+      }
+    }
+  });
+});
+
+document.addEventListener('DOMContentLoaded', function () {
+  var wrap = document.querySelector('.product-ps-rows');
+  if (!wrap) return;
+  var tbody = wrap.querySelector('tbody');
+
+  wrap.closest('.card').addEventListener('click', function (e) {
+    if (e.target.closest('.product-ps-add-row')) {
+      var rows = tbody.querySelectorAll('tr[data-row]');
+      var clone = rows[rows.length - 1].cloneNode(true);
+      clone.querySelectorAll('input[type=text], input[type=number]').forEach(function (inp) { inp.value = ''; });
+      clone.querySelectorAll('input[type=radio]').forEach(function (r) { r.checked = false; });
+      clone.querySelectorAll('select').forEach(function (sel) { sel.selectedIndex = 0; });
+      tbody.appendChild(clone);
+      return;
+    }
+    var rm = e.target.closest('.product-ps-remove-row');
     if (rm) {
       var rows2 = tbody.querySelectorAll('tr[data-row]');
       if (rows2.length > 1) {
