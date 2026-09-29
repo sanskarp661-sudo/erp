@@ -51,13 +51,14 @@ require __DIR__ . '/../includes/header.php';
 <div class="card p-3">
   <div class="table-responsive">
     <table class="table table-hover" id="slipTable">
-      <thead><tr><th>Slip #</th><th>Employee</th><th>Pay Period</th><th class="text-end">Net Pay</th><th>Status</th><th class="text-end">Actions</th></tr></thead>
+      <thead><tr><th>Slip #</th><th>Employee</th><th>Pay Period</th><th class="text-end">Pay Days</th><th class="text-end">Net Pay</th><th>Status</th><th class="text-end">Actions</th></tr></thead>
       <tbody>
       <?php foreach ($slips as $s): ?>
         <tr>
           <td><?= e($s['slip_no']) ?></td>
           <td><?= e($s['employee_name']) ?> <span class="text-muted small">(<?= e($s['employee_code']) ?>)</span></td>
           <td><?= e(date('M j', strtotime($s['pay_period_start']))) ?> &ndash; <?= e(date('M j, Y', strtotime($s['pay_period_end']))) ?></td>
+          <td class="text-end"><?= (float)$s['working_days'] > 0 ? rtrim(rtrim(number_format((float)$s['payment_days'], 1), '0'), '.') . ' / ' . rtrim(rtrim(number_format((float)$s['working_days'], 1), '0'), '.') : '—' ?></td>
           <td class="text-end fw-bold"><?= money($s['net_pay']) ?></td>
           <td><span class="badge text-bg-<?= $badge[$s['status']] ?> badge-status"><?= e($s['status']) ?></span></td>
           <td class="text-end">
@@ -65,7 +66,7 @@ require __DIR__ . '/../includes/header.php';
           </td>
         </tr>
       <?php endforeach; ?>
-      <?php if (!$slips): ?><tr><td colspan="6" class="empty-state"><i class="fa-solid fa-money-check-dollar"></i><div>No salary slips generated yet.</div></td></tr><?php endif; ?>
+      <?php if (!$slips): ?><tr><td colspan="7" class="empty-state"><i class="fa-solid fa-money-check-dollar"></i><div>No salary slips generated yet.</div></td></tr><?php endif; ?>
       </tbody>
     </table>
   </div>

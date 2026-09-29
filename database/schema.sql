@@ -1266,22 +1266,166 @@ CREATE TABLE IF NOT EXISTS expenses (
 CREATE TABLE IF NOT EXISTS departments (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(120) NOT NULL,
-  description VARCHAR(255) DEFAULT NULL
+  code VARCHAR(20) DEFAULT NULL,
+  parent_id INT UNSIGNED DEFAULT NULL,
+  head_employee_id INT UNSIGNED DEFAULT NULL,
+  cost_center VARCHAR(60) DEFAULT NULL,
+  email VARCHAR(150) DEFAULT NULL,
+  location VARCHAR(120) DEFAULT NULL,
+  default_leave_approver_id INT UNSIGNED DEFAULT NULL,
+  description VARCHAR(255) DEFAULT NULL,
+  status ENUM('active','inactive') NOT NULL DEFAULT 'active',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_departments_parent FOREIGN KEY (parent_id) REFERENCES departments(id) ON DELETE SET NULL,
+  CONSTRAINT fk_departments_leave_approver FOREIGN KEY (default_leave_approver_id) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS employees (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   employee_code VARCHAR(30) NOT NULL UNIQUE,
+  salutation VARCHAR(10) DEFAULT NULL,
   name VARCHAR(150) NOT NULL,
+  gender ENUM('male','female','other') DEFAULT NULL,
+  date_of_birth DATE DEFAULT NULL,
+  marital_status ENUM('single','married','divorced','widowed') DEFAULT NULL,
+  blood_group VARCHAR(5) DEFAULT NULL,
+  nationality VARCHAR(60) DEFAULT NULL,
+  father_or_spouse_name VARCHAR(150) DEFAULT NULL,
   email VARCHAR(150) DEFAULT NULL,
+  personal_email VARCHAR(150) DEFAULT NULL,
   phone VARCHAR(40) DEFAULT NULL,
+  alternate_phone VARCHAR(40) DEFAULT NULL,
+  current_address VARCHAR(255) DEFAULT NULL,
+  permanent_address VARCHAR(255) DEFAULT NULL,
+  city VARCHAR(80) DEFAULT NULL,
+  state VARCHAR(80) DEFAULT NULL,
+  pincode VARCHAR(12) DEFAULT NULL,
+  country VARCHAR(60) DEFAULT NULL,
+  emergency_contact_name VARCHAR(150) DEFAULT NULL,
+  emergency_contact_relation VARCHAR(60) DEFAULT NULL,
+  emergency_contact_phone VARCHAR(40) DEFAULT NULL,
   department_id INT UNSIGNED DEFAULT NULL,
   designation VARCHAR(120) DEFAULT NULL,
+  reports_to_id INT UNSIGNED DEFAULT NULL,
+  employment_type ENUM('full_time','part_time','contract','intern','apprentice') NOT NULL DEFAULT 'full_time',
+  grade VARCHAR(40) DEFAULT NULL,
+  work_location VARCHAR(120) DEFAULT NULL,
+  work_shift VARCHAR(40) DEFAULT NULL,
   salary DECIMAL(14,2) NOT NULL DEFAULT 0,
+  salary_mode ENUM('bank_transfer','cash','cheque') NOT NULL DEFAULT 'bank_transfer',
+  bank_name VARCHAR(120) DEFAULT NULL,
+  bank_account_holder VARCHAR(150) DEFAULT NULL,
+  bank_account_no VARCHAR(40) DEFAULT NULL,
+  bank_ifsc VARCHAR(11) DEFAULT NULL,
+  pan_no VARCHAR(10) DEFAULT NULL,
+  aadhaar_no VARCHAR(12) DEFAULT NULL,
+  uan_no VARCHAR(12) DEFAULT NULL,
+  pf_no VARCHAR(30) DEFAULT NULL,
+  esi_no VARCHAR(20) DEFAULT NULL,
+  monthly_gross DECIMAL(14,2) NOT NULL DEFAULT 0,
+  monthly_deductions DECIMAL(14,2) NOT NULL DEFAULT 0,
+  annual_ctc DECIMAL(14,2) NOT NULL DEFAULT 0,
+  resignation_date DATE DEFAULT NULL,
+  relieving_date DATE DEFAULT NULL,
+  exit_reason VARCHAR(60) DEFAULT NULL,
+  exit_notes TEXT DEFAULT NULL,
+  remarks TEXT DEFAULT NULL,
+  tags VARCHAR(255) DEFAULT NULL,
   hire_date DATE DEFAULT NULL,
-  status ENUM('active','inactive') NOT NULL DEFAULT 'active',
+  probation_end_date DATE DEFAULT NULL,
+  confirmation_date DATE DEFAULT NULL,
+  notice_period_days SMALLINT UNSIGNED NOT NULL DEFAULT 30,
+  leave_approver_id INT UNSIGNED DEFAULT NULL,
+  user_id INT UNSIGNED DEFAULT NULL,
+  biometric_id VARCHAR(40) DEFAULT NULL,
+  status ENUM('active','inactive','left') NOT NULL DEFAULT 'active',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL
+  updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL,
+  CONSTRAINT fk_employees_reports_to FOREIGN KEY (reports_to_id) REFERENCES employees(id) ON DELETE SET NULL,
+  CONSTRAINT fk_employees_leave_approver FOREIGN KEY (leave_approver_id) REFERENCES users(id) ON DELETE SET NULL,
+  CONSTRAINT fk_employees_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- departments.head_employee_id -> employees (added here because employees is created after departments)
+SET @fk := (SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME = 'departments' AND CONSTRAINT_NAME = 'fk_departments_head');
+SET @sql := IF(@fk = 0, 'ALTER TABLE departments ADD CONSTRAINT fk_departments_head FOREIGN KEY (head_employee_id) REFERENCES employees(id) ON DELETE SET NULL', 'DO 0');
+PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+
+CREATE TABLE IF NOT EXISTS employee_salary_components (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  employee_id INT UNSIGNED NOT NULL,
+  component_type ENUM('earning','deduction') NOT NULL,
+  label VARCHAR(100) NOT NULL,
+  amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+  sort_order SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+  FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS employee_education (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  employee_id INT UNSIGNED NOT NULL,
+  qualification VARCHAR(120) NOT NULL,
+  institute VARCHAR(150) DEFAULT NULL,
+  year_of_passing SMALLINT UNSIGNED DEFAULT NULL,
+  grade VARCHAR(20) DEFAULT NULL,
+  sort_order SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+  FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS employee_experience (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  employee_id INT UNSIGNED NOT NULL,
+  company VARCHAR(150) NOT NULL,
+  designation VARCHAR(120) DEFAULT NULL,
+  from_date DATE DEFAULT NULL,
+  to_date DATE DEFAULT NULL,
+  last_salary DECIMAL(14,2) DEFAULT NULL,
+  sort_order SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+  FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS leave_types (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  code VARCHAR(30) NOT NULL UNIQUE,
+  name VARCHAR(80) NOT NULL,
+  annual_allocation DECIMAL(5,1) NOT NULL DEFAULT 0,
+  is_paid TINYINT(1) NOT NULL DEFAULT 1,
+  allow_half_day TINYINT(1) NOT NULL DEFAULT 1,
+  status ENUM('active','inactive') NOT NULL DEFAULT 'active',
+  sort_order SMALLINT UNSIGNED NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+INSERT IGNORE INTO leave_types (code, name, annual_allocation, is_paid, sort_order) VALUES
+  ('casual', 'Casual Leave', 12, 1, 1),
+  ('sick', 'Sick Leave', 12, 1, 2),
+  ('annual', 'Earned / Annual Leave', 18, 1, 3),
+  ('unpaid', 'Leave Without Pay', 0, 0, 4);
+
+CREATE TABLE IF NOT EXISTS leaves (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  application_no VARCHAR(30) DEFAULT NULL,
+  employee_id INT UNSIGNED NOT NULL,
+  leave_type VARCHAR(60) NOT NULL DEFAULT 'casual',
+  start_date DATE NOT NULL,
+  end_date DATE NOT NULL,
+  half_day TINYINT(1) NOT NULL DEFAULT 0,
+  half_day_date DATE DEFAULT NULL,
+  total_days DECIMAL(5,1) NOT NULL DEFAULT 0,
+  reason VARCHAR(255) DEFAULT NULL,
+  contact_during_leave VARCHAR(120) DEFAULT NULL,
+  handover_to_id INT UNSIGNED DEFAULT NULL,
+  leave_approver_id INT UNSIGNED DEFAULT NULL,
+  status ENUM('pending','approved','rejected','cancelled') NOT NULL DEFAULT 'pending',
+  decided_by INT UNSIGNED DEFAULT NULL,
+  decided_at DATETIME DEFAULT NULL,
+  decision_remarks VARCHAR(255) DEFAULT NULL,
+  created_by INT UNSIGNED DEFAULT NULL,
+  applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+  CONSTRAINT fk_leaves_handover FOREIGN KEY (handover_to_id) REFERENCES employees(id) ON DELETE SET NULL,
+  CONSTRAINT fk_leaves_approver FOREIGN KEY (leave_approver_id) REFERENCES users(id) ON DELETE SET NULL,
+  CONSTRAINT fk_leaves_decided_by FOREIGN KEY (decided_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS attendance (
@@ -1289,23 +1433,19 @@ CREATE TABLE IF NOT EXISTS attendance (
   employee_id INT UNSIGNED NOT NULL,
   attendance_date DATE NOT NULL,
   status ENUM('present','absent','half_day','leave') NOT NULL DEFAULT 'present',
+  shift VARCHAR(40) DEFAULT NULL,
   check_in TIME DEFAULT NULL,
   check_out TIME DEFAULT NULL,
+  late_entry TINYINT(1) NOT NULL DEFAULT 0,
+  early_exit TINYINT(1) NOT NULL DEFAULT 0,
+  working_hours DECIMAL(5,2) DEFAULT NULL,
+  leave_id INT UNSIGNED DEFAULT NULL,
   notes VARCHAR(255) DEFAULT NULL,
+  marked_by INT UNSIGNED DEFAULT NULL,
+  updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uniq_emp_date (employee_id, attendance_date),
-  FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-CREATE TABLE IF NOT EXISTS leaves (
-  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  employee_id INT UNSIGNED NOT NULL,
-  leave_type VARCHAR(60) NOT NULL DEFAULT 'casual',
-  start_date DATE NOT NULL,
-  end_date DATE NOT NULL,
-  reason VARCHAR(255) DEFAULT NULL,
-  status ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
-  applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
+  FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+  CONSTRAINT fk_attendance_leave FOREIGN KEY (leave_id) REFERENCES leaves(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS salary_slips (
@@ -1314,15 +1454,28 @@ CREATE TABLE IF NOT EXISTS salary_slips (
   employee_id INT UNSIGNED NOT NULL,
   pay_period_start DATE NOT NULL,
   pay_period_end DATE NOT NULL,
+  posting_date DATE DEFAULT NULL,
+  working_days DECIMAL(5,1) NOT NULL DEFAULT 0,
+  present_days DECIMAL(5,1) NOT NULL DEFAULT 0,
+  paid_leave_days DECIMAL(5,1) NOT NULL DEFAULT 0,
+  lop_days DECIMAL(5,1) NOT NULL DEFAULT 0,
+  payment_days DECIMAL(5,1) NOT NULL DEFAULT 0,
+  prorate_lop TINYINT(1) NOT NULL DEFAULT 1,
   basic_salary DECIMAL(14,2) NOT NULL DEFAULT 0,
+  full_basic_salary DECIMAL(14,2) NOT NULL DEFAULT 0,
   total_earnings DECIMAL(14,2) NOT NULL DEFAULT 0,
   total_deductions DECIMAL(14,2) NOT NULL DEFAULT 0,
   net_pay DECIMAL(14,2) NOT NULL DEFAULT 0,
+  salary_mode ENUM('bank_transfer','cash','cheque') DEFAULT NULL,
+  bank_name VARCHAR(120) DEFAULT NULL,
+  bank_account_no VARCHAR(40) DEFAULT NULL,
+  bank_ifsc VARCHAR(11) DEFAULT NULL,
   status ENUM('draft','paid') NOT NULL DEFAULT 'draft',
   payment_date DATE DEFAULT NULL,
   payment_method ENUM('cash','bank_transfer','cheque','other') DEFAULT NULL,
   expense_id INT UNSIGNED DEFAULT NULL,
   notes VARCHAR(255) DEFAULT NULL,
+  remarks TEXT DEFAULT NULL,
   created_by INT UNSIGNED DEFAULT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY uniq_emp_period (employee_id, pay_period_start, pay_period_end),
@@ -1337,6 +1490,7 @@ CREATE TABLE IF NOT EXISTS salary_slip_items (
   component_type ENUM('earning','deduction') NOT NULL,
   label VARCHAR(100) NOT NULL,
   amount DECIMAL(14,2) NOT NULL,
+  full_amount DECIMAL(14,2) DEFAULT NULL,
   FOREIGN KEY (salary_slip_id) REFERENCES salary_slips(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
