@@ -69,7 +69,7 @@ $recent = $pdo->query("
   (SELECT pp.payment_date, 'Payment', v.name, CONCAT('Payment for ', pi.pi_no), pp.amount, 'Completed', CONCAT('purchase_invoice_view.php?id=', pi.id), pp.id
      FROM purchase_payments pp JOIN purchase_invoices pi ON pi.id = pp.purchase_invoice_id JOIN vendors v ON v.id = pi.vendor_id)
   UNION ALL
-  (SELECT e.expense_date, 'Expense', COALESCE(v.name, e.payee, e.category), COALESCE(NULLIF(e.description,''), e.category), e.amount,
+  (SELECT e.expense_date, 'Expense', " . fin_coll('COALESCE(v.name, e.payee, e.category)') . ", COALESCE(NULLIF(e.description,''), e.category), e.amount,
           CASE e.status WHEN 'approved' THEN 'Completed' WHEN 'pending' THEN 'Pending' ELSE 'Rejected' END, CONCAT('expense_form.php?id=', e.id), e.id
      FROM expenses e LEFT JOIN vendors v ON v.id = e.vendor_id)
   ORDER BY d DESC, sid DESC LIMIT 5

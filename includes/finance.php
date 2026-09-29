@@ -65,6 +65,12 @@ function fin_require_schema(): void
     exit;
 }
 
+/** Text expression pinned to one collation, for SQL that mixes columns from tables whose collations may differ. */
+function fin_coll(string $expr): string
+{
+    return "CONVERT($expr USING utf8mb4) COLLATE utf8mb4_unicode_ci";
+}
+
 /** Cached "does this column exist" check, for code outside Finance that must work before and after migration 030. */
 function db_has_column(string $table, string $column): bool
 {
@@ -190,8 +196,8 @@ function fin_gl_sql(): string
     // Text columns carry an explicit collation here so the UNION works even when
     // the source tables were created with different collations (common on
     // hosts whose server default changed between installs).
-    $c = fn(string $expr) => "CONVERT($expr USING utf8mb4) COLLATE utf8mb4_unicode_ci";
-    $parts[] = "SELECT COALESCE(la.opening_date, '2000-01-01') entry_date, {$c("'OPENING'")} voucher_no, {$c("'Opening Balance'")} voucher_type, {$c("'opening'")} source_type, la.id source_id, la.id account_id,
+    $c = 'fin_coll';
+    $parts[] = "SELECT COALESCE(la.opening_date, DATE '2000-01-01') entry_date, {$c("'OPENING'")} voucher_no, {$c("'Opening Balance'")} voucher_type, {$c("'opening'")} source_type, la.id source_id, la.id account_id,
         CASE WHEN (la.account_nature = 'debit') = (la.opening_balance >= 0) THEN ABS(la.opening_balance) ELSE 0 END debit,
         CASE WHEN (la.account_nature = 'debit') = (la.opening_balance >= 0) THEN 0 ELSE ABS(la.opening_balance) END credit,
         {$c('NULL')} party, {$c("'Opening balance'")} description, la.cost_center_id, {$c('la.project')} project
@@ -199,7 +205,7 @@ function fin_gl_sql(): string
     // ...offset against Opening Balance Equity so the trial balance always agrees.
     $openEq = fin_account_id('opening_equity');
     if ($openEq) {
-        $parts[] = "SELECT COALESCE(la.opening_date, '2000-01-01'), 'OPENING', 'Opening Balance', 'opening', la.id, $openEq,
+        $parts[] = "SELECT COALESCE(la.opening_date, DATE '2000-01-01'), 'OPENING', 'Opening Balance', 'opening', la.id, $openEq,
             CASE WHEN (la.account_nature = 'debit') = (la.opening_balance >= 0) THEN 0 ELSE ABS(la.opening_balance) END,
             CASE WHEN (la.account_nature = 'debit') = (la.opening_balance >= 0) THEN ABS(la.opening_balance) ELSE 0 END,
             NULL, CONCAT('Opening balance - ', la.name), NULL, NULL
@@ -225,7 +231,7 @@ function fin_gl_sql(): string
     $parts[] = "SELECT pp.payment_date, CONCAT('PAY-', LPAD(pp.id, 5, '0')), 'Payment', 'purchase_payment', pp.id, CASE WHEN pp.method = 'debit_note' THEN $purch ELSE {$moneyAcct('pp.method')} END, 0, pp.amount, v.name, CONCAT('Payment to ', v.name), NULL, NULL $pp";
 
     $ex = "FROM expenses e LEFT JOIN vendors v ON v.id = e.vendor_id WHERE e.status = 'approved'";
-    $payee = "COALESCE(v.name, e.payee, e.category)";
+    $payee = fin_coll('COALESCE(v.name, e.payee, e.category)');
     $parts[] = "SELECT e.expense_date, COALESCE(e.expense_no, CONCAT('EXP-', LPAD(e.id, 6, '0'))), 'Expense', 'expense', e.id, COALESCE(e.account_id, CASE WHEN e.category = 'Payroll' THEN $payroll ELSE $exp END), e.amount - e.tax_amount, 0, $payee, COALESCE(NULLIF(e.description, ''), e.category), e.cost_center_id, e.project $ex";
     $parts[] = "SELECT e.expense_date, COALESCE(e.expense_no, CONCAT('EXP-', LPAD(e.id, 6, '0'))), 'Expense', 'expense', e.id, $inTax, e.tax_amount, 0, $payee, CONCAT('Input tax - ', COALESCE(e.expense_no, e.id)), e.cost_center_id, e.project $ex AND e.tax_amount <> 0";
     $parts[] = "SELECT e.expense_date, COALESCE(e.expense_no, CONCAT('EXP-', LPAD(e.id, 6, '0'))), 'Expense', 'expense', e.id, COALESCE(e.paid_from_account_id, {$moneyAcct('e.payment_method')}), 0, e.amount, $payee, COALESCE(NULLIF(e.description, ''), e.category), e.cost_center_id, e.project $ex";
