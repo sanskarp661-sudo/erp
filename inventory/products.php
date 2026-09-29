@@ -21,6 +21,8 @@ if (is_post() && input('action') === 'delete') {
 $search = trim((string)input('q'));
 $categoryFilter = (int)input('category');
 $brandFilter = (int)input('brand');
+$itemCategoryFilter = (int)input('item_category');
+$unitFilter = trim((string)input('unit'));
 $statusFilter = in_array(input('status'), ['active', 'inactive'], true) ? input('status') : '';
 $stockFilter = in_array(input('stock'), ['in_stock', 'low_stock', 'out_of_stock', 'reorder'], true) ? input('stock') : '';
 $sorts = [
@@ -51,6 +53,14 @@ if ($categoryFilter) {
 if ($brandFilter) {
     $baseWhere .= ' AND p.brand_id = ?';
     $baseParams[] = $brandFilter;
+}
+if ($itemCategoryFilter) {
+    $baseWhere .= ' AND p.item_category_id = ?';
+    $baseParams[] = $itemCategoryFilter;
+}
+if ($unitFilter !== '') {
+    $baseWhere .= ' AND p.unit = ?';
+    $baseParams[] = $unitFilter;
 }
 
 $viewWhere = '';
@@ -115,12 +125,18 @@ $products = $stmt->fetchAll();
 
 $categories = db()->query('SELECT id, name FROM categories ORDER BY name')->fetchAll();
 $brands = db()->query("SELECT id, name FROM brands ORDER BY name")->fetchAll();
-$filtersActive = $search !== '' || $categoryFilter || $brandFilter || $statusFilter || $stockFilter;
+$filtersActive = $search !== '' || $categoryFilter || $brandFilter || $itemCategoryFilter || $unitFilter !== '' || $statusFilter || $stockFilter;
+$itemCategoryName = null;
+if ($itemCategoryFilter) {
+    $stmt = db()->prepare('SELECT name FROM item_categories WHERE id = ?');
+    $stmt->execute([$itemCategoryFilter]);
+    $itemCategoryName = $stmt->fetchColumn() ?: null;
+}
 
 /** Current query string with some keys replaced (null removes a key). */
 function products_qs(array $changes = []): string
 {
-    $keep = ['q', 'category', 'brand', 'status', 'stock', 'sort', 'page'];
+    $keep = ['q', 'category', 'brand', 'item_category', 'unit', 'status', 'stock', 'sort', 'page'];
     $qs = [];
     foreach ($keep as $k) {
         $v = input($k);
@@ -173,6 +189,8 @@ require __DIR__ . '/../includes/header.php';
   <form method="get" class="inv-toolbar" id="productFilters">
     <?php if ($statusFilter): ?><input type="hidden" name="status" value="<?= e($statusFilter) ?>"><?php endif; ?>
     <?php if ($stockFilter): ?><input type="hidden" name="stock" value="<?= e($stockFilter) ?>"><?php endif; ?>
+    <?php if ($itemCategoryFilter): ?><input type="hidden" name="item_category" value="<?= $itemCategoryFilter ?>"><?php endif; ?>
+    <?php if ($unitFilter !== ''): ?><input type="hidden" name="unit" value="<?= e($unitFilter) ?>"><?php endif; ?>
     <div class="inv-search">
       <i class="fa-solid fa-magnifying-glass"></i>
       <input type="search" name="q" value="<?= e($search) ?>" class="form-control" placeholder="Search name, SKU, HSN, tag or barcode" aria-label="Search products">
@@ -197,6 +215,12 @@ require __DIR__ . '/../includes/header.php';
     <button type="submit" class="btn btn-outline-brand">Search</button>
     <?php if ($filtersActive): ?><a href="products.php" class="btn btn-link text-decoration-none">Clear all</a><?php endif; ?>
   </form>
+  <?php if ($itemCategoryFilter || $unitFilter !== ''): ?>
+  <div class="d-flex gap-2 flex-wrap mb-3">
+    <?php if ($itemCategoryFilter): ?><a href="products.php<?= e(products_qs(['item_category' => null, 'page' => null])) ?>" class="inv-chip">Item category: <?= e($itemCategoryName ?? '#' . $itemCategoryFilter) ?> <i class="fa-solid fa-xmark"></i></a><?php endif; ?>
+    <?php if ($unitFilter !== ''): ?><a href="products.php<?= e(products_qs(['unit' => null, 'page' => null])) ?>" class="inv-chip">Unit: <?= e($unitFilter) ?> <i class="fa-solid fa-xmark"></i></a><?php endif; ?>
+  </div>
+  <?php endif; ?>
 
   <div class="table-responsive">
     <table class="table dash-table inv-table mb-0 align-middle">

@@ -86,57 +86,8 @@ function initInventoryOverview(data) {
   }
 
   // ---------------- Stock Value by Category ----------------
-  var catCanvas = document.getElementById('categoryChart');
-  var legend = document.getElementById('categoryLegend');
-  var totalEl = document.getElementById('categoryTotal');
-  if (!catCanvas || !data.category.length) return;
+  invDonut('categoryChart', 'categoryLegend', 'categoryTotal', data.category, fmt);
 
-  // Top 7 categories, the rest folded into "Other".
-  var items = data.category.slice(0, 7);
-  if (data.category.length > 7) {
-    var rest = data.category.slice(7);
-    items.push({ name: 'Other', value: sum(rest.map(function (r) { return r.value; })), url: 'products.php' });
-  }
-  var total = sum(items.map(function (i) { return i.value; }));
-  totalEl.textContent = fmt.compact(total);
-  totalEl.title = fmt.money(total);
-  items.forEach(function (it, i) {
-    it.color = INV_PALETTE[i % INV_PALETTE.length];
-    var li = document.createElement('li');
-    var a = document.createElement('a');
-    a.href = it.url;
-    a.title = fmt.money(it.value);
-    var dot = document.createElement('span');
-    dot.className = 'dash-legend-dot';
-    dot.style.background = it.color;
-    var name = document.createElement('span');
-    name.className = 'dash-legend-name';
-    name.textContent = it.name;
-    var pct = document.createElement('span');
-    pct.className = 'dash-legend-pct';
-    pct.textContent = (total ? Math.round(it.value / total * 1000) / 10 : 0) + '%';
-    a.appendChild(dot); a.appendChild(name); a.appendChild(pct);
-    li.appendChild(a);
-    legend.appendChild(li);
-  });
-  new Chart(catCanvas, {
-    type: 'doughnut',
-    data: {
-      labels: items.map(function (i) { return i.name; }),
-      datasets: [{ data: items.map(function (i) { return i.value; }), backgroundColor: items.map(function (i) { return i.color; }), borderWidth: 3, borderColor: '#fff', hoverOffset: 4 }]
-    },
-    options: {
-      cutout: '68%',
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: { callbacks: { label: function (ctx) { return ' ' + ctx.label + ': ' + fmt.money(ctx.parsed); } } }
-      },
-      onClick: function (evt, els) {
-        if (els.length && items[els[0].index]) window.location.href = items[els[0].index].url;
-      }
-    }
-  });
 }
 
 /* Item Master form (inventory/product_form.php): remember the open tab so
@@ -161,4 +112,64 @@ function initItemForm() {
       setTimeout(function () { jumped = false; e.target.focus(); e.target.reportValidity(); }, 200);
     }
   }, true);
+}
+
+/* Doughnut of stock value with a clickable legend. items: [{name, value, url}].
+ * The top 7 are shown and the rest fold into "Other". */
+function invDonut(canvasId, legendId, totalId, allItems, fmt) {
+  var canvas = document.getElementById(canvasId);
+  var legend = document.getElementById(legendId);
+  var totalEl = document.getElementById(totalId);
+  if (!canvas || !allItems.length || typeof Chart === 'undefined') return;
+  function sum(a) { return a.reduce(function (x, y) { return x + y; }, 0); }
+  var items = allItems.slice(0, 7);
+  if (allItems.length > 7) {
+    items.push({ name: 'Other', value: sum(allItems.slice(7).map(function (r) { return r.value; })), url: null });
+  }
+  var total = sum(items.map(function (i) { return i.value; }));
+  if (totalEl) { totalEl.textContent = fmt.compact(total); totalEl.title = fmt.money(total); }
+  items.forEach(function (it, i) {
+    it.color = INV_PALETTE[i % INV_PALETTE.length];
+    if (!legend) return;
+    var li = document.createElement('li');
+    var a = document.createElement(it.url ? 'a' : 'span');
+    if (it.url) a.href = it.url; else a.className = 'dash-legend-static';
+    a.title = fmt.money(it.value);
+    var dot = document.createElement('span');
+    dot.className = 'dash-legend-dot';
+    dot.style.background = it.color;
+    var name = document.createElement('span');
+    name.className = 'dash-legend-name';
+    name.textContent = it.name;
+    var pct = document.createElement('span');
+    pct.className = 'dash-legend-pct';
+    pct.textContent = (total ? Math.round(it.value / total * 1000) / 10 : 0) + '%';
+    a.appendChild(dot); a.appendChild(name); a.appendChild(pct);
+    li.appendChild(a);
+    legend.appendChild(li);
+  });
+  new Chart(canvas, {
+    type: 'doughnut',
+    data: {
+      labels: items.map(function (i) { return i.name; }),
+      datasets: [{ data: items.map(function (i) { return i.value; }), backgroundColor: items.map(function (i) { return i.color; }), borderWidth: 3, borderColor: '#fff', hoverOffset: 4 }]
+    },
+    options: {
+      cutout: '68%',
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: function (ctx) { return ' ' + ctx.label + ': ' + fmt.money(ctx.parsed); } } }
+      },
+      onClick: function (evt, els) {
+        if (els.length && items[els[0].index] && items[els[0].index].url) window.location.href = items[els[0].index].url;
+      }
+    }
+  });
+}
+
+/* Inventory valuation report (reports/inventory_report.php). */
+function initInventoryReport(data) {
+  invRowLinks();
+  invDonut('categoryChart', 'categoryLegend', 'categoryTotal', data.category, invFormatters(data.currency || ''));
 }
