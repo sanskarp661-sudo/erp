@@ -76,6 +76,12 @@ if ($id) {
     }
 }
 
+// "New Sales Order" from a customer's page: preselect them (their
+// defaults are filled in client-side, same as picking them by hand).
+if (!$id && !is_post() && !$order['customer_id'] && (int)input('customer_id')) {
+    $order['customer_id'] = (int)input('customer_id');
+}
+
 $error = '';
 $activeTab = in_array(input('tab'), ['items', 'taxes', 'shipping', 'payment', 'more'], true) ? input('tab') : 'details';
 
@@ -300,9 +306,29 @@ if (is_post()) {
         ];
     }
 
-    if (!$customerId) {
+    $custStmt = db()->prepare('SELECT name, status, credit_limit, credit_hold, bypass_credit_check FROM customers WHERE id = ?');
+    $custStmt->execute([$customerId]);
+    $cust = $customerId ? $custStmt->fetch() : null;
+    $customerChanged = !$id || (int)$order['customer_id'] !== $customerId;
+    $creditError = '';
+    if ($cust && $cust['status'] !== 'active' && $customerChanged) {
+        $creditError = $cust['name'] . ' is marked ' . $cust['status'] . ' in CRM and can\'t take new sales orders.';
+    } elseif ($cust && $cust['credit_hold']) {
+        $creditError = $cust['name'] . ' is on credit hold in CRM. Release the hold on the customer before saving this order.';
+    } elseif ($cust && $cust['credit_limit'] !== null && !$cust['bypass_credit_check']) {
+        $exposure = customer_credit_exposure($customerId, $id)['exposure'];
+        if ($exposure + $grandTotal > (float)$cust['credit_limit'] + 0.005) {
+            $creditError = 'This order takes ' . $cust['name'] . ' over their credit limit of ' . money($cust['credit_limit'])
+                . ' (already outstanding or ordered: ' . money($exposure) . ', this order: ' . money($grandTotal) . ').';
+        }
+    }
+
+    if (!$customerId || !$cust) {
         $error = 'Please select a customer.';
         $activeTab = 'details';
+    } elseif ($creditError !== '') {
+        $error = $creditError;
+        $activeTab = 'payment';
     } elseif (!$lineItems) {
         $error = 'Please add at least one valid line item.';
         $activeTab = 'items';
@@ -397,10 +423,30 @@ if ($newAddressId) {
     $order['customer_address_id'] = $newAddressId;
 }
 
-$customers = db()->query('SELECT id, name, credit_limit FROM customers ORDER BY name')->fetchAll();
+// Inactive / blocked customers stay pickable only on an order that already has them.
+$custStmt = db()->prepare("SELECT * FROM customers WHERE status = 'active' OR id = ? ORDER BY name");
+$custStmt->execute([(int)($order['customer_id'] ?? 0)]);
+$customers = $custStmt->fetchAll();
 $customerCreditLimits = [];
+$customerDefaults = [];
+$exposures = customer_credit_exposures(null, $id);
 foreach ($customers as $c) {
-    $customerCreditLimits[(int)$c['id']] = $c['credit_limit'] !== null ? (float)$c['credit_limit'] : null;
+    $cid = (int)$c['id'];
+    $customerCreditLimits[$cid] = $c['credit_limit'] !== null ? (float)$c['credit_limit'] : null;
+    $customerDefaults[$cid] = [
+        'contact_person' => $c['contact_person'] ?? '', 'territory' => $c['territory'] ?? '',
+        'price_list_id' => (string)($c['price_list_id'] ?? ''), 'currency' => $c['currency'] ?? '',
+        'sales_person_id' => (string)($c['sales_person_id'] ?? ''), 'sales_channel' => $c['sales_channel'] ?? '',
+        'place_of_supply' => $c['place_of_supply'] ?? '', 'gst_category' => $c['gst_category'] ?? '',
+        'tax_template_id' => (string)($c['tax_template_id'] ?? ''), 'tax_exempt' => (int)($c['tax_exempt'] ?? 0),
+        'exemption_certificate_no' => $c['exemption_certificate_no'] ?? '',
+        'shipping_partner_id' => (string)($c['shipping_partner_id'] ?? ''), 'delivery_terms' => $c['delivery_terms'] ?? '',
+        'payment_terms_template_id' => (string)($c['payment_terms_template_id'] ?? ''), 'payment_method' => $c['payment_method'] ?? '',
+        'market_segment' => $c['market_segment'] ?? '', 'region' => $c['region'] ?? '', 'campaign_source' => $c['campaign'] ?? '',
+        'credit_hold' => (int)($c['credit_hold'] ?? 0), 'status' => $c['status'] ?? 'active',
+        'available_credit' => $c['credit_limit'] !== null && empty($c['bypass_credit_check'])
+            ? round((float)$c['credit_limit'] - ($exposures[$cid]['exposure'] ?? 0), 2) : null,
+    ];
 }
 $products = db()->query("SELECT p.id, p.sku, p.name, p.selling_price, p.quantity, p.unit, c.name category_name FROM products p LEFT JOIN categories c ON c.id = p.category_id WHERE p.status='active' ORDER BY p.name")->fetchAll();
 $warehouses = leaf_warehouses();
@@ -416,6 +462,7 @@ foreach ($addrStmt as $a) {
         'text' => $a['label'] . ': ' . $a['address_line'] . ($a['city'] ? ', ' . $a['city'] : ''),
         'address_line' => $a['address_line'], 'city' => $a['city'], 'state' => $a['state'], 'pincode' => $a['pincode'],
         'contact_person' => $a['contact_person'], 'contact_phone' => $a['contact_phone'], 'contact_email' => $a['contact_email'],
+        'is_default' => (int)$a['is_default'],
     ];
 }
 
@@ -523,9 +570,10 @@ require __DIR__ . '/../includes/header.php';
             <select name="customer_id" id="customerSelect" class="form-select" required>
               <option value="">— Select customer —</option>
               <?php foreach ($customers as $c): ?>
-                <option value="<?= (int)$c['id'] ?>" <?= (string)$order['customer_id'] === (string)$c['id'] ? 'selected' : '' ?>><?= e($c['name']) ?></option>
+                <option value="<?= (int)$c['id'] ?>" <?= (string)$order['customer_id'] === (string)$c['id'] ? 'selected' : '' ?>><?= e($c['name']) ?><?= !empty($c['customer_code']) ? ' (' . e($c['customer_code']) . ')' : '' ?></option>
               <?php endforeach; ?>
             </select>
+            <div id="customerCreditNote" class="form-text"></div>
           </div>
           <div class="col-sm-3">
             <label class="form-label">Contact Person</label>
@@ -1349,6 +1397,8 @@ var selectedQuotationId = " . json_encode((string)($order['quotation_id'] ?? '')
 var selectedAddressId = " . json_encode((string)($order['customer_address_id'] ?? '')) . ";
 var selectedShipToId = " . json_encode((string)($order['ship_to_address_id'] ?? '')) . ";
 var currentCustomerId = " . json_encode((string)($order['customer_id'] ?? '')) . ";
+var customerDefaults = " . json_encode($customerDefaults) . ";
+var applyDefaultsOnLoad = " . json_encode(!$id && !is_post() && !empty($order['customer_id'])) . ";
 
 function rateFor(productId, priceListId) {
   if (priceListRates[priceListId] && priceListRates[priceListId][productId] !== undefined) {
@@ -1770,6 +1820,91 @@ document.addEventListener('DOMContentLoaded', function () {
       }
     }
   });
+});
+
+// Customer defaults from CRM: picking a customer fills this order's
+// header, tax and payment terms from the customer master.
+document.addEventListener('DOMContentLoaded', function () {
+  var customerSelect = document.getElementById('customerSelect');
+  var form = document.getElementById('soForm');
+  if (!customerSelect || !form) return;
+  var note = document.getElementById('customerCreditNote');
+
+  function field(name) { return form.querySelector('[name=\"' + name + '\"]'); }
+  function setVal(name, value, always) {
+    var el = field(name);
+    if (!el || (!always && (value === '' || value === null || value === undefined))) return;
+    if (el.tagName === 'SELECT' && value !== '' && !el.querySelector('option[value=\"' + value + '\"]')) return;
+    el.value = value;
+  }
+
+  function showNote(cid) {
+    var d = customerDefaults[cid];
+    note.className = 'form-text';
+    if (!d) { note.textContent = ''; return; }
+    if (d.credit_hold) {
+      note.className = 'form-text text-danger';
+      note.textContent = 'On credit hold in CRM: this order cannot be saved.';
+    } else if (d.available_credit !== null) {
+      note.className = 'form-text' + (d.available_credit <= 0 ? ' text-danger' : '');
+      note.textContent = 'Available credit: ' + Number(d.available_credit).toFixed(2);
+    } else {
+      note.textContent = '';
+    }
+  }
+
+  function applyDefaults(cid) {
+    var d = customerDefaults[cid];
+    showNote(cid);
+    if (!d) return;
+    var defAddr = (addressesByCustomer[cid] || []).filter(function (a) { return a.is_default; })[0];
+    if (defAddr) {
+      ['addressSelect', 'shipToSelect'].forEach(function (elId) {
+        var el = document.getElementById(elId);
+        if (el && !el.value) { el.value = String(defAddr.id); el.dispatchEvent(new Event('change')); }
+      });
+    }
+    ['contact_person', 'territory', 'place_of_supply', 'gst_category'].forEach(function (k) { setVal(k, d[k], true); });
+    ['sales_channel', 'sales_person_id', 'shipping_partner_id', 'delivery_terms', 'payment_method', 'market_segment', 'region', 'campaign_source'].forEach(function (k) { setVal(k, d[k], false); });
+
+    var pl = document.getElementById('priceListSelect');
+    if (pl && d.price_list_id && pl.querySelector('option[value=\"' + d.price_list_id + '\"]')) {
+      pl.value = d.price_list_id;
+      pl.dispatchEvent(new Event('change'));
+    }
+    var cur = document.getElementById('currencyInput');
+    if (cur) {
+      var plOpt = pl ? pl.options[pl.selectedIndex] : null;
+      cur.value = d.currency || (plOpt && plOpt.getAttribute('data-currency')) || cur.value;
+    }
+
+    var tt = document.getElementById('taxTemplateSelect');
+    var ttBtn = document.getElementById('applyTemplateBtn');
+    if (tt && ttBtn) {
+      if (d.tax_exempt) {
+        tt.value = '';
+        ttBtn.click();
+        setVal('tax_remarks', 'Tax exempt customer' + (d.exemption_certificate_no ? ' (certificate ' + d.exemption_certificate_no + ')' : ''), true);
+      } else if (d.tax_template_id && tt.querySelector('option[value=\"' + d.tax_template_id + '\"]')) {
+        tt.value = d.tax_template_id;
+        ttBtn.click();
+      }
+    }
+
+    var pt = document.getElementById('paymentTermsTemplateSelect');
+    var ptBtn = document.getElementById('applyPaymentTemplateBtn');
+    if (pt && ptBtn && d.payment_terms_template_id && pt.querySelector('option[value=\"' + d.payment_terms_template_id + '\"]')) {
+      pt.value = d.payment_terms_template_id;
+      ptBtn.click();
+    }
+  }
+
+  customerSelect.addEventListener('change', function () { applyDefaults(customerSelect.value); });
+  if (applyDefaultsOnLoad) {
+    applyDefaults(customerSelect.value);
+  } else {
+    showNote(customerSelect.value);
+  }
 });
 ";
 require __DIR__ . '/../includes/footer.php';

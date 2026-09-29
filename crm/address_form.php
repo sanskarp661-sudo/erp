@@ -59,6 +59,7 @@ if (is_post()) {
                 ->execute([$customerId, $address['label'], $address['address_line'], $address['city'], $address['state'], $address['pincode'], $address['country'], $address['contact_person'], $address['contact_phone'], $address['contact_email'], $address['is_default']]);
             $newId = (int)$pdo->lastInsertId();
         }
+        sync_customer_address($customerId);
         $pdo->commit();
         flash('success', 'Address saved.');
         if ($returnTo) {

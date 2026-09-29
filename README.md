@@ -51,7 +51,10 @@ features/doctypes plus a "‹ All Modules" link back to the top level.
   generate a payslip per employee per month with itemized earnings and
   deductions, mark it paid (which also records the net pay as a
   "Payroll" expense under Finance), and print it.
-- **CRM** (`crm/`) — customers.
+- **CRM** (`crm/`) — the customer master: a six-tab Customer form (details,
+  contacts and address book, GST, sales defaults, credit limit / hold and
+  source). A new Sales Order pre-fills from the customer's defaults and
+  refuses to save for inactive, on-hold or over-limit customers.
 - **Finance** (`accounting/`) — sales invoices (standalone or generated
   from a delivery note) with payments and automatic unpaid → partially
   paid → paid status; purchase invoices (accounts payable, generated from
