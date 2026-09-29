@@ -128,10 +128,10 @@ function hr_leave_balance(int $employeeId, string $typeCode, int $year, int $exc
  *   present_days  attendance marked present (half day = 0.5)
  *   paid_leave    approved paid leave on working days
  *   lop_days      loss of pay: absences, unpaid leave, the unpaid half of
- *                 a half day, and days before joining / after relieving
- *   unmarked      working days with no attendance and no leave; these are
- *                 treated as paid so a company that doesn't mark
- *                 attendance still gets full pay
+ *                 a half day, days before joining / after relieving, and
+ *                 unmarked days
+ *   unmarked      working days with no attendance and no leave; these
+ *                 are unpaid (included in lop_days)
  *   payment_days  working_days - lop_days
  */
 function hr_payroll_days(int $employeeId, string $month): array
@@ -195,6 +195,7 @@ function hr_payroll_days(int $employeeId, string $month): array
             $out['lop_days'] += $remaining;
         } elseif ($status === null) {
             $out['unmarked'] += $remaining;
+            $out['lop_days'] += $remaining;
         }
     }
     $out['payment_days'] = max(0, $out['working_days'] - $out['lop_days']);

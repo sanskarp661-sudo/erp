@@ -316,7 +316,7 @@ require __DIR__ . '/../includes/header.php';
           <div class="col-sm-3">
             <label class="form-label">Loss of Pay (LOP) Days</label>
             <input type="number" step="0.5" min="0" name="lop_days" id="lopDays" class="form-control" value="<?= e($fmtDays($slip['lop_days'])) ?>">
-            <div class="form-text">Absences, unpaid leave and days outside employment.</div>
+            <div class="form-text">Absences, unpaid leave, unmarked days and days outside employment.</div>
           </div>
           <div class="col-sm-3">
             <label class="form-label">Payment Days</label>
@@ -329,7 +329,7 @@ require __DIR__ . '/../includes/header.php';
             </div>
           </div>
         </div>
-        <div class="small text-muted" id="daysNote"><?php if ($prefillDays && $prefillDays['unmarked'] > 0): ?><?= $fmtDays($prefillDays['unmarked']) ?> working day(s) have no attendance marked and are treated as paid.<?php endif; ?></div>
+        <div class="small text-muted" id="daysNote"><?php if ($prefillDays && $prefillDays['unmarked'] > 0): ?><?= $fmtDays($prefillDays['unmarked']) ?> working day(s) have no attendance marked and are counted as loss of pay.<?php endif; ?></div>
       </div>
 
       <div class="tab-pane fade <?= $activeTab === 'components' ? 'show active' : '' ?>" id="pane-components">
@@ -467,7 +467,7 @@ function fetchDays() {
       document.getElementById('presentDays').value = fmtDays(d.present_days);
       document.getElementById('paidLeaveDays').value = fmtDays(d.paid_leave);
       document.getElementById('lopDays').value = fmtDays(d.lop_days);
-      document.getElementById('daysNote').textContent = d.unmarked > 0 ? fmtDays(d.unmarked) + ' working day(s) have no attendance marked and are treated as paid.' : '';
+      document.getElementById('daysNote').textContent = d.unmarked > 0 ? fmtDays(d.unmarked) + ' working day(s) have no attendance marked and are counted as loss of pay.' : '';
       recalcPayroll();
     });
 }
