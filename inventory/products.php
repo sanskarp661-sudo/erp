@@ -19,7 +19,7 @@ if (is_post() && input('action') === 'delete') {
 
 $categoryFilter = (int)input('category');
 $statusFilter = in_array(input('status'), ['active', 'inactive'], true) ? input('status') : '';
-$stockFilter = in_array(input('stock'), ['in_stock', 'low_stock', 'out_of_stock'], true) ? input('stock') : '';
+$stockFilter = in_array(input('stock'), ['in_stock', 'low_stock', 'out_of_stock', 'reorder'], true) ? input('stock') : '';
 
 $sql = "SELECT p.*, c.name category_name FROM products p LEFT JOIN categories c ON c.id = p.category_id WHERE 1=1";
 $params = [];
@@ -35,6 +35,8 @@ if ($stockFilter === 'out_of_stock') {
     $sql .= " AND p.quantity <= 0";
 } elseif ($stockFilter === 'low_stock') {
     $sql .= " AND p.quantity > 0 AND p.quantity <= p.reorder_level";
+} elseif ($stockFilter === 'reorder') {
+    $sql .= " AND p.quantity <= p.reorder_level";
 } elseif ($stockFilter === 'in_stock') {
     $sql .= " AND p.quantity > p.reorder_level";
 }
@@ -80,6 +82,7 @@ require __DIR__ . '/../includes/header.php';
         <option value="in_stock" <?= $stockFilter === 'in_stock' ? 'selected' : '' ?>>In stock</option>
         <option value="low_stock" <?= $stockFilter === 'low_stock' ? 'selected' : '' ?>>Low stock</option>
         <option value="out_of_stock" <?= $stockFilter === 'out_of_stock' ? 'selected' : '' ?>>Out of stock</option>
+        <option value="reorder" <?= $stockFilter === 'reorder' ? 'selected' : '' ?>>Needs reorder (low or out)</option>
       </select>
     </div>
     <div class="col-sm-3">
