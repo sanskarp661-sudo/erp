@@ -77,11 +77,64 @@ function nav_active($needle, string $current): string
   <div class="app-main">
     <header class="topbar">
       <button id="sidebarToggle" class="btn-icon" type="button" aria-label="Toggle menu"><i class="fa-solid fa-bars"></i></button>
+      <?php if (!empty($dashboard_topbar)): ?>
+      <form class="topbar-search" action="<?= base_url('search.php') ?>" method="get" role="search" autocomplete="off">
+        <i class="fa-solid fa-magnifying-glass"></i>
+        <input type="search" name="q" id="globalSearch" placeholder="Search anything... (Products, Customers, Orders, etc.)" aria-label="Search">
+        <kbd>Ctrl + K</kbd>
+        <div class="topbar-search-results" id="globalSearchResults" hidden></div>
+      </form>
+      <div class="topbar-spacer"></div>
+      <div class="dropdown">
+        <button class="btn-icon topbar-bell" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Notifications">
+          <i class="fa-regular fa-bell"></i>
+          <?php if (!empty($dashboard_notifications)): ?><span class="topbar-bell-dot"></span><?php endif; ?>
+        </button>
+        <div class="dropdown-menu dropdown-menu-end topbar-notifications">
+          <div class="px-3 py-2 fw-semibold border-bottom">Notifications</div>
+          <?php foreach ((array)($dashboard_notifications ?? []) as $n): ?>
+            <a class="dropdown-item d-flex align-items-center gap-2 py-2" href="<?= e($n['url']) ?>">
+              <span class="fin-kpi-icon <?= e($n['tone']) ?>" style="width:32px;height:32px;font-size:.9rem"><i class="<?= e($n['icon']) ?>"></i></span>
+              <span class="small text-wrap"><?= e($n['text']) ?></span>
+            </a>
+          <?php endforeach; ?>
+          <?php if (empty($dashboard_notifications)): ?>
+            <div class="px-3 py-3 small text-muted">You're all caught up.</div>
+          <?php endif; ?>
+        </div>
+      </div>
+      <div class="dropdown">
+        <button class="topbar-store dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+          <i class="fa-solid fa-store"></i> <span><?= e($dashboard_store_name ?? 'All Stores') ?></span>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end">
+          <li><a class="dropdown-item <?= empty($dashboard_store_id) ? 'active' : '' ?>" href="<?= base_url('dashboard.php?store=0') ?>">All Stores</a></li>
+          <?php if (!empty($dashboard_stores)): ?><li><hr class="dropdown-divider"></li><?php endif; ?>
+          <?php foreach ((array)($dashboard_stores ?? []) as $s): ?>
+            <li><a class="dropdown-item <?= (int)$s['id'] === (int)($dashboard_store_id ?? 0) ? 'active' : '' ?>" href="<?= base_url('dashboard.php?store=' . (int)$s['id']) ?>"><?= e($s['name']) ?></a></li>
+          <?php endforeach; ?>
+          <?php if (empty($dashboard_stores)): ?>
+            <li><a class="dropdown-item small text-muted" href="<?= base_url('supply-chain/warehouses.php') ?>">No stores yet. Add a warehouse</a></li>
+          <?php endif; ?>
+        </ul>
+      </div>
+      <?php else: ?>
       <div class="topbar-title"><?= isset($page_title) ? e($page_title) : '' ?></div>
+      <?php endif; ?>
       <div class="topbar-user dropdown">
+        <?php if (!empty($dashboard_topbar)): ?>
+        <button class="topbar-profile dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+          <span class="topbar-avatar"><?= e(strtoupper(mb_substr(trim($user['name']), 0, 1))) ?></span>
+          <span class="topbar-profile-text">
+            <strong><?= e($user['name']) ?></strong>
+            <small><?= e(implode(', ', array_map('role_label', $user['roles'] ?? []))) ?: 'No roles' ?></small>
+          </span>
+        </button>
+        <?php else: ?>
         <button class="btn-icon dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
           <i class="fa-solid fa-circle-user"></i> <?= e($user['name']) ?> <span class="badge text-bg-secondary"><?= e(implode(', ', array_map('role_label', $user['roles'] ?? []))) ?: 'No roles' ?></span>
         </button>
+        <?php endif; ?>
         <ul class="dropdown-menu dropdown-menu-end">
           <?php if (can_view_admin_section()): ?>
           <li><a class="dropdown-item" href="<?= base_url('users/users.php') ?>"><i class="fa-solid fa-users-gear"></i> Users</a></li>

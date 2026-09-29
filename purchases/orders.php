@@ -5,10 +5,14 @@ $canEdit = can_edit_module('procurement');
 
 $userFilter = (int)input('user');
 $userFilterName = null;
-$sql = "SELECT po.*, v.name vendor_name FROM purchase_orders po JOIN vendors v ON v.id = po.vendor_id";
+$statusFilter = input('status') === 'open' ? 'open' : '';
+$sql = "SELECT po.*, v.name vendor_name FROM purchase_orders po JOIN vendors v ON v.id = po.vendor_id WHERE 1=1";
 $params = [];
+if ($statusFilter === 'open') {
+    $sql .= " AND po.status IN ('pending','ordered')";
+}
 if ($userFilter) {
-    $sql .= " WHERE po.created_by = ?";
+    $sql .= " AND po.created_by = ?";
     $params[] = $userFilter;
     $stmt = db()->prepare('SELECT name FROM users WHERE id = ?');
     $stmt->execute([$userFilter]);
@@ -24,6 +28,12 @@ $badge = ['pending' => 'secondary', 'ordered' => 'info', 'received' => 'success'
 $page_title = 'Purchase Orders';
 require __DIR__ . '/../includes/header.php';
 ?>
+<?php if ($statusFilter === 'open'): ?>
+  <div class="alert alert-info d-flex justify-content-between align-items-center">
+    <span>Showing <strong>open</strong> purchase orders (pending or ordered)</span>
+    <a href="orders.php" class="btn btn-sm btn-outline-secondary">Clear filter</a>
+  </div>
+<?php endif; ?>
 <?php if ($userFilter): ?>
   <div class="alert alert-info d-flex justify-content-between align-items-center">
     <span>Showing purchase orders created by <strong><?= e($userFilterName ?: 'Unknown user') ?></strong></span>
