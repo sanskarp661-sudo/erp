@@ -89,8 +89,14 @@ $MODULES = [
         'home'  => 'pos/index.php',
         'match' => '/pos/',
         'items' => [
-            ['label' => 'New Sale',      'icon' => 'fa-solid fa-cash-register', 'url' => 'pos/index.php',   'match' => 'pos/index.php'],
-            ['label' => 'POS Orders',    'icon' => 'fa-solid fa-receipt',       'url' => 'pos/orders.php',  'match' => 'pos/order'],
+            ['label' => 'New Sale',               'icon' => 'fa-solid fa-bag-shopping',        'url' => 'pos/index.php',     'match' => ['pos/index.php', 'pos/checkout', 'pos/success']],
+            ['label' => 'POS Orders',             'icon' => 'fa-solid fa-receipt',             'url' => 'pos/orders.php',    'match' => 'pos/order'],
+            ['label' => 'Held Orders',            'icon' => 'fa-solid fa-pause',               'url' => 'pos/held.php',      'match' => 'pos/held'],
+            ['label' => 'Returns & Exchanges',    'icon' => 'fa-solid fa-rotate-left',         'url' => 'pos/returns.php',   'match' => 'pos/return'],
+            ['label' => 'Customers',              'icon' => 'fa-solid fa-user',                'url' => 'pos/customers.php', 'match' => 'pos/customer'],
+            ['label' => 'Opening & Closing Shift','icon' => 'fa-solid fa-clock',               'url' => 'pos/shift.php',     'match' => 'pos/shift'],
+            ['label' => 'POS Reports',            'icon' => 'fa-solid fa-chart-column',        'url' => 'pos/reports.php',   'match' => 'pos/report'],
+            ['label' => 'POS Settings',           'icon' => 'fa-solid fa-gear',                'url' => 'pos/settings.php',  'match' => 'pos/settings', 'visible' => can_manage_module('pos')],
         ],
     ],
     'hrms' => [

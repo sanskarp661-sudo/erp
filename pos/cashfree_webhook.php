@@ -52,16 +52,21 @@ $eventType = $event['type'] ?? '';
 $paymentStatus = $event['data']['payment']['payment_status'] ?? null;
 
 if ($eventType === 'PAYMENT_SUCCESS_WEBHOOK' && $paymentStatus === 'SUCCESS') {
-    $cart = json_decode($row['cart_json'], true) ?: [];
-    $lineItems = [];
-    foreach ($cart as $item) {
-        $pid = (int)$item['product_id'];
-        $lineItems[$pid] = ($lineItems[$pid] ?? 0) + (int)$item['quantity'];
+    $stored = json_decode($row['cart_json'], true) ?: [];
+    if (isset($stored['payload'])) {
+        $payload = $stored['payload'];
+        $saleCtx = $stored['ctx'];
+    } else {
+        // Payment started before the POS rebuild: a bare [{product_id, quantity}] cart.
+        $payload = pos_normalize_payload($stored);
+        $payload['customer_id'] = (int)$row['customer_id'];
+        $saleCtx = ['warehouse_id' => default_warehouse_id(), 'profile_id' => null, 'shift_id' => null, 'price_list_id' => null];
     }
 
     $pdo->beginTransaction();
     try {
-        $result = pos_complete_sale($pdo, (int)$row['customer_id'], $lineItems, 'upi', $reference, $row['created_by'] !== null ? (int)$row['created_by'] : null);
+        $result = pos_complete_sale($pdo, $payload, [['method' => 'upi', 'amount' => (float)$row['amount'], 'reference' => $reference]], $saleCtx,
+            $row['created_by'] !== null ? (int)$row['created_by'] : null, true);
         $pdo->prepare('UPDATE pos_gateway_payments SET status = ?, sales_order_id = ? WHERE id = ?')
             ->execute(['paid', $result['order_id'], $row['id']]);
         $pdo->commit();

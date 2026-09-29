@@ -22,11 +22,6 @@ if (!$row) {
 
 $response = ['status' => $row['status']];
 if ($row['status'] === 'paid' && $row['sales_order_id']) {
-    $invStmt = db()->prepare('SELECT id FROM invoices WHERE sales_order_id = ? LIMIT 1');
-    $invStmt->execute([$row['sales_order_id']]);
-    $invoiceId = $invStmt->fetchColumn();
-    if ($invoiceId) {
-        $response['redirect'] = base_url('print.php?doctype=invoice&id=' . $invoiceId . '&pos=1');
-    }
+    $response['redirect'] = base_url('pos/success.php?id=' . (int)$row['sales_order_id'] . '&print=1');
 }
 echo json_encode($response);

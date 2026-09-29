@@ -50,7 +50,14 @@ function nav_active($needle, string $current): string
     <nav class="sidebar-nav">
       <a href="<?= base_url('dashboard.php') ?>" class="<?= $current_path === '/dashboard.php' || $current_path === '/index.php' || $current_path === '/' ? 'active' : '' ?>"><i class="fa-solid fa-gauge"></i> Dashboard</a>
 
-      <?php if ($currentModuleKey): ?>
+      <?php if (!empty($sidebar_subnav)): ?>
+        <a href="<?= base_url($sidebar_subnav['back_url']) ?>" class="back-link"><i class="fa-solid fa-arrow-left"></i> <?= e($sidebar_subnav['back_label']) ?></a>
+        <div class="nav-section"><i class="<?= e($sidebar_subnav['icon']) ?>"></i> <?= e($sidebar_subnav['label']) ?></div>
+        <?php foreach ($sidebar_subnav['items'] as $item): ?>
+          <a href="<?= base_url($item['url']) ?>" class="<?= !empty($item['active']) ? 'active' : '' ?>"><i class="<?= e($item['icon']) ?>"></i> <?= e($item['label']) ?></a>
+        <?php endforeach; ?>
+
+      <?php elseif ($currentModuleKey): ?>
         <?php $mod = $MODULES[$currentModuleKey]; ?>
         <a href="<?= base_url('dashboard.php') ?>" class="back-link"><i class="fa-solid fa-arrow-left"></i> All Modules</a>
         <div class="nav-section"><i class="<?= e($mod['icon']) ?>"></i> <?= e($mod['label']) ?></div>
@@ -119,11 +126,47 @@ function nav_active($needle, string $current): string
           <?php endif; ?>
         </ul>
       </div>
+      <?php elseif (!empty($pos_topbar)): ?>
+      <?php
+        $posSwitch = function (string $key, int $id): string {
+            $uri = $_SERVER['REQUEST_URI'] ?? '';
+            parse_str((string)parse_url($uri, PHP_URL_QUERY), $q);
+            $q[$key] = $id;
+            return e(parse_url($uri, PHP_URL_PATH) . '?' . http_build_query($q));
+        };
+      ?>
+      <div class="topbar-title">POS</div>
+      <div class="dropdown">
+        <button class="pos-top-select dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Store">
+          <i class="fa-solid fa-location-dot text-primary"></i> <span class="d-none d-md-inline"><strong>Store:</strong> <span class="text-muted"><?= e($pos_topbar['store_name']) ?></span></span>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end">
+          <?php foreach ($pos_topbar['stores'] as $posStore): ?>
+            <li><a class="dropdown-item <?= (int)$posStore['id'] === (int)$pos_topbar['warehouse_id'] ? 'active' : '' ?>" href="<?= $posSwitch('pos_store', (int)$posStore['id']) ?>"><?= e($posStore['name']) ?></a></li>
+          <?php endforeach; ?>
+          <?php if (!$pos_topbar['stores']): ?><li><span class="dropdown-item small text-muted">No stores yet</span></li><?php endif; ?>
+        </ul>
+      </div>
+      <div class="dropdown">
+        <button class="pos-top-select dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Terminal">
+          <i class="fa-solid fa-desktop text-primary"></i> <span><?= e($pos_topbar['profile']['name'] ?? 'No terminal') ?></span>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end">
+          <?php foreach ($pos_topbar['profiles'] as $posProf): ?>
+            <li><a class="dropdown-item <?= (int)$posProf['id'] === (int)$pos_topbar['profile_id'] ? 'active' : '' ?>" href="<?= $posSwitch('pos_terminal', (int)$posProf['id']) ?>"><?= e($posProf['name']) ?> <small class="text-muted"><?= e($posProf['warehouse_name'] ?? '') ?></small></a></li>
+          <?php endforeach; ?>
+          <?php if (can_manage_module('pos')): ?>
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item small" href="<?= base_url('pos/settings.php?s=profiles') ?>">Manage terminals</a></li>
+          <?php endif; ?>
+        </ul>
+      </div>
+      <span class="pos-online" id="posOnline" data-currency="<?= e(setting('currency_symbol', '$')) ?>" data-inr="<?= setting('currency_code', 'INR') === 'INR' ? '1' : '0' ?>"><span class="dot"></span> <span class="txt">Online</span></span>
       <?php else: ?>
       <div class="topbar-title"><?= isset($page_title) ? e($page_title) : '' ?></div>
       <?php endif; ?>
       <div class="topbar-user dropdown">
-        <?php if (!empty($dashboard_topbar)): ?>
+        <?php if (!empty($dashboard_topbar) || !empty($pos_topbar)): ?>
         <button class="topbar-profile dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
           <span class="topbar-avatar"><?= e(strtoupper(mb_substr(trim($user['name']), 0, 1))) ?></span>
           <span class="topbar-profile-text">
