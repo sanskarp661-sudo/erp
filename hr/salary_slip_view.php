@@ -66,6 +66,7 @@ require __DIR__ . '/../includes/header.php';
   <div class="page-actions">
     <a href="<?= base_url('print.php?doctype=salary_slip&id=' . $id) ?>" target="_blank" class="btn btn-outline-brand btn-sm"><i class="fa-solid fa-print"></i> Print Payslip</a>
     <?php if ($slip['status'] === 'draft'): ?>
+      <a href="salary_slip_form.php?id=<?= $id ?>" class="btn btn-outline-secondary btn-sm"><i class="fa-solid fa-pen"></i> Edit</a>
       <form method="post" class="d-inline" data-confirm="Delete this draft salary slip?">
         <?= csrf_field() ?><input type="hidden" name="action" value="delete">
         <button class="btn btn-outline-danger btn-sm" type="submit"><i class="fa-solid fa-trash"></i> Delete</button>
@@ -75,6 +76,19 @@ require __DIR__ . '/../includes/header.php';
   </div>
 </div>
 
+<?php
+$d = fn($v) => rtrim(rtrim(number_format((float)$v, 1, '.', ''), '0'), '.');
+$hasDays = (float)$slip['working_days'] > 0;
+?>
+<div class="row g-3 mb-3">
+  <div class="col-6 col-lg-3"><div class="card p-3"><div class="small text-muted">Employee</div><div><?= e($slip['employee_name']) ?></div><div class="small text-muted"><?= e(trim(($slip['designation'] ?? '') . ($slip['department_name'] ? ' · ' . $slip['department_name'] : ''), ' ·')) ?></div></div></div>
+  <?php if ($hasDays): ?>
+  <div class="col-6 col-lg-3"><div class="card p-3"><div class="small text-muted">Payment Days</div><div class="fs-5"><?= $d($slip['payment_days']) ?> / <?= $d($slip['working_days']) ?></div></div></div>
+  <div class="col-6 col-lg-3"><div class="card p-3"><div class="small text-muted">Present &middot; Paid Leave</div><div class="fs-5"><?= $d($slip['present_days']) ?> &middot; <?= $d($slip['paid_leave_days']) ?></div></div></div>
+  <div class="col-6 col-lg-3"><div class="card p-3"><div class="small text-muted">Loss of Pay</div><div class="fs-5 <?= (float)$slip['lop_days'] > 0 ? 'text-danger' : '' ?>"><?= $d($slip['lop_days']) ?> days</div><?php if ((float)$slip['lop_days'] > 0 && !$slip['prorate_lop']): ?><div class="small text-muted">Earnings not reduced</div><?php endif; ?></div></div>
+  <?php endif; ?>
+</div>
+
 <div class="row g-3">
   <div class="col-lg-7">
     <div class="card p-3">
@@ -82,9 +96,9 @@ require __DIR__ . '/../includes/header.php';
         <table class="table">
           <thead><tr><th>Earnings</th><th class="text-end">Amount</th></tr></thead>
           <tbody>
-            <tr><td>Basic Salary</td><td class="text-end"><?= money($slip['basic_salary']) ?></td></tr>
+            <tr><td>Basic Salary<?php if ((float)$slip['full_basic_salary'] && (float)$slip['full_basic_salary'] != (float)$slip['basic_salary']): ?> <span class="small text-muted">(monthly <?= money($slip['full_basic_salary']) ?>)</span><?php endif; ?></td><td class="text-end"><?= money($slip['basic_salary']) ?></td></tr>
             <?php foreach ($earnings as $e): ?>
-              <tr><td><?= e($e['label']) ?></td><td class="text-end"><?= money($e['amount']) ?></td></tr>
+              <tr><td><?= e($e['label']) ?><?php if ($e['full_amount'] !== null && (float)$e['full_amount'] != (float)$e['amount']): ?> <span class="small text-muted">(monthly <?= money($e['full_amount']) ?>)</span><?php endif; ?></td><td class="text-end"><?= money($e['amount']) ?></td></tr>
             <?php endforeach; ?>
             <tr class="table-light"><th>Total Earnings</th><th class="text-end"><?= money($slip['total_earnings']) ?></th></tr>
           </tbody>
@@ -107,6 +121,16 @@ require __DIR__ . '/../includes/header.php';
   </div>
 
   <div class="col-lg-5">
+    <?php if ($slip['salary_mode'] || $slip['remarks'] || $slip['notes']): ?>
+    <div class="card p-3 mb-3">
+      <h6 class="mb-2">Pay To</h6>
+      <?php $modes = ['bank_transfer' => 'Bank Transfer', 'cash' => 'Cash', 'cheque' => 'Cheque']; ?>
+      <?php if ($slip['salary_mode']): ?><div class="small"><span class="text-muted">Mode:</span> <?= e($modes[$slip['salary_mode']] ?? $slip['salary_mode']) ?></div><?php endif; ?>
+      <?php if ($slip['bank_account_no']): ?><div class="small"><span class="text-muted">Account:</span> <?= e(trim(($slip['bank_name'] ?? '') . ' ' . str_repeat('•', max(0, strlen($slip['bank_account_no']) - 4)) . substr($slip['bank_account_no'], -4))) ?> &middot; <?= e($slip['bank_ifsc'] ?? '') ?></div><?php endif; ?>
+      <?php if ($slip['notes']): ?><div class="small mt-2"><span class="text-muted">Note:</span> <?= e($slip['notes']) ?></div><?php endif; ?>
+      <?php if ($slip['remarks']): ?><div class="small mt-1"><span class="text-muted">Remarks:</span> <?= e($slip['remarks']) ?></div><?php endif; ?>
+    </div>
+    <?php endif; ?>
     <?php if ($slip['status'] === 'draft'): ?>
     <div class="card p-3">
       <h6 class="mb-3">Mark as Paid</h6>
@@ -121,10 +145,9 @@ require __DIR__ . '/../includes/header.php';
         <div class="mb-3">
           <label class="form-label">Payment Method</label>
           <select name="payment_method" class="form-select">
-            <option value="bank_transfer">Bank Transfer</option>
-            <option value="cash">Cash</option>
-            <option value="cheque">Cheque</option>
-            <option value="other">Other</option>
+            <?php foreach (['bank_transfer' => 'Bank Transfer', 'cash' => 'Cash', 'cheque' => 'Cheque', 'other' => 'Other'] as $k => $v): ?>
+              <option value="<?= $k ?>" <?= ($slip['salary_mode'] ?: 'bank_transfer') === $k ? 'selected' : '' ?>><?= $v ?></option>
+            <?php endforeach; ?>
           </select>
         </div>
         <button type="submit" class="btn btn-brand w-100">Mark as Paid</button>

@@ -635,7 +635,9 @@ function pf_doctypes(): array
                 }
                 $cols = [['key' => 'description', 'label' => 'Component'], ['key' => 'amount', 'label' => 'Amount', 'align' => 'right']];
 
-                $payDays = (int)((strtotime($s['pay_period_end']) - strtotime($s['pay_period_start'])) / 86400) + 1;
+                $payDays = (float)$s['working_days'] > 0
+                    ? rtrim(rtrim(number_format((float)$s['payment_days'], 1), '0'), '.')
+                    : (int)((strtotime($s['pay_period_end']) - strtotime($s['pay_period_start'])) / 86400) + 1;
 
                 $ytd = db()->prepare("
                   SELECT COALESCE(SUM(total_earnings),0) gross, COALESCE(SUM(total_deductions),0) ded, COALESCE(SUM(net_pay),0) net
@@ -670,7 +672,7 @@ function pf_doctypes(): array
             'tokens' => [
                 'slip_no' => 'Slip number', 'employee_name' => 'Employee name', 'employee_code' => 'Employee code',
                 'designation' => 'Designation', 'department_name' => 'Department', 'pay_period' => 'Pay period (range)',
-                'pay_month' => 'Pay period (month name)', 'pay_days' => 'Days in pay period', 'status' => 'Status',
+                'pay_month' => 'Pay period (month name)', 'pay_days' => 'Payment days (days in period for older slips)', 'status' => 'Status',
                 'earnings_table' => 'Earnings table', 'deductions_table' => 'Deductions table',
                 'total_earnings' => 'Total earnings', 'total_deductions' => 'Total deductions', 'net_pay' => 'Net pay',
                 'net_pay_words' => 'Net pay spelled out in words',

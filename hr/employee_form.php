@@ -400,7 +400,7 @@ if (is_post()) {
     }
 }
 
-$departments = db()->query('SELECT id, name FROM departments ORDER BY name')->fetchAll();
+$departments = db()->query("SELECT id, name FROM departments WHERE status = 'active' OR id = " . (int)$employee['department_id'] . ' ORDER BY name')->fetchAll();
 $managerStmt = db()->prepare("SELECT id, name, employee_code FROM employees WHERE status = 'active' AND id <> ? ORDER BY name");
 $managerStmt->execute([$id]);
 $managers = $managerStmt->fetchAll();

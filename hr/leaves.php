@@ -1,135 +1,86 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/hr.php';
 require_login();
 
-if (is_post() && input('action') === 'apply') {
-    csrf_verify();
-    $employeeId = (int)input('employee_id');
-    $leaveType = input('leave_type') ?: 'casual';
-    $start = input('start_date');
-    $end = input('end_date');
-    $reason = input('reason');
+$canManage = can_manage_module('hrms');
+$statusFilter = in_array(input('status'), ['pending', 'approved', 'rejected', 'cancelled', 'all'], true) ? input('status') : 'all';
+$employeeFilter = (int)input('employee');
+$year = (int)input('year') ?: (int)date('Y');
 
-    if (!$employeeId || !$start || !$end) {
-        flash('danger', 'Employee, start date and end date are required.');
-    } elseif ($end < $start) {
-        flash('danger', 'End date cannot be before start date.');
-    } else {
-        db()->prepare('INSERT INTO leaves (employee_id, leave_type, start_date, end_date, reason, status) VALUES (?,?,?,?,?,?)')
-            ->execute([$employeeId, $leaveType, $start, $end, $reason, 'pending']);
-        flash('success', 'Leave request submitted.');
-    }
-    redirect('/hr/leaves.php');
+$where = ['YEAR(l.start_date) = ?'];
+$params = [$year];
+if ($statusFilter !== 'all') {
+    $where[] = 'l.status = ?';
+    $params[] = $statusFilter;
 }
-
-if (is_post() && input('action') === 'decide') {
-    require_module_manage('hrms');
-    csrf_verify();
-    $id = (int)input('id');
-    $decision = input('decision') === 'approved' ? 'approved' : 'rejected';
-    db()->prepare('UPDATE leaves SET status = ? WHERE id = ?')->execute([$decision, $id]);
-    flash('success', 'Leave request ' . $decision . '.');
-    redirect('/hr/leaves.php');
+if ($employeeFilter) {
+    $where[] = 'l.employee_id = ?';
+    $params[] = $employeeFilter;
 }
-
-$leaves = db()->query("
-  SELECT l.*, e.name employee_name, e.employee_code
+$stmt = db()->prepare('
+  SELECT l.*, e.name employee_name, e.employee_code, lt.name type_name, ap.name approver_name
   FROM leaves l JOIN employees e ON e.id = l.employee_id
-  ORDER BY l.applied_at DESC
-")->fetchAll();
+  LEFT JOIN leave_types lt ON lt.code = l.leave_type
+  LEFT JOIN users ap ON ap.id = l.leave_approver_id
+  WHERE ' . implode(' AND ', $where) . '
+  ORDER BY l.status = \'pending\' DESC, l.start_date DESC, l.id DESC');
+$stmt->execute($params);
+$leaves = $stmt->fetchAll();
 
-$employees = db()->query("SELECT id, name, employee_code FROM employees WHERE status='active' ORDER BY name")->fetchAll();
-$canDecide = can_manage_module('hrms');
-$badge = ['pending' => 'warning', 'approved' => 'success', 'rejected' => 'danger'];
+$employees = db()->query("SELECT id, name, employee_code FROM employees ORDER BY name")->fetchAll();
+$badge = ['pending' => 'warning', 'approved' => 'success', 'rejected' => 'danger', 'cancelled' => 'secondary'];
+$fmt = fn($v) => rtrim(rtrim(number_format((float)$v, 1, '.', ''), '0'), '.');
+$pendingForMe = count(array_filter($leaves, fn($l) => $l['status'] === 'pending' && hr_can_decide_leave($l)));
 
-$page_title = 'Leave Requests';
+$page_title = 'Leave Applications';
 require __DIR__ . '/../includes/header.php';
 ?>
-<div class="row g-3">
-  <div class="col-lg-8">
-    <div class="card p-3">
-      <h6 class="mb-2">All Leave Requests</h6>
-      <div class="table-responsive">
-        <table class="table table-sm">
-          <thead><tr><th>Employee</th><th>Type</th><th>From</th><th>To</th><th>Reason</th><th>Status</th><?php if ($canDecide): ?><th class="text-end">Actions</th><?php endif; ?></tr></thead>
-          <tbody>
-          <?php foreach ($leaves as $l): ?>
-            <tr>
-              <td><?= e($l['employee_name']) ?> <span class="text-muted small">(<?= e($l['employee_code']) ?>)</span></td>
-              <td class="text-capitalize"><?= e($l['leave_type']) ?></td>
-              <td><?= e($l['start_date']) ?></td>
-              <td><?= e($l['end_date']) ?></td>
-              <td class="text-muted"><?= e($l['reason']) ?></td>
-              <td><span class="badge text-bg-<?= $badge[$l['status']] ?> badge-status"><?= e($l['status']) ?></span></td>
-              <?php if ($canDecide): ?>
-              <td class="text-end">
-                <?php if ($l['status'] === 'pending'): ?>
-                  <form method="post" class="d-inline">
-                    <?= csrf_field() ?>
-                    <input type="hidden" name="action" value="decide">
-                    <input type="hidden" name="id" value="<?= (int)$l['id'] ?>">
-                    <input type="hidden" name="decision" value="approved">
-                    <button class="btn btn-sm btn-outline-success" type="submit"><i class="fa-solid fa-check"></i></button>
-                  </form>
-                  <form method="post" class="d-inline">
-                    <?= csrf_field() ?>
-                    <input type="hidden" name="action" value="decide">
-                    <input type="hidden" name="id" value="<?= (int)$l['id'] ?>">
-                    <input type="hidden" name="decision" value="rejected">
-                    <button class="btn btn-sm btn-outline-danger" type="submit"><i class="fa-solid fa-xmark"></i></button>
-                  </form>
-                <?php endif; ?>
-              </td>
-              <?php endif; ?>
-            </tr>
-          <?php endforeach; ?>
-          <?php if (!$leaves): ?><tr><td colspan="7" class="text-muted text-center">No leave requests yet.</td></tr><?php endif; ?>
-          </tbody>
-        </table>
-      </div>
-    </div>
+<div class="d-flex justify-content-between align-items-end mb-3 flex-wrap gap-2">
+  <form method="get" class="d-flex gap-2 flex-wrap">
+    <input type="text" class="form-control" style="max-width:220px" placeholder="Search..." data-table-search="#leaveTable">
+    <select name="status" class="form-select" style="width:auto" onchange="this.form.submit()">
+      <?php foreach (['all' => 'All statuses', 'pending' => 'Pending', 'approved' => 'Approved', 'rejected' => 'Rejected', 'cancelled' => 'Cancelled'] as $k => $v): ?>
+        <option value="<?= $k ?>" <?= $statusFilter === $k ? 'selected' : '' ?>><?= $v ?></option>
+      <?php endforeach; ?>
+    </select>
+    <select name="employee" class="form-select" style="width:auto" onchange="this.form.submit()">
+      <option value="">All employees</option>
+      <?php foreach ($employees as $emp): ?><option value="<?= (int)$emp['id'] ?>" <?= $employeeFilter === (int)$emp['id'] ? 'selected' : '' ?>><?= e($emp['name']) ?></option><?php endforeach; ?>
+    </select>
+    <select name="year" class="form-select" style="width:auto" onchange="this.form.submit()">
+      <?php for ($y = (int)date('Y') + 1; $y >= (int)date('Y') - 3; $y--): ?><option value="<?= $y ?>" <?= $year === $y ? 'selected' : '' ?>><?= $y ?></option><?php endfor; ?>
+    </select>
+  </form>
+  <div class="page-actions">
+    <?php if ($canManage): ?><a href="leave_types.php" class="btn btn-outline-secondary"><i class="fa-solid fa-list"></i> Leave Types</a><?php endif; ?>
+    <a href="leave_form.php" class="btn btn-brand"><i class="fa-solid fa-plus"></i> New Leave Application</a>
   </div>
-  <div class="col-lg-4">
-    <div class="card p-3">
-      <h6 class="mb-3">Apply for Leave</h6>
-      <form method="post">
-        <?= csrf_field() ?>
-        <input type="hidden" name="action" value="apply">
-        <div class="mb-2">
-          <label class="form-label">Employee</label>
-          <select name="employee_id" class="form-select" required>
-            <option value="">— Select employee —</option>
-            <?php foreach ($employees as $e): ?>
-              <option value="<?= (int)$e['id'] ?>"><?= e($e['name']) ?> (<?= e($e['employee_code']) ?>)</option>
-            <?php endforeach; ?>
-          </select>
-        </div>
-        <div class="mb-2">
-          <label class="form-label">Leave Type</label>
-          <select name="leave_type" class="form-select">
-            <option value="casual">Casual</option>
-            <option value="sick">Sick</option>
-            <option value="annual">Annual</option>
-            <option value="unpaid">Unpaid</option>
-          </select>
-        </div>
-        <div class="row g-2">
-          <div class="col-6">
-            <label class="form-label">From</label>
-            <input type="date" name="start_date" class="form-control" required>
-          </div>
-          <div class="col-6">
-            <label class="form-label">To</label>
-            <input type="date" name="end_date" class="form-control" required>
-          </div>
-        </div>
-        <div class="mb-2 mt-2">
-          <label class="form-label">Reason</label>
-          <textarea name="reason" class="form-control" rows="2"></textarea>
-        </div>
-        <button type="submit" class="btn btn-brand w-100">Submit Request</button>
-      </form>
-    </div>
+</div>
+<?php if ($pendingForMe): ?><div class="alert alert-warning py-2"><?= $pendingForMe ?> leave application(s) are waiting for your approval.</div><?php endif; ?>
+<div class="card p-3">
+  <div class="table-responsive">
+    <table class="table table-hover" id="leaveTable">
+      <thead><tr><th>Application</th><th>Employee</th><th>Type</th><th>From</th><th>To</th><th class="text-end">Days</th><th>Approver</th><th>Status</th><th class="text-end">Actions</th></tr></thead>
+      <tbody>
+      <?php foreach ($leaves as $l): ?>
+        <tr>
+          <td><a href="leave_view.php?id=<?= (int)$l['id'] ?>"><?= e($l['application_no'] ?: '#' . $l['id']) ?></a></td>
+          <td><?= e($l['employee_name']) ?> <span class="text-muted small">(<?= e($l['employee_code']) ?>)</span></td>
+          <td><?= e($l['type_name'] ?? ucfirst($l['leave_type'])) ?><?= $l['half_day'] ? ' <span class="badge text-bg-light">½</span>' : '' ?></td>
+          <td><?= e($l['start_date']) ?></td>
+          <td><?= e($l['end_date']) ?></td>
+          <td class="text-end"><?= $fmt($l['total_days']) ?></td>
+          <td class="small"><?= e($l['approver_name'] ?? 'HR managers') ?></td>
+          <td><span class="badge text-bg-<?= $badge[$l['status']] ?? 'secondary' ?> badge-status"><?= e($l['status']) ?></span></td>
+          <td class="text-end">
+            <a href="leave_view.php?id=<?= (int)$l['id'] ?>" class="btn btn-sm btn-outline-secondary"><?= $l['status'] === 'pending' && hr_can_decide_leave($l) ? 'Review' : '<i class="fa-solid fa-eye"></i>' ?></a>
+          </td>
+        </tr>
+      <?php endforeach; ?>
+      <?php if (!$leaves): ?><tr><td colspan="9" class="text-muted text-center">No leave applications for these filters.</td></tr><?php endif; ?>
+      </tbody>
+    </table>
   </div>
 </div>
 <?php require __DIR__ . '/../includes/footer.php'; ?>

@@ -14,7 +14,20 @@ if (is_post() && input('action') === 'delete') {
 }
 
 $statusFilter = in_array(input('status'), ['active', 'inactive', 'left', 'all'], true) ? input('status') : 'current';
-$where = $statusFilter === 'all' ? '' : ($statusFilter === 'current' ? "WHERE e.status <> 'left'" : 'WHERE e.status = ?');
+$departmentFilter = (int)input('department');
+$conds = [];
+$params = [];
+if ($statusFilter === 'current') {
+    $conds[] = "e.status <> 'left'";
+} elseif ($statusFilter !== 'all') {
+    $conds[] = 'e.status = ?';
+    $params[] = $statusFilter;
+}
+if ($departmentFilter) {
+    $conds[] = 'e.department_id = ?';
+    $params[] = $departmentFilter;
+}
+$where = $conds ? 'WHERE ' . implode(' AND ', $conds) : '';
 $stmt = db()->prepare("
   SELECT e.*, d.name department_name, m.name manager_name
   FROM employees e LEFT JOIN departments d ON d.id = e.department_id
@@ -22,7 +35,8 @@ $stmt = db()->prepare("
   $where
   ORDER BY e.name
 ");
-$stmt->execute(in_array($statusFilter, ['active', 'inactive', 'left'], true) ? [$statusFilter] : []);
+$stmt->execute($params);
+$departments = db()->query('SELECT id, name FROM departments ORDER BY name')->fetchAll();
 $employees = $stmt->fetchAll();
 $statusBadge = ['active' => 'success', 'inactive' => 'secondary', 'left' => 'dark'];
 
@@ -34,11 +48,15 @@ require __DIR__ . '/../includes/header.php';
 <div class="d-flex justify-content-between align-items-center mb-3">
   <div class="d-flex gap-2">
     <input type="text" class="form-control" style="max-width:280px" placeholder="Search employees..." data-table-search="#empTable">
-    <form method="get">
+    <form method="get" class="d-flex gap-2">
       <select name="status" class="form-select" onchange="this.form.submit()">
         <?php foreach (['current' => 'Current (not left)', 'active' => 'Active', 'inactive' => 'Inactive', 'left' => 'Left', 'all' => 'All'] as $k => $v): ?>
           <option value="<?= $k ?>" <?= $statusFilter === $k ? 'selected' : '' ?>><?= e($v) ?></option>
         <?php endforeach; ?>
+      </select>
+      <select name="department" class="form-select" onchange="this.form.submit()">
+        <option value="">All departments</option>
+        <?php foreach ($departments as $d): ?><option value="<?= (int)$d['id'] ?>" <?= $departmentFilter === (int)$d['id'] ? 'selected' : '' ?>><?= e($d['name']) ?></option><?php endforeach; ?>
       </select>
     </form>
   </div>
