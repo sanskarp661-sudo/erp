@@ -402,15 +402,58 @@ CREATE TABLE IF NOT EXISTS stock_movements (
 -- ---------------------------------------------------------------------
 -- Sales / CRM
 -- ---------------------------------------------------------------------
+-- Customer master (CRM). The *_id / default columns are what a new Sales
+-- Order pre-fills from when the customer is picked; credit_hold and
+-- bypass_credit_check drive the Sales Order's credit check. address is
+-- the single free-text address prints read, kept in sync by the Customer
+-- form with the default row in customer_addresses.
 CREATE TABLE IF NOT EXISTS customers (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  customer_code VARCHAR(30) DEFAULT NULL,
   name VARCHAR(150) NOT NULL,
+  customer_type ENUM('company','individual') NOT NULL DEFAULT 'company',
+  customer_group VARCHAR(60) DEFAULT NULL,
   company VARCHAR(150) DEFAULT NULL,
+  territory VARCHAR(100) DEFAULT NULL,
+  industry VARCHAR(100) DEFAULT NULL,
+  website VARCHAR(150) DEFAULT NULL,
+  status ENUM('active','inactive','blocked') NOT NULL DEFAULT 'active',
+  contact_person VARCHAR(120) DEFAULT NULL,
+  designation VARCHAR(100) DEFAULT NULL,
   email VARCHAR(150) DEFAULT NULL,
   phone VARCHAR(40) DEFAULT NULL,
+  mobile VARCHAR(40) DEFAULT NULL,
+  alt_email VARCHAR(150) DEFAULT NULL,
+  preferred_contact ENUM('email','phone','whatsapp','any') NOT NULL DEFAULT 'any',
   address VARCHAR(255) DEFAULT NULL,
   credit_limit DECIMAL(14,2) DEFAULT NULL,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+  gstin VARCHAR(15) DEFAULT NULL,
+  pan VARCHAR(10) DEFAULT NULL,
+  gst_category VARCHAR(30) DEFAULT NULL,
+  place_of_supply VARCHAR(60) DEFAULT NULL,
+  tax_template_id INT UNSIGNED DEFAULT NULL,
+  tax_exempt TINYINT(1) NOT NULL DEFAULT 0,
+  exemption_certificate_no VARCHAR(60) DEFAULT NULL,
+  price_list_id INT UNSIGNED DEFAULT NULL,
+  currency VARCHAR(3) DEFAULT NULL,
+  sales_person_id INT UNSIGNED DEFAULT NULL,
+  sales_channel VARCHAR(40) DEFAULT NULL,
+  market_segment VARCHAR(100) DEFAULT NULL,
+  region VARCHAR(100) DEFAULT NULL,
+  shipping_partner_id INT UNSIGNED DEFAULT NULL,
+  delivery_terms VARCHAR(255) DEFAULT NULL,
+  payment_terms_template_id INT UNSIGNED DEFAULT NULL,
+  payment_method VARCHAR(40) DEFAULT NULL,
+  credit_hold TINYINT(1) NOT NULL DEFAULT 0,
+  bypass_credit_check TINYINT(1) NOT NULL DEFAULT 0,
+  lead_source VARCHAR(60) DEFAULT NULL,
+  referred_by VARCHAR(150) DEFAULT NULL,
+  campaign VARCHAR(150) DEFAULT NULL,
+  customer_since DATE DEFAULT NULL,
+  tags VARCHAR(255) DEFAULT NULL,
+  notes TEXT DEFAULT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uniq_customer_code (customer_code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- A product's rate on a given price list. If a product has no explicit
