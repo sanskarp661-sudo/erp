@@ -355,6 +355,7 @@ CREATE TABLE IF NOT EXISTS product_serials (
   warehouse_id INT UNSIGNED DEFAULT NULL,
   status ENUM('in_stock','issued','damaged') NOT NULL DEFAULT 'in_stock',
   grn_item_id INT UNSIGNED DEFAULT NULL,
+  stock_entry_item_id INT UNSIGNED DEFAULT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
   FOREIGN KEY (batch_id) REFERENCES product_batches(id) ON DELETE SET NULL,
@@ -1312,6 +1313,103 @@ CREATE TABLE IF NOT EXISTS print_formats (
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- ---------------------------------------------------------------------
+-- Stock Entries (Supply Chain): multi-line stock documents that move
+-- stock only when submitted. See migration 026 for details.
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS stock_entries (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  entry_no VARCHAR(30) NOT NULL UNIQUE,
+  entry_type ENUM('material_receipt','material_issue','material_transfer','stock_adjustment') NOT NULL DEFAULT 'material_receipt',
+  posting_date DATE NOT NULL,
+  posting_time TIME DEFAULT NULL,
+  purpose VARCHAR(120) DEFAULT NULL,
+  source_warehouse_id INT UNSIGNED DEFAULT NULL,
+  target_warehouse_id INT UNSIGNED DEFAULT NULL,
+  vendor_id INT UNSIGNED DEFAULT NULL,
+  reference_no VARCHAR(80) DEFAULT NULL,
+  requested_by INT UNSIGNED DEFAULT NULL,
+  department VARCHAR(120) DEFAULT NULL,
+  project VARCHAR(120) DEFAULT NULL,
+  notes VARCHAR(255) DEFAULT NULL,
+  -- Additional Costs tab
+  distribute_costs_by ENUM('amount','qty') NOT NULL DEFAULT 'amount',
+  total_qty INT NOT NULL DEFAULT 0,
+  total_outgoing_value DECIMAL(14,2) NOT NULL DEFAULT 0,
+  total_incoming_value DECIMAL(14,2) NOT NULL DEFAULT 0,
+  total_additional_costs DECIMAL(14,2) NOT NULL DEFAULT 0,
+  value_difference DECIMAL(14,2) NOT NULL DEFAULT 0,
+  -- Transport tab
+  mode_of_transport VARCHAR(30) DEFAULT NULL,
+  shipping_partner_id INT UNSIGNED DEFAULT NULL,
+  vehicle_no VARCHAR(30) DEFAULT NULL,
+  driver_name VARCHAR(120) DEFAULT NULL,
+  driver_phone VARCHAR(30) DEFAULT NULL,
+  tracking_no VARCHAR(80) DEFAULT NULL,
+  eway_bill_no VARCHAR(30) DEFAULT NULL,
+  dispatch_date DATE DEFAULT NULL,
+  expected_arrival_date DATE DEFAULT NULL,
+  transport_remarks VARCHAR(255) DEFAULT NULL,
+  -- More Info tab
+  cost_center VARCHAR(120) DEFAULT NULL,
+  business_unit VARCHAR(120) DEFAULT NULL,
+  approver_id INT UNSIGNED DEFAULT NULL,
+  inspection_required TINYINT(1) NOT NULL DEFAULT 0,
+  remarks_internal TEXT DEFAULT NULL,
+  tags VARCHAR(255) DEFAULT NULL,
+  status ENUM('draft','submitted','cancelled') NOT NULL DEFAULT 'draft',
+  submitted_at DATETIME DEFAULT NULL,
+  submitted_by INT UNSIGNED DEFAULT NULL,
+  created_by INT UNSIGNED DEFAULT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (source_warehouse_id) REFERENCES warehouses(id) ON DELETE SET NULL,
+  FOREIGN KEY (target_warehouse_id) REFERENCES warehouses(id) ON DELETE SET NULL,
+  FOREIGN KEY (vendor_id) REFERENCES vendors(id) ON DELETE SET NULL,
+  FOREIGN KEY (shipping_partner_id) REFERENCES shipping_partners(id) ON DELETE SET NULL,
+  FOREIGN KEY (requested_by) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (approver_id) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (submitted_by) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS stock_entry_items (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  stock_entry_id INT UNSIGNED NOT NULL,
+  product_id INT UNSIGNED NOT NULL,
+  description VARCHAR(255) DEFAULT NULL,
+  source_warehouse_id INT UNSIGNED DEFAULT NULL,
+  target_warehouse_id INT UNSIGNED DEFAULT NULL,
+  -- Signed only for stock_adjustment lines (negative = reduce stock).
+  quantity INT NOT NULL,
+  uom VARCHAR(30) NOT NULL DEFAULT 'pcs',
+  uom_conversion_factor DECIMAL(14,4) NOT NULL DEFAULT 1,
+  basic_rate DECIMAL(14,2) NOT NULL DEFAULT 0,
+  basic_amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+  additional_cost DECIMAL(14,2) NOT NULL DEFAULT 0,
+  valuation_rate DECIMAL(14,2) NOT NULL DEFAULT 0,
+  amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+  batch_no VARCHAR(60) DEFAULT NULL,
+  manufacturing_date DATE DEFAULT NULL,
+  expiry_date DATE DEFAULT NULL,
+  serial_numbers TEXT DEFAULT NULL,
+  sort_order INT NOT NULL DEFAULT 0,
+  FOREIGN KEY (stock_entry_id) REFERENCES stock_entries(id) ON DELETE CASCADE,
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT,
+  FOREIGN KEY (source_warehouse_id) REFERENCES warehouses(id) ON DELETE SET NULL,
+  FOREIGN KEY (target_warehouse_id) REFERENCES warehouses(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS stock_entry_costs (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  stock_entry_id INT UNSIGNED NOT NULL,
+  account_head_id INT UNSIGNED DEFAULT NULL,
+  description VARCHAR(120) DEFAULT NULL,
+  amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+  sort_order INT NOT NULL DEFAULT 0,
+  FOREIGN KEY (stock_entry_id) REFERENCES stock_entries(id) ON DELETE CASCADE,
+  FOREIGN KEY (account_head_id) REFERENCES ledger_accounts(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- ---------------------------------------------------------------------
@@ -1347,7 +1445,9 @@ INSERT INTO ledger_accounts (name, account_type) VALUES
 ('Input CGST', 'tax'),
 ('Input SGST', 'tax'),
 ('Input IGST', 'tax'),
-('Freight Inward', 'other');
+('Freight Inward', 'other'),
+('Handling Charges', 'other'),
+('Loading / Unloading', 'other');
 
 INSERT INTO tax_templates (id, name) VALUES (1, 'GST - Standard (Sales)');
 INSERT INTO tax_template_items (tax_template_id, type, account_head_id, description, based_on, rate_or_amount, sort_order) VALUES
