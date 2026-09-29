@@ -18,7 +18,7 @@ $taxApplicability = ['taxable' => 'Taxable', 'exempt' => 'Exempt', 'nil_rated' =
 $currencies = ['INR' => '₹ INR - Indian Rupee (₹)', 'USD' => '$ USD - US Dollar', 'EUR' => '€ EUR - Euro', 'GBP' => '£ GBP - British Pound', 'AED' => 'AED - UAE Dirham'];
 $costCenters = $pdo->query("SELECT id, name FROM fin_cost_centers WHERE status = 'active' ORDER BY name")->fetchAll(PDO::FETCH_KEY_PAIR);
 $taxTemplates = $pdo->query('SELECT id, name FROM tax_templates ORDER BY name')->fetchAll(PDO::FETCH_KEY_PAIR);
-$projects = $pdo->query("SELECT DISTINCT project FROM ledger_accounts WHERE project IS NOT NULL AND project <> '' UNION SELECT DISTINCT project FROM expenses WHERE project IS NOT NULL AND project <> ''")->fetchAll(PDO::FETCH_COLUMN);
+$projects = $pdo->query("SELECT DISTINCT CONVERT(project USING utf8mb4) COLLATE utf8mb4_unicode_ci FROM ledger_accounts WHERE project IS NOT NULL AND project <> '' UNION SELECT DISTINCT project FROM expenses WHERE project IS NOT NULL AND project <> ''")->fetchAll(PDO::FETCH_COLUMN);
 
 $acct = [
     'id' => 0, 'name' => '', 'account_code' => '', 'description' => '', 'parent_id' => (int)input('parent') ?: '', 'is_group' => 0,
