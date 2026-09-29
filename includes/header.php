@@ -14,7 +14,8 @@ require_once __DIR__ . '/modules.php';
 
 $user = current_user();
 $current_path = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH);
-$currentModuleKey = current_module_key($current_path);
+// A page outside a module folder (e.g. a shared report) can pick its sidebar with $sidebar_module.
+$currentModuleKey = isset($sidebar_module, $MODULES[$sidebar_module]) ? $sidebar_module : current_module_key($current_path);
 $inAdminSection = false;
 foreach ((array)$ADMIN_ITEMS['match'] as $adminMatch) {
     if (str_contains($current_path, $adminMatch)) { $inAdminSection = true; break; }

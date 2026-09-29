@@ -585,3 +585,76 @@ body.sidebar-toggled .app-main { margin-left: 0; }
   .topbar-store span { display: none; }
   .dash-banner-leaf2 { display: none; }
 }
+
+/* ---------- Inventory module ---------- */
+.dash-pill-orange { background: #ffedd5; color: #c2410c; }
+.inv-wh { display: block; padding: 10px 8px; margin: 0 -8px; border-radius: 10px; color: #1f2937; text-decoration: none; }
+.inv-wh + .inv-wh { border-top: 1px solid var(--card-border); border-radius: 0; }
+.inv-wh:hover { background: #f8faff; color: #1f2937; }
+.inv-bar { height: 6px; background: #eef1f6; border-radius: 4px; overflow: hidden; margin: 6px 0 4px; }
+.inv-bar span { display: block; height: 100%; background: linear-gradient(90deg, #2563eb, #60a5fa); border-radius: 4px; }
+.inv-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 575px) { .inv-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.inv-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.inv-tab { display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; border-radius: 999px; border: 1px solid var(--card-border); background: #fff; color: #374151; font-size: .86rem; font-weight: 500; text-decoration: none; }
+.inv-tab:hover { color: #1f2937; background: #f8faff; }
+.inv-tab.active { background: var(--brand); border-color: var(--brand); color: #fff; }
+.inv-tab-count { background: #eef1f6; color: #475569; border-radius: 999px; padding: 0 8px; font-size: .74rem; font-weight: 600; line-height: 1.6; }
+.inv-tab.active .inv-tab-count { background: rgba(255,255,255,.22); color: #fff; }
+.inv-toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+.inv-toolbar .form-select { width: auto; min-width: 150px; }
+.inv-search { position: relative; flex: 1; min-width: 220px; }
+.inv-search > i { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #9ca3af; }
+.inv-search input { padding-left: 36px; }
+.inv-table td { padding-top: 10px; padding-bottom: 10px; }
+.inv-thumb { width: 42px; height: 42px; }
+.inv-icon-btn { width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--card-border); background: #fff; color: #475569; }
+.inv-icon-btn:hover { background: #f3f7ff; color: var(--brand); }
+.inv-bar-green span { background: #22c55e; }
+.inv-bar-orange span { background: #f59e0b; }
+.inv-bar-red span { background: #ef4444; }
+.inv-stock-green { color: #15803d; }
+.inv-stock-orange { color: #c2410c; }
+.inv-stock-red { color: #dc2626; }
+.inv-crumbs { font-size: .82rem; color: #6b7280; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.inv-crumbs a { color: #6b7280; text-decoration: none; }
+.inv-crumbs a:hover { color: var(--brand); }
+.inv-crumbs i { font-size: .6rem; }
+.inv-doc-head .dash-title .dash-pill { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size: .78rem; vertical-align: middle; }
+.inv-doc { border-radius: 14px; }
+.inv-doc-tabs { border-bottom: 1px solid var(--card-border); }
+@media (max-width: 767px) { .inv-doc-tabs { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; } }
+.inv-doc-tabs .nav-link { white-space: nowrap; border: none; border-bottom: 2px solid transparent; color: #4b5563; font-weight: 500; padding: 10px 12px; margin-bottom: -1px; font-size: .94rem; }
+.inv-doc-tabs .nav-link i { color: #9ca3af; margin-right: 4px; font-size: .85rem; }
+.inv-doc-tabs .nav-link:hover { color: var(--brand); border-bottom-color: #c7d7fb; }
+.inv-doc-tabs .nav-link.active { color: var(--brand); border-bottom-color: var(--brand); background: transparent; }
+.inv-doc-tabs .nav-link.active i { color: var(--brand); }
+.inv-doc .card { border-radius: 12px; }
+.inv-doc .card h6 { font-weight: 600; color: #0f1b3d; }
+.inv-save-bar { position: sticky; bottom: 0; z-index: 5; background: rgba(255,255,255,.96); backdrop-filter: blur(4px); border-top: 1px solid var(--card-border); margin: 16px -24px -24px; padding: 12px 24px; border-radius: 0 0 14px 14px; justify-content: flex-end; }
+.inv-view .card { border-radius: 14px; }
+.inv-view .card h6 { font-family: Georgia, "Times New Roman", serif; font-weight: 700; font-size: 1.05rem; color: #0f1b3d; }
+.inv-kpis-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 767px) { .inv-kpis-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.inv-hero-img { width: 100%; aspect-ratio: 4 / 3; border-radius: 12px; background: #f5f7fb; border: 1px solid var(--card-border); display: flex; align-items: center; justify-content: center; color: #94a3b8; overflow: hidden; }
+.inv-hero-img img { width: 100%; height: 100%; object-fit: cover; }
+.inv-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+.inv-facts div { background: #f7f8fb; border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; }
+.inv-facts span { font-size: .74rem; color: #6b7280; }
+.inv-facts strong { font-size: .95rem; }
+.inv-wh-row + .inv-wh-row { margin-top: 10px; }
+.inv-trend { position: relative; height: 220px; }
+.dash-title .dash-pill { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size: .78rem; vertical-align: middle; }
+.inv-table td:first-child { min-width: 220px; }
+.inv-chip { display: inline-flex; align-items: center; gap: 6px; background: #eef4ff; color: #1d4ed8; border-radius: 999px; padding: 4px 12px; font-size: .8rem; font-weight: 500; text-decoration: none; }
+.inv-chip:hover { background: #dbe7ff; color: #1d4ed8; }
+.inv-avatar { width: 34px; height: 34px; border-radius: 10px; background: #eef4ff; color: var(--brand); font-weight: 700; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.inv-icon-danger:hover { color: #dc2626; background: #fef2f2; }
+.inv-facts.mt-0 { margin-top: 0; }
+.inv-doc h6 { font-weight: 600; color: #0f1b3d; }
+.dash-legend-static { display: flex; align-items: center; gap: 10px; padding: 6px 4px; font-size: .9rem; }
+.inv-abc { display: flex; flex-direction: column; gap: 6px; padding: 14px; border: 1px solid var(--card-border); border-radius: 12px; color: #1f2937; text-decoration: none; height: 100%; transition: box-shadow .15s; }
+.inv-abc .dash-pill { align-self: flex-start; }
+.inv-abc:hover { color: #1f2937; box-shadow: 0 6px 16px rgba(37,99,235,.10); }
+.inv-abc.active { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(47,111,237,.12); }
+@media print { .dash-kpi, .dash-card { break-inside: avoid; } .inv-kpis-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); } }

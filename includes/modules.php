@@ -41,7 +41,7 @@ $MODULES = [
             ['label' => 'Dashboard',        'icon' => 'fa-solid fa-gauge',                  'url' => 'supply-chain/index.php',          'match' => 'supply-chain/index.php'],
             ['label' => 'Warehouses',       'icon' => 'fa-solid fa-warehouse',              'url' => 'supply-chain/warehouses.php',      'match' => 'supply-chain/warehouse'],
             ['label' => 'Stock Movements',  'icon' => 'fa-solid fa-arrow-right-arrow-left', 'url' => 'supply-chain/stock_movements.php', 'match' => 'supply-chain/stock_movements'],
-            ['label' => 'Stock Balance',    'icon' => 'fa-solid fa-scale-balanced',         'url' => 'reports/stock_balance_report.php', 'match' => 'reports/stock_balance'],
+            ['label' => 'Stock Balance',    'icon' => 'fa-solid fa-scale-balanced',         'url' => 'reports/stock_balance_report.php?from=supply-chain', 'match' => 'reports/stock_balance'],
             ['label' => 'Stock Entries',    'icon' => 'fa-solid fa-dolly',                  'url' => 'supply-chain/stock_entries.php',   'match' => 'supply-chain/stock_entries'],
             ['label' => 'New Stock Entry',  'icon' => 'fa-solid fa-plus',                   'url' => 'supply-chain/stock_entry_form.php', 'match' => 'supply-chain/stock_entry_form'],
         ],

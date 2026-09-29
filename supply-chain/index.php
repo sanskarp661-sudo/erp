@@ -41,7 +41,7 @@ require __DIR__ . '/../includes/header.php';
   <a href="stock_entry_form.php" class="btn btn-brand"><i class="fa-solid fa-plus"></i> New Stock Entry</a>
   <a href="stock_entries.php" class="btn btn-outline-brand">Stock Entries</a>
   <a href="warehouses.php" class="btn btn-outline-brand">Manage Warehouses</a>
-  <a href="<?= base_url('reports/stock_balance_report.php') ?>" class="btn btn-outline-brand">Stock Balance</a>
+  <a href="<?= base_url('reports/stock_balance_report.php?from=supply-chain') ?>" class="btn btn-outline-brand">Stock Balance</a>
   <a href="stock_movements.php" class="btn btn-outline-secondary">View All Movements</a>
 </div>
 

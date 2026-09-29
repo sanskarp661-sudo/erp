@@ -637,27 +637,44 @@ foreach ($brands as $b) {
 $page_title = $id ? 'Edit Item' : 'New Item';
 require __DIR__ . '/../includes/header.php';
 ?>
-<div class="card p-4">
-  <?php if ($error): ?><div class="alert alert-danger"><?= e($error) ?></div><?php endif; ?>
-  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-    <h5 class="mb-0"><?= $id ? e($product['sku']) . ' — ' . e($product['name']) : 'New Item' ?> <span class="badge text-bg-<?= $product['status'] === 'active' ? 'success' : 'secondary' ?> badge-status"><?= $product['status'] === 'active' ? 'Enabled' : 'Disabled' ?></span></h5>
+<div class="dash-head inv-doc-head">
+  <div>
+    <nav class="inv-crumbs" aria-label="Breadcrumb">
+      <a href="index.php">Inventory</a> <i class="fa-solid fa-chevron-right"></i>
+      <a href="products.php">Products</a> <i class="fa-solid fa-chevron-right"></i>
+      <span><?= $id ? e($product['sku']) : 'New' ?></span>
+    </nav>
+    <h1 class="dash-title"><?= $id ? e($product['name']) : 'New Item' ?>
+      <span class="dash-pill <?= $product['status'] === 'active' ? 'dash-pill-green' : 'dash-pill-gray' ?> align-middle"><?= $product['status'] === 'active' ? 'Enabled' : 'Disabled' ?></span>
+    </h1>
+    <p class="dash-sub"><?= $id ? 'Update the item master. Changes apply to new transactions.' : 'Set up a product once and use it across sales, purchasing and stock.' ?></p>
   </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <?php if ($id): ?><a href="product_view.php?id=<?= $id ?>" class="btn btn-outline-secondary"><i class="fa-solid fa-eye"></i> View</a><?php endif; ?>
+    <a href="<?= $id ? 'product_view.php?id=' . $id : 'products.php' ?>" class="btn btn-outline-secondary">Cancel</a>
+    <button type="submit" form="itemForm" class="btn btn-brand"><i class="fa-solid fa-floppy-disk"></i> Save</button>
+  </div>
+</div>
 
-  <ul class="nav nav-tabs mb-3">
-    <li class="nav-item"><button class="nav-link <?= $activeTab === 'details' ? 'active' : '' ?>" id="tab-details" data-bs-toggle="tab" data-bs-target="#pane-details" type="button">Details</button></li>
-    <li class="nav-item"><button class="nav-link <?= $activeTab === 'inventory' ? 'active' : '' ?>" id="tab-inventory" data-bs-toggle="tab" data-bs-target="#pane-inventory" type="button">Inventory</button></li>
-    <li class="nav-item"><button class="nav-link <?= $activeTab === 'uom' ? 'active' : '' ?>" id="tab-uom" data-bs-toggle="tab" data-bs-target="#pane-uom" type="button">Units of Measure</button></li>
-    <li class="nav-item"><button class="nav-link <?= $activeTab === 'batch' ? 'active' : '' ?>" id="tab-batch" data-bs-toggle="tab" data-bs-target="#pane-batch" type="button">Batch &amp; Serial No.</button></li>
-    <li class="nav-item"><button class="nav-link <?= $activeTab === 'pricing' ? 'active' : '' ?>" id="tab-pricing" data-bs-toggle="tab" data-bs-target="#pane-pricing" type="button">Pricing</button></li>
-    <li class="nav-item"><button class="nav-link <?= $activeTab === 'accounting' ? 'active' : '' ?>" id="tab-accounting" data-bs-toggle="tab" data-bs-target="#pane-accounting" type="button">Accounting</button></li>
-    <li class="nav-item"><button class="nav-link <?= $activeTab === 'tax' ? 'active' : '' ?>" id="tab-tax" data-bs-toggle="tab" data-bs-target="#pane-tax" type="button">Tax &amp; Charges</button></li>
-    <li class="nav-item"><button class="nav-link <?= $activeTab === 'sales' ? 'active' : '' ?>" id="tab-sales" data-bs-toggle="tab" data-bs-target="#pane-sales" type="button">Sales</button></li>
-    <li class="nav-item"><button class="nav-link <?= $activeTab === 'purchase' ? 'active' : '' ?>" id="tab-purchase" data-bs-toggle="tab" data-bs-target="#pane-purchase" type="button">Purchase</button></li>
+<div class="card p-4 inv-doc">
+  <?php if ($error): ?><div class="alert alert-danger"><?= e($error) ?></div><?php endif; ?>
+
+  <ul class="nav nav-tabs inv-doc-tabs mb-3" role="tablist">
+    <li class="nav-item"><button class="nav-link <?= $activeTab === 'details' ? 'active' : '' ?>" id="tab-details" data-bs-toggle="tab" data-bs-target="#pane-details" data-tab="details" type="button"><i class="fa-solid fa-circle-info"></i> Details</button></li>
+    <li class="nav-item"><button class="nav-link <?= $activeTab === 'inventory' ? 'active' : '' ?>" id="tab-inventory" data-bs-toggle="tab" data-bs-target="#pane-inventory" data-tab="inventory" type="button"><i class="fa-solid fa-boxes-stacked"></i> Inventory</button></li>
+    <li class="nav-item"><button class="nav-link <?= $activeTab === 'uom' ? 'active' : '' ?>" id="tab-uom" data-bs-toggle="tab" data-bs-target="#pane-uom" data-tab="uom" type="button"><i class="fa-solid fa-ruler"></i> Units of Measure</button></li>
+    <li class="nav-item"><button class="nav-link <?= $activeTab === 'batch' ? 'active' : '' ?>" id="tab-batch" data-bs-toggle="tab" data-bs-target="#pane-batch" data-tab="batch" type="button"><i class="fa-solid fa-barcode"></i> Batch &amp; Serial No.</button></li>
+    <li class="nav-item"><button class="nav-link <?= $activeTab === 'pricing' ? 'active' : '' ?>" id="tab-pricing" data-bs-toggle="tab" data-bs-target="#pane-pricing" data-tab="pricing" type="button"><i class="fa-solid fa-tag"></i> Pricing</button></li>
+    <li class="nav-item"><button class="nav-link <?= $activeTab === 'accounting' ? 'active' : '' ?>" id="tab-accounting" data-bs-toggle="tab" data-bs-target="#pane-accounting" data-tab="accounting" type="button"><i class="fa-solid fa-book"></i> Accounting</button></li>
+    <li class="nav-item"><button class="nav-link <?= $activeTab === 'tax' ? 'active' : '' ?>" id="tab-tax" data-bs-toggle="tab" data-bs-target="#pane-tax" data-tab="tax" type="button"><i class="fa-solid fa-percent"></i> Tax &amp; Charges</button></li>
+    <li class="nav-item"><button class="nav-link <?= $activeTab === 'sales' ? 'active' : '' ?>" id="tab-sales" data-bs-toggle="tab" data-bs-target="#pane-sales" data-tab="sales" type="button"><i class="fa-solid fa-cart-shopping"></i> Sales</button></li>
+    <li class="nav-item"><button class="nav-link <?= $activeTab === 'purchase' ? 'active' : '' ?>" id="tab-purchase" data-bs-toggle="tab" data-bs-target="#pane-purchase" data-tab="purchase" type="button"><i class="fa-solid fa-truck"></i> Purchase</button></li>
   </ul>
 
-  <form method="post" enctype="multipart/form-data">
+  <form method="post" enctype="multipart/form-data" id="itemForm">
     <?= csrf_field() ?>
     <input type="hidden" name="id" value="<?= $id ?>">
+    <input type="hidden" name="tab" id="itemActiveTab" value="<?= e($activeTab) ?>">
 
     <div class="tab-content">
       <div class="tab-pane fade <?= $activeTab === 'details' ? 'show active' : '' ?>" id="pane-details">
@@ -757,7 +774,7 @@ require __DIR__ . '/../includes/header.php';
                   <input type="number" step="0.001" min="0" name="sales_uom_conversion_factor" class="form-control" value="<?= e($product['sales_uom_conversion_factor']) ?>">
                 </div>
               </div>
-              <div class="form-text mt-1">The full alternate-UOM system (multiple UOMs per item, used directly in transaction line items) lives on the Units of Measure tab, coming in a later phase.</div>
+              <div class="form-text mt-1">The full alternate-UOM system (multiple UOMs per item, used directly in transaction line items) is on the Units of Measure tab.</div>
             </div>
 
             <div class="card p-3 mb-3">
@@ -804,7 +821,7 @@ require __DIR__ . '/../includes/header.php';
 
             <div class="card p-3 mb-3">
               <h6 class="mb-1">Pricing &amp; Status</h6>
-              <p class="text-muted small mb-3">Basic pricing and lifecycle status. A full Pricing tab is coming in a later phase.</p>
+              <p class="text-muted small mb-3">Basic pricing and lifecycle status. Price lists, customer prices and discounts are on the Pricing tab.</p>
               <div class="row g-3">
                 <div class="col-sm-3">
                   <label class="form-label">Cost Price</label>
@@ -2019,9 +2036,10 @@ require __DIR__ . '/../includes/header.php';
       </div>
     </div>
 
-    <div class="page-actions mt-3">
-      <button type="submit" class="btn btn-brand">Save</button>
-      <a href="products.php" class="btn btn-outline-secondary">Cancel</a>
+    <div class="page-actions inv-save-bar">
+      <span class="small text-muted me-auto d-none d-sm-inline"><span class="text-danger">*</span> Required fields</span>
+      <a href="<?= $id ? 'product_view.php?id=' . $id : 'products.php' ?>" class="btn btn-outline-secondary">Cancel</a>
+      <button type="submit" class="btn btn-brand"><i class="fa-solid fa-floppy-disk"></i> Save</button>
     </div>
   </form>
 </div>
@@ -2209,6 +2227,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   });
 });
-";
+" . "\ninitItemForm();";
+$extra_js = [asset_url('assets/js/inventory.js')];
 require __DIR__ . '/../includes/footer.php';
 ?>
