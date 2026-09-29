@@ -366,7 +366,7 @@ foreach ($warehouses as $w) {
     $warehouseNames[(int)$w['id']] = $w['name'];
 }
 
-$ledgerAccounts = db()->query("SELECT id, name, account_type FROM ledger_accounts WHERE status='active' ORDER BY account_type, name")->fetchAll();
+$ledgerAccounts = db()->query("SELECT id, name, account_type FROM ledger_accounts WHERE status='active'" . ledger_heads_filter() . " ORDER BY account_type, name")->fetchAll();
 $accountMeta = [];
 foreach ($ledgerAccounts as $a) {
     $accountMeta[(int)$a['id']] = ['name' => $a['name'], 'type' => $a['account_type']];

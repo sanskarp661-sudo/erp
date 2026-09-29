@@ -270,7 +270,7 @@ $warehouses = leaf_warehouses();
 $vendors = db()->query('SELECT id, name, company FROM vendors ORDER BY name')->fetchAll();
 $users = db()->query("SELECT id, name FROM users WHERE status = 'active' ORDER BY name")->fetchAll();
 $shippingPartners = db()->query("SELECT id, name FROM shipping_partners WHERE status = 'active' ORDER BY name")->fetchAll();
-$ledgerAccounts = db()->query("SELECT id, name FROM ledger_accounts WHERE status = 'active' AND account_type <> 'tax' ORDER BY name")->fetchAll();
+$ledgerAccounts = db()->query("SELECT id, name FROM ledger_accounts WHERE status = 'active' AND account_type <> 'tax'" . ledger_heads_filter() . " ORDER BY name")->fetchAll();
 
 $productUomsByProduct = [];
 foreach (db()->query('SELECT product_id, uom, conversion_factor FROM product_uoms ORDER BY sort_order, id') as $r) {
