@@ -842,10 +842,60 @@ CREATE TABLE IF NOT EXISTS purchase_orders (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   po_no VARCHAR(30) NOT NULL UNIQUE,
   vendor_id INT UNSIGNED NOT NULL,
+  vendor_contact VARCHAR(120) DEFAULT NULL,
+  vendor_address VARCHAR(255) DEFAULT NULL,
   order_date DATE NOT NULL,
+  required_by DATE DEFAULT NULL,
+  purchase_type VARCHAR(60) DEFAULT NULL,
+  buyer_id INT UNSIGNED DEFAULT NULL,
+  price_list_id INT UNSIGNED DEFAULT NULL,
+  currency VARCHAR(3) NOT NULL DEFAULT 'INR',
+  vendor_gstin VARCHAR(20) DEFAULT NULL,
+  vendor_quote_no VARCHAR(60) DEFAULT NULL,
+  material_request_no VARCHAR(60) DEFAULT NULL,
+  project VARCHAR(120) DEFAULT NULL,
   status ENUM('pending','ordered','received','cancelled') NOT NULL DEFAULT 'pending',
   notes VARCHAR(255) DEFAULT NULL,
   total_amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+  net_amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+  tax_template_id INT UNSIGNED DEFAULT NULL,
+  place_of_supply VARCHAR(120) DEFAULT NULL,
+  gst_category ENUM('registered_business','unregistered_business','composition','overseas','sez') DEFAULT NULL,
+  reverse_charge TINYINT(1) NOT NULL DEFAULT 0,
+  tax_remarks VARCHAR(255) DEFAULT NULL,
+  rounding_method ENUM('nearest','up','down') NOT NULL DEFAULT 'nearest',
+  rounding_precision DECIMAL(10,2) NOT NULL DEFAULT 0.01,
+  additional_discount DECIMAL(14,2) NOT NULL DEFAULT 0,
+  additional_charge DECIMAL(14,2) NOT NULL DEFAULT 0,
+  adjustment_type ENUM('none','add','subtract') NOT NULL DEFAULT 'none',
+  adjustment_amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+  adjustment_remarks VARCHAR(255) DEFAULT NULL,
+  ship_to_warehouse_id INT UNSIGNED DEFAULT NULL,
+  expected_delivery_date DATE DEFAULT NULL,
+  expected_dispatch_date DATE DEFAULT NULL,
+  delivery_priority ENUM('low','normal','high','urgent') NOT NULL DEFAULT 'normal',
+  delivery_terms VARCHAR(60) DEFAULT NULL,
+  mode_of_transport VARCHAR(30) DEFAULT NULL,
+  shipping_partner_id INT UNSIGNED DEFAULT NULL,
+  freight_terms VARCHAR(60) DEFAULT NULL,
+  tracking_no VARCHAR(80) DEFAULT NULL,
+  delivery_remarks VARCHAR(255) DEFAULT NULL,
+  allow_partial_receipt TINYINT(1) NOT NULL DEFAULT 1,
+  inspection_required TINYINT(1) NOT NULL DEFAULT 0,
+  payment_terms_template_id INT UNSIGNED DEFAULT NULL,
+  payment_terms VARCHAR(120) DEFAULT NULL,
+  payment_method VARCHAR(60) DEFAULT NULL,
+  payment_due_date_basis ENUM('against_receipt','against_order_date','against_invoice') NOT NULL DEFAULT 'against_invoice',
+  advance_percentage DECIMAL(5,2) NOT NULL DEFAULT 0,
+  vendor_bank_details VARCHAR(255) DEFAULT NULL,
+  payment_instructions TEXT DEFAULT NULL,
+  order_type VARCHAR(40) NOT NULL DEFAULT 'Standard',
+  cost_center VARCHAR(120) DEFAULT NULL,
+  business_unit VARCHAR(120) DEFAULT NULL,
+  approver_id INT UNSIGNED DEFAULT NULL,
+  terms_conditions TEXT DEFAULT NULL,
+  remarks_internal TEXT DEFAULT NULL,
+  tags VARCHAR(255) DEFAULT NULL,
   created_by INT UNSIGNED DEFAULT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (vendor_id) REFERENCES vendors(id) ON DELETE CASCADE,
@@ -856,13 +906,47 @@ CREATE TABLE IF NOT EXISTS purchase_order_items (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   po_id INT UNSIGNED NOT NULL,
   product_id INT UNSIGNED NOT NULL,
+  description VARCHAR(255) DEFAULT NULL,
+  warehouse_id INT UNSIGNED DEFAULT NULL,
   quantity INT NOT NULL,
   uom VARCHAR(30) NOT NULL DEFAULT 'pcs',
   uom_conversion_factor DECIMAL(10,3) NOT NULL DEFAULT 1.000,
+  rate DECIMAL(14,2) NOT NULL DEFAULT 0,
+  discount_percent DECIMAL(5,2) NOT NULL DEFAULT 0,
   unit_cost DECIMAL(14,2) NOT NULL,
   subtotal DECIMAL(14,2) NOT NULL,
+  required_by DATE DEFAULT NULL,
   FOREIGN KEY (po_id) REFERENCES purchase_orders(id) ON DELETE CASCADE,
   FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Purchase Order Taxes & Charges tab rows (mirror of sales_order_taxes).
+CREATE TABLE IF NOT EXISTS purchase_order_taxes (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  po_id INT UNSIGNED NOT NULL,
+  type ENUM('on_item','on_order') NOT NULL DEFAULT 'on_item',
+  account_head_id INT UNSIGNED DEFAULT NULL,
+  description VARCHAR(120) DEFAULT NULL,
+  based_on ENUM('net_amount','actual_amount') NOT NULL DEFAULT 'net_amount',
+  rate_or_amount DECIMAL(14,4) NOT NULL DEFAULT 0,
+  amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+  sort_order INT NOT NULL DEFAULT 0,
+  FOREIGN KEY (po_id) REFERENCES purchase_orders(id) ON DELETE CASCADE,
+  FOREIGN KEY (account_head_id) REFERENCES ledger_accounts(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Purchase Order Payment Terms tab schedule (mirror of sales_order_payment_schedule).
+CREATE TABLE IF NOT EXISTS purchase_order_payment_schedule (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  po_id INT UNSIGNED NOT NULL,
+  due_on ENUM('order_date','on_receipt','on_invoice','fixed_days') NOT NULL DEFAULT 'order_date',
+  days_from INT NOT NULL DEFAULT 0,
+  payment_type ENUM('advance','part_payment','balance') NOT NULL DEFAULT 'balance',
+  percentage DECIMAL(5,2) NOT NULL DEFAULT 0,
+  amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+  remarks VARCHAR(120) DEFAULT NULL,
+  sort_order INT NOT NULL DEFAULT 0,
+  FOREIGN KEY (po_id) REFERENCES purchase_orders(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- A Goods Receipt Note (GRN) is what actually adds stock for a purchase
@@ -1251,14 +1335,19 @@ INSERT INTO settings (setting_key, setting_value) VALUES
 ('tax_rate', '0');
 
 INSERT INTO price_lists (name, currency, is_default) VALUES
-('Standard Selling', 'INR', 1);
+('Standard Selling', 'INR', 1),
+('Standard Buying', 'INR', 0);
 
 INSERT INTO ledger_accounts (name, account_type) VALUES
 ('Output CGST', 'tax'),
 ('Output SGST', 'tax'),
 ('Output IGST', 'tax'),
 ('Freight Charges', 'other'),
-('Packaging Charges', 'other');
+('Packaging Charges', 'other'),
+('Input CGST', 'tax'),
+('Input SGST', 'tax'),
+('Input IGST', 'tax'),
+('Freight Inward', 'other');
 
 INSERT INTO tax_templates (id, name) VALUES (1, 'GST - Standard (Sales)');
 INSERT INTO tax_template_items (tax_template_id, type, account_head_id, description, based_on, rate_or_amount, sort_order) VALUES
