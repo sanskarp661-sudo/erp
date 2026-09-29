@@ -270,3 +270,62 @@ function initials(string $name): string
     }
     return $initials ?: '?';
 }
+
+/**
+ * Customers' current credit exposure, as the Customer form's Credit &
+ * Payment tab shows it and the Sales Order's credit check uses it:
+ * outstanding = unpaid balance of non-cancelled invoices; unbilled = the
+ * part of each non-cancelled sales order not yet covered by an invoice.
+ * $excludeOrderId leaves out the order being edited so it isn't counted
+ * twice against its own new total. Returns [customer_id => [...]] for the
+ * given customer, or for every customer with activity when $customerId is null.
+ */
+function customer_credit_exposures(?int $customerId = null, int $excludeOrderId = 0): array
+{
+    $filter = $customerId === null ? '' : ' AND customer_id = ' . (int)$customerId;
+    $out = [];
+    $blank = ['billed' => 0.0, 'outstanding' => 0.0, 'unbilled' => 0.0, 'exposure' => 0.0];
+    foreach (db()->query("SELECT customer_id, SUM(total) billed, SUM(total - amount_paid) outstanding FROM invoices WHERE status <> 'cancelled'$filter GROUP BY customer_id") as $r) {
+        $out[(int)$r['customer_id']] = ['billed' => (float)$r['billed'], 'outstanding' => (float)$r['outstanding']] + $blank;
+    }
+    $stmt = db()->prepare("
+      SELECT so.customer_id, SUM(GREATEST(so.total_amount - COALESCE(i.invoiced, 0), 0)) unbilled
+      FROM sales_orders so
+      LEFT JOIN (SELECT sales_order_id, SUM(total) invoiced FROM invoices WHERE status <> 'cancelled' AND sales_order_id IS NOT NULL GROUP BY sales_order_id) i ON i.sales_order_id = so.id
+      WHERE so.status <> 'cancelled' AND so.id <> ?" . str_replace('customer_id', 'so.customer_id', $filter) . "
+      GROUP BY so.customer_id
+    ");
+    $stmt->execute([$excludeOrderId]);
+    foreach ($stmt as $r) {
+        $cid = (int)$r['customer_id'];
+        $out[$cid] = ($out[$cid] ?? $blank);
+        $out[$cid]['unbilled'] = (float)$r['unbilled'];
+    }
+    foreach ($out as &$x) {
+        $x['exposure'] = $x['outstanding'] + $x['unbilled'];
+    }
+    return $out;
+}
+
+function customer_credit_exposure(int $customerId, int $excludeOrderId = 0): array
+{
+    return customer_credit_exposures($customerId, $excludeOrderId)[$customerId]
+        ?? ['billed' => 0.0, 'outstanding' => 0.0, 'unbilled' => 0.0, 'exposure' => 0.0];
+}
+
+/**
+ * Copies a customer's default address-book row into customers.address,
+ * the single free-text address prints and invoices read. Leaves it alone
+ * when the customer has no default address row.
+ */
+function sync_customer_address(int $customerId): void
+{
+    $stmt = db()->prepare('SELECT address_line, city, state, pincode, country FROM customer_addresses WHERE customer_id = ? AND is_default = 1 ORDER BY id LIMIT 1');
+    $stmt->execute([$customerId]);
+    $a = $stmt->fetch();
+    if (!$a) {
+        return;
+    }
+    $text = implode(', ', array_filter([$a['address_line'], $a['city'], trim($a['state'] . ' ' . $a['pincode']), $a['country']]));
+    db()->prepare('UPDATE customers SET address = ? WHERE id = ?')->execute([mb_substr($text, 0, 255), $customerId]);
+}
