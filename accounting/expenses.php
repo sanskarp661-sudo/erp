@@ -60,7 +60,7 @@ $vendorFilter = trim((string)input('payee'));
 $from = input('from');
 $to = input('to');
 
-$payee = 'COALESCE(v.name, NULLIF(e.payee, \'\'), \'—\')';
+$payee = fin_coll('COALESCE(v.name, NULLIF(e.payee, \'\'), \'—\')');
 $where = ['1=1'];
 $params = [];
 if ($q !== '') { $where[] = "(e.expense_no LIKE ? OR $payee LIKE ? OR e.description LIKE ? OR e.category LIKE ? OR e.reference LIKE ?)"; array_push($params, "%$q%", "%$q%", "%$q%", "%$q%", "%$q%"); }
