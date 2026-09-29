@@ -1,4 +1,4 @@
--- Migration 028: Customer master redesign (CRM, six tabs).
+-- Migration 029: Customer master redesign (CRM, six tabs).
 --
 -- Brings the CRM Customer form up to the tabbed layout used by the Sales
 -- Order, Purchase Order and Item Master: Details, Contact & Address,
@@ -11,8 +11,9 @@
 -- single free-text address that prints and invoices read; the Customer
 -- form keeps it in sync with the customer's default address row.
 --
--- Numbered 028 (not 027) so it can't collide with other modules' work in
--- flight; it only touches the customers table and is independent of 026/027.
+-- Numbered 029 so it can't collide with other modules' work in flight
+-- (026 Stock Entry, 028 HRM); it only touches the customers table and
+-- does not depend on either.
 --
 -- Safe to re-run: every ADD COLUMN / UPDATE is idempotent.
 
