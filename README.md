@@ -59,6 +59,17 @@ features/doctypes plus a "‹ All Modules" link back to the top level.
   from a delivery note) with payments and automatic unpaid → partially
   paid → paid status; purchase invoices (accounts payable, generated from
   a goods receipt) with the same payment tracking; expense tracking.
+  Screens: Overview, Accounts Receivable / Payable (aging, by party),
+  General Ledger, Chart of Accounts (groups + ledgers with codes and
+  opening balances), journal vouchers (journal, bank / cash payment and
+  receipt, contra), Bank & Cash with reconciliation, Expenses (with an
+  optional approval limit), Tax & Compliance (GST / TDS / PF / ESI
+  filings and due dates), Financial Reports (P&L, Balance Sheet, Cash
+  Flow, Trial Balance, account statement, aging; print or CSV), Budget &
+  Planning, and Configuration (fiscal year, numbering, cost centers).
+  The General Ledger is derived: invoices, payments, approved expenses
+  and submitted journals are posted to system ledgers when read, so
+  nothing is double-entered. Needs migration 030.
 
 Each module has its own dashboard (KPIs + recent activity) as its landing
 page. Reports live under `reports/` and are linked from their relevant

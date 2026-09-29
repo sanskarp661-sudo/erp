@@ -623,7 +623,7 @@ $units = db()->query("SELECT id, name FROM uom WHERE status = 'active' ORDER BY 
 $warehouses = leaf_warehouses();
 $priceLists = db()->query("SELECT id, name, currency FROM price_lists WHERE status='active' ORDER BY name")->fetchAll();
 $customers = db()->query('SELECT id, name FROM customers ORDER BY name')->fetchAll();
-$ledgerAccounts = db()->query("SELECT id, name FROM ledger_accounts WHERE status='active' ORDER BY name")->fetchAll();
+$ledgerAccounts = db()->query("SELECT id, name FROM ledger_accounts WHERE status='active'" . ledger_heads_filter() . " ORDER BY name")->fetchAll();
 $taxTemplates = db()->query("SELECT id, name FROM tax_templates WHERE status='active' ORDER BY name")->fetchAll();
 $vendors = db()->query('SELECT id, name FROM vendors ORDER BY name')->fetchAll();
 $brandName = null;

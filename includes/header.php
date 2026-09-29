@@ -20,9 +20,12 @@ foreach ((array)$ADMIN_ITEMS['match'] as $adminMatch) {
     if (str_contains($current_path, $adminMatch)) { $inAdminSection = true; break; }
 }
 
-function nav_active(string $needle, string $current): string
+function nav_active($needle, string $current): string
 {
-    return str_contains($current, $needle) ? 'active' : '';
+    foreach ((array)$needle as $n) {
+        if (str_contains($current, $n)) return 'active';
+    }
+    return '';
 }
 ?>
 <!DOCTYPE html>

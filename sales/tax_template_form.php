@@ -65,7 +65,7 @@ if (is_post()) {
     $template = ['id' => $id, 'name' => $name, 'status' => $status];
 }
 
-$accounts = db()->query("SELECT id, name, account_type FROM ledger_accounts WHERE status='active' ORDER BY account_type, name")->fetchAll();
+$accounts = db()->query("SELECT id, name, account_type FROM ledger_accounts WHERE status='active'" . ledger_heads_filter() . " ORDER BY account_type, name")->fetchAll();
 
 $page_title = $id ? 'Edit Tax Template' : 'Add Tax Template';
 require __DIR__ . '/../includes/header.php';
