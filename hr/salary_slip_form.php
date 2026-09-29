@@ -79,6 +79,25 @@ if (is_post()) {
 
 $employees = db()->query("SELECT id, employee_code, name, salary FROM employees WHERE status='active' ORDER BY name")->fetchAll();
 
+// Each employee's salary structure (Employee > Salary & Bank), used to
+// prefill the earnings and deductions below.
+$employeeComponents = [];
+foreach (db()->query('SELECT employee_id, component_type, label, amount FROM employee_salary_components ORDER BY employee_id, sort_order, id') as $c) {
+    $employeeComponents[(int)$c['employee_id']][$c['component_type']][] = ['label' => $c['label'], 'amount' => $c['amount']];
+}
+
+// Opened from an employee's page: preselect them and prefill their structure.
+if (!is_post() && ($preselect = (int)input('employee'))) {
+    foreach ($employees as $emp) {
+        if ((int)$emp['id'] === $preselect) {
+            $employeeId = $preselect;
+            $basicSalary = $emp['salary'];
+            $earnings = $employeeComponents[$preselect]['earning'] ?? [];
+            $deductions = $employeeComponents[$preselect]['deduction'] ?? [];
+        }
+    }
+}
+
 $page_title = 'Generate Salary Slip';
 require __DIR__ . '/../includes/header.php';
 ?>
@@ -161,10 +180,29 @@ require __DIR__ . '/../includes/header.php';
 </div>
 <?php
 $extra_js_inline = "
+var employeeComponents = " . json_encode((object)$employeeComponents) . ";
+
+// Replaces a payroll table's rows with the given [{label, amount}] list,
+// keeping one blank row when the list is empty.
+function fillPayrollRows(prefix, rows) {
+  var tbody = document.querySelector('.payroll-items[data-row-prefix=\"' + prefix + '\"] tbody');
+  var template = tbody.querySelector('tr[data-row]');
+  tbody.querySelectorAll('tr[data-row]').forEach(function (tr, i) { if (i > 0) tr.remove(); });
+  (rows.length ? rows : [{label: '', amount: ''}]).forEach(function (r, i) {
+    var tr = i === 0 ? template : template.cloneNode(true);
+    tr.querySelector('input[name=\"' + prefix + '_label[]\"]').value = r.label;
+    tr.querySelector('input[name=\"' + prefix + '_amount[]\"]').value = r.amount;
+    if (i > 0) tbody.appendChild(tr);
+  });
+}
+
 document.getElementById('empSelect').addEventListener('change', function () {
   var opt = this.options[this.selectedIndex];
   var salary = opt ? opt.getAttribute('data-salary') : null;
   if (salary !== null) document.getElementById('basicSalaryInput').value = salary;
+  var structure = employeeComponents[this.value] || {};
+  fillPayrollRows('earn', structure.earning || []);
+  fillPayrollRows('ded', structure.deduction || []);
   recalcPayroll();
 });
 
