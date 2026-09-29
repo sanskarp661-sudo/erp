@@ -39,6 +39,16 @@ function fin_ready(): bool
  */
 function fin_require_schema(): void
 {
+    // Hosts hide PHP errors behind a bare 500. On Finance pages, show admins the
+    // reason instead so problems can be reported; everyone else sees a short note.
+    set_exception_handler(function (Throwable $e) {
+        error_log('Finance: ' . $e);
+        if (!headers_sent()) http_response_code(500);
+        $detail = can_edit_admin_section() || (defined('APP_DEBUG') && APP_DEBUG)
+            ? '<pre class="small mb-0" style="white-space:pre-wrap">' . e($e->getMessage() . ' (' . basename($e->getFile()) . ':' . $e->getLine() . ')') . '</pre>'
+            : '<p class="mb-0">Please ask an administrator to check this page.</p>';
+        echo '<div class="card p-4 m-3" style="max-width:820px"><h5 class="mb-2">This Finance page hit an error</h5>' . $detail . '</div>';
+    });
     if (fin_ready()) {
         return;
     }
@@ -177,10 +187,14 @@ function fin_gl_sql(): string
 
     $parts = [];
     // Opening balances (positive = the account's own nature).
-    $parts[] = "SELECT COALESCE(la.opening_date, '2000-01-01') entry_date, 'OPENING' voucher_no, 'Opening Balance' voucher_type, 'opening' source_type, la.id source_id, la.id account_id,
+    // Text columns carry an explicit collation here so the UNION works even when
+    // the source tables were created with different collations (common on
+    // hosts whose server default changed between installs).
+    $c = fn(string $expr) => "CONVERT($expr USING utf8mb4) COLLATE utf8mb4_unicode_ci";
+    $parts[] = "SELECT COALESCE(la.opening_date, '2000-01-01') entry_date, {$c("'OPENING'")} voucher_no, {$c("'Opening Balance'")} voucher_type, {$c("'opening'")} source_type, la.id source_id, la.id account_id,
         CASE WHEN (la.account_nature = 'debit') = (la.opening_balance >= 0) THEN ABS(la.opening_balance) ELSE 0 END debit,
         CASE WHEN (la.account_nature = 'debit') = (la.opening_balance >= 0) THEN 0 ELSE ABS(la.opening_balance) END credit,
-        NULL party, 'Opening balance' description, la.cost_center_id, la.project
+        {$c('NULL')} party, {$c("'Opening balance'")} description, la.cost_center_id, {$c('la.project')} project
         FROM ledger_accounts la WHERE la.opening_balance <> 0 AND la.is_group = 0";
     // ...offset against Opening Balance Equity so the trial balance always agrees.
     $openEq = fin_account_id('opening_equity');

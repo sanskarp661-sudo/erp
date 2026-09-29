@@ -63,7 +63,7 @@ $breakdownTotal = array_sum($breakdown);
 
 // Recent transactions: receipts, payments and expenses, newest first.
 $recent = $pdo->query("
-  (SELECT p.payment_date d, 'Receipt' t, c.name party, CONCAT('Payment for ', i.invoice_no) descr, p.amount amt, 'Completed' st, CONCAT('invoice_view.php?id=', i.id) url, p.id sid
+  (SELECT p.payment_date d, 'Receipt' t, CONVERT(c.name USING utf8mb4) COLLATE utf8mb4_unicode_ci party, CONVERT(CONCAT('Payment for ', i.invoice_no) USING utf8mb4) COLLATE utf8mb4_unicode_ci descr, p.amount amt, 'Completed' st, CONCAT('invoice_view.php?id=', i.id) url, p.id sid
      FROM payments p JOIN invoices i ON i.id = p.invoice_id JOIN customers c ON c.id = i.customer_id)
   UNION ALL
   (SELECT pp.payment_date, 'Payment', v.name, CONCAT('Payment for ', pi.pi_no), pp.amount, 'Completed', CONCAT('purchase_invoice_view.php?id=', pi.id), pp.id

@@ -95,7 +95,7 @@ if ($tab === 'all') {
 } else {
     $groupExpr = ['category' => 'e.category', 'cost_center' => "COALESCE(cc.name, 'Unassigned')", 'project' => "COALESCE(NULLIF(e.project, ''), 'Unassigned')", 'vendor' => $payee][$tab];
     $stmt = $pdo->prepare("SELECT $groupExpr k, COUNT(*) n, SUM(CASE WHEN e.status = 'approved' THEN e.amount ELSE 0 END) approved, SUM(CASE WHEN e.status = 'pending' THEN e.amount ELSE 0 END) pend, MAX(e.expense_date) last_date, MIN(e.cost_center_id) cc_id
-        $base GROUP BY $groupExpr ORDER BY approved DESC");
+        $base GROUP BY k ORDER BY approved DESC");
     $stmt->execute($params);
     $groups = $stmt->fetchAll();
     $groupTotal = array_sum(array_column($groups, 'approved'));
