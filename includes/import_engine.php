@@ -31,7 +31,12 @@ function import_read_spreadsheet(string $path): array
     $headerRow = array_shift($grid);
     $headers = [];
     foreach ($headerRow as $cell) {
-        $headers[] = trim((string)$cell);
+        // Our own generated templates mark a required column as "Name *" —
+        // strip that trailing marker so the key matches the plain column
+        // key (e.g. "Name") validate_row looks up, or a file downloaded
+        // from our own template and re-uploaded unchanged would fail every
+        // required-column row.
+        $headers[] = preg_replace('/\s*\*$/', '', trim((string)$cell));
     }
 
     $rows = [];
@@ -49,8 +54,19 @@ function import_read_spreadsheet(string $path): array
     return ['headers' => $headers, 'rows' => $rows];
 }
 
-/** Streams a blank .xlsx template for the given importer straight to the browser and exits. */
-function import_send_template(array $importer, string $entityType): void
+/**
+ * Streams a .xlsx template for the given importer straight to the browser
+ * and exits. $sampleLimit controls how many rows of real existing data are
+ * included below the header, straight from the entity's own table (via the
+ * importer's optional 'sample_rows' callback) so the file doubles as a
+ * "here's what this looks like" example or a bulk-edit starting point:
+ *   0     -> header only (a blank template)
+ *   5/50  -> that many of the most recently created records
+ *   null  -> every existing record, no limit
+ * An importer with no 'sample_rows' callback always gets a blank header
+ * regardless of $sampleLimit.
+ */
+function import_send_template(array $importer, string $entityType, ?int $sampleLimit = 0): void
 {
     $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
     $sheet = $spreadsheet->getActiveSheet();
@@ -68,8 +84,25 @@ function import_send_template(array $importer, string $entityType): void
         $col++;
     }
 
+    $suffix = '-import-template';
+    if (($sampleLimit !== 0) && !empty($importer['sample_rows'])) {
+        $sampleFn = $importer['sample_rows'];
+        $rows = $sampleFn($sampleLimit);
+        $rowNum = 2;
+        foreach ($rows as $row) {
+            $col = 1;
+            foreach ($importer['columns'] as $c) {
+                $cellRef = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col) . $rowNum;
+                $sheet->setCellValue($cellRef, $row[$c['key']] ?? '');
+                $col++;
+            }
+            $rowNum++;
+        }
+        $suffix = $sampleLimit === null ? '-all-records' : "-sample-$sampleLimit";
+    }
+
     header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    header('Content-Disposition: attachment; filename="' . $entityType . '-import-template.xlsx"');
+    header('Content-Disposition: attachment; filename="' . $entityType . $suffix . '.xlsx"');
     header('Cache-Control: max-age=0');
     $writer = IOFactory::createWriter($spreadsheet, 'Xlsx');
     $writer->save('php://output');

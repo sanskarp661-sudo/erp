@@ -66,12 +66,22 @@ require __DIR__ . '/../includes/header.php';
   <p class="text-muted"><?= e($importer['description']) ?></p>
   <?php if ($error): ?><div class="alert alert-danger"><?= e($error) ?></div><?php endif; ?>
 
-  <p>
-    Don't have a file yet? <a href="template.php?type=<?= e($type) ?>">Download the <?= e($importer['label']) ?> template</a>
-    (required columns: <?php
+  <p class="mb-1">
+    Don't have a file yet? Download the <?= e($importer['label']) ?> template:
+    <a href="template.php?type=<?= e($type) ?>&amp;sample=0">Blank</a>
+    <?php if (!empty($importer['sample_rows'])): ?>
+      &middot; <a href="template.php?type=<?= e($type) ?>&amp;sample=5">+5 sample rows</a>
+      &middot; <a href="template.php?type=<?= e($type) ?>&amp;sample=50">+50 sample rows</a>
+      &middot; <a href="template.php?type=<?= e($type) ?>&amp;sample=all">All records</a>
+    <?php endif; ?>
+  </p>
+  <p class="text-muted small">
+    The "sample" options fill the template with your own existing <?= e(strtolower($importer['label'])) ?> data —
+    handy as a worked example, or as a starting point for a bulk edit (change values, then re-import).
+    Required columns: <?php
       $required = array_map(fn($c) => $c['key'], array_filter($importer['columns'], fn($c) => $c['required']));
       echo e(implode(', ', $required));
-    ?>).
+    ?>.
   </p>
 
   <form method="post" enctype="multipart/form-data">

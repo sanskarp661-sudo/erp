@@ -19,6 +19,14 @@
  *   during the real commit step, and expected to insert/update its own
  *   table(s) and return ['status' => 'success'|'error', 'message' =>
  *   string, 'record_id' => int|null].
+ *
+ * sample_rows(?int $limit): array
+ *   Optional. Pulls real existing rows from the entity's own table for the
+ *   template download's "+5/+50/All records" options (imports/template.php),
+ *   shaped the same way validate_row's $row is: ['Header Label' => value,
+ *   ...]. $limit is a row count, or null for every row with no LIMIT. An
+ *   importer with no sample_rows callback just gets a blank template
+ *   regardless of what the user picks.
  */
 
 function importer_registry(): array
@@ -34,6 +42,7 @@ function importer_registry(): array
             ],
             'validate_row' => 'importer_validate_categories',
             'commit_row' => 'importer_commit_categories',
+            'sample_rows' => 'importer_sample_categories',
         ],
         'brands' => [
             'label' => 'Brands',
@@ -45,6 +54,7 @@ function importer_registry(): array
             ],
             'validate_row' => 'importer_validate_brands',
             'commit_row' => 'importer_commit_brands',
+            'sample_rows' => 'importer_sample_brands',
         ],
         'uom' => [
             'label' => 'Units of Measure',
@@ -56,6 +66,7 @@ function importer_registry(): array
             ],
             'validate_row' => 'importer_validate_uom',
             'commit_row' => 'importer_commit_uom',
+            'sample_rows' => 'importer_sample_uom',
         ],
         'products' => [
             'label' => 'Items / Products',
@@ -79,6 +90,7 @@ function importer_registry(): array
             ],
             'validate_row' => 'importer_validate_products',
             'commit_row' => 'importer_commit_products',
+            'sample_rows' => 'importer_sample_products',
         ],
         'customers' => [
             'label' => 'Customers',
@@ -98,6 +110,7 @@ function importer_registry(): array
             ],
             'validate_row' => 'importer_validate_customers',
             'commit_row' => 'importer_commit_customers',
+            'sample_rows' => 'importer_sample_customers',
         ],
         'vendors' => [
             'label' => 'Vendors',
@@ -112,6 +125,7 @@ function importer_registry(): array
             ],
             'validate_row' => 'importer_validate_vendors',
             'commit_row' => 'importer_commit_vendors',
+            'sample_rows' => 'importer_sample_vendors',
         ],
         'chart_of_accounts' => [
             'label' => 'Chart of Accounts',
@@ -129,6 +143,7 @@ function importer_registry(): array
             ],
             'validate_row' => 'importer_validate_chart_of_accounts',
             'commit_row' => 'importer_commit_chart_of_accounts',
+            'sample_rows' => 'importer_sample_chart_of_accounts',
         ],
         'tax_templates' => [
             'label' => 'Tax Templates',
@@ -143,6 +158,7 @@ function importer_registry(): array
             ],
             'validate_row' => 'importer_validate_tax_templates',
             'commit_row' => 'importer_commit_tax_templates',
+            'sample_rows' => 'importer_sample_tax_templates',
         ],
         'price_lists' => [
             'label' => 'Price Lists',
@@ -156,6 +172,7 @@ function importer_registry(): array
             ],
             'validate_row' => 'importer_validate_price_lists',
             'commit_row' => 'importer_commit_price_lists',
+            'sample_rows' => 'importer_sample_price_lists',
         ],
         'purchase_orders' => [
             'label' => 'Purchase Orders',
@@ -176,6 +193,7 @@ function importer_registry(): array
             ],
             'validate_group' => 'importer_validate_purchase_orders',
             'commit_group' => 'importer_commit_purchase_orders',
+            'sample_rows' => 'importer_sample_purchase_orders',
         ],
         'sales_orders' => [
             'label' => 'Sales Orders',
@@ -196,6 +214,7 @@ function importer_registry(): array
             ],
             'validate_group' => 'importer_validate_sales_orders',
             'commit_group' => 'importer_commit_sales_orders',
+            'sample_rows' => 'importer_sample_sales_orders',
         ],
     ];
 }
@@ -852,4 +871,140 @@ function importer_commit_sales_orders(array $rows, array $data): array
     }
 
     return ['status' => 'success', 'message' => "Created $orderNo (" . count($data['items']) . ' line item(s)).', 'record_id' => $orderId];
+}
+
+// --- Sample-data exporters (template download's +5/+50/All records) -------
+
+/** A trusted-int LIMIT clause, or '' for no limit (every row). */
+function importer_limit_clause(?int $limit): string
+{
+    return $limit === null ? '' : ' LIMIT ' . max(0, $limit);
+}
+
+function importer_sample_categories(?int $limit): array
+{
+    $rows = db()->query('SELECT name, description FROM categories ORDER BY id DESC' . importer_limit_clause($limit))->fetchAll();
+    return array_map(fn($r) => ['Name' => $r['name'], 'Description' => $r['description']], $rows);
+}
+
+function importer_sample_brands(?int $limit): array
+{
+    $rows = db()->query('SELECT name, status FROM brands ORDER BY id DESC' . importer_limit_clause($limit))->fetchAll();
+    return array_map(fn($r) => ['Name' => $r['name'], 'Status' => $r['status']], $rows);
+}
+
+function importer_sample_uom(?int $limit): array
+{
+    $rows = db()->query('SELECT name, status FROM uom ORDER BY id DESC' . importer_limit_clause($limit))->fetchAll();
+    return array_map(fn($r) => ['Name' => $r['name'], 'Status' => $r['status']], $rows);
+}
+
+function importer_sample_products(?int $limit): array
+{
+    $sql = 'SELECT p.sku, p.name, c.name AS category_name, ic.name AS item_category_name, b.name AS brand_name,
+                   p.hsn_sac_code, p.unit, p.cost_price, p.selling_price, p.reorder_level, p.description, p.status
+            FROM products p
+            LEFT JOIN categories c ON c.id = p.category_id
+            LEFT JOIN item_categories ic ON ic.id = p.item_category_id
+            LEFT JOIN brands b ON b.id = p.brand_id
+            ORDER BY p.id DESC' . importer_limit_clause($limit);
+    $rows = db()->query($sql)->fetchAll();
+    return array_map(fn($r) => [
+        'SKU' => $r['sku'], 'Name' => $r['name'], 'Category' => $r['category_name'], 'Item Category' => $r['item_category_name'],
+        'Brand' => $r['brand_name'], 'HSN/SAC Code' => $r['hsn_sac_code'], 'Unit' => $r['unit'],
+        'Cost Price' => $r['cost_price'], 'Selling Price' => $r['selling_price'],
+        // Opening Stock/Warehouse are a one-time, create-only action (see importer_commit_products)
+        // — left blank here so re-importing an exported row never looks like it will add stock again.
+        'Opening Stock' => '', 'Warehouse' => '',
+        'Reorder Level' => $r['reorder_level'], 'Description' => $r['description'], 'Status' => $r['status'],
+    ], $rows);
+}
+
+function importer_sample_customers(?int $limit): array
+{
+    $rows = db()->query('SELECT * FROM customers ORDER BY id DESC' . importer_limit_clause($limit))->fetchAll();
+    return array_map(fn($r) => [
+        'Customer Code' => $r['customer_code'], 'Name' => $r['name'], 'Customer Type' => $r['customer_type'],
+        'Company' => $r['company'], 'Email' => $r['email'], 'Phone' => $r['phone'], 'Mobile' => $r['mobile'],
+        'GSTIN' => $r['gstin'], 'Address' => $r['address'], 'Status' => $r['status'],
+    ], $rows);
+}
+
+function importer_sample_vendors(?int $limit): array
+{
+    $rows = db()->query('SELECT * FROM vendors ORDER BY id DESC' . importer_limit_clause($limit))->fetchAll();
+    return array_map(fn($r) => [
+        'Name' => $r['name'], 'Company' => $r['company'], 'Email' => $r['email'], 'Phone' => $r['phone'], 'Address' => $r['address'],
+    ], $rows);
+}
+
+function importer_sample_chart_of_accounts(?int $limit): array
+{
+    $sql = 'SELECT a.*, p.name AS parent_name FROM ledger_accounts a
+            LEFT JOIN ledger_accounts p ON p.id = a.parent_id
+            ORDER BY a.id DESC' . importer_limit_clause($limit);
+    $rows = db()->query($sql)->fetchAll();
+    return array_map(fn($r) => [
+        'Account Name' => $r['name'], 'Account Code' => $r['account_code'], 'Parent Account' => $r['parent_name'],
+        'Root Type' => $r['root_type'], 'Account Type' => $r['account_type'], 'Is Group' => $r['is_group'] ? 'yes' : 'no',
+        'Opening Balance' => $r['opening_balance'], 'Status' => $r['status'],
+    ], $rows);
+}
+
+function importer_sample_tax_templates(?int $limit): array
+{
+    $sql = "SELECT t.name, t.status, ti.rate_or_amount, ti.based_on, la.name AS account_name
+            FROM tax_templates t
+            LEFT JOIN tax_template_items ti ON ti.tax_template_id = t.id AND ti.sort_order = 0
+            LEFT JOIN ledger_accounts la ON la.id = ti.account_head_id
+            ORDER BY t.id DESC" . importer_limit_clause($limit);
+    $rows = db()->query($sql)->fetchAll();
+    return array_map(fn($r) => [
+        'Template Name' => $r['name'], 'Tax Rate %' => $r['rate_or_amount'], 'Account Name' => $r['account_name'],
+        'Based On' => $r['based_on'], 'Status' => $r['status'],
+    ], $rows);
+}
+
+function importer_sample_price_lists(?int $limit): array
+{
+    $rows = db()->query('SELECT * FROM price_lists ORDER BY id DESC' . importer_limit_clause($limit))->fetchAll();
+    return array_map(fn($r) => [
+        'List Name' => $r['name'], 'Currency' => $r['currency'], 'Is Default' => $r['is_default'] ? 'yes' : 'no', 'Status' => $r['status'],
+    ], $rows);
+}
+
+function importer_sample_purchase_orders(?int $limit): array
+{
+    $sql = 'SELECT po.po_no, v.name AS vendor_name, po.order_date, po.required_by, w.name AS warehouse_name, po.notes,
+                   p.sku, poi.quantity, poi.rate
+            FROM purchase_order_items poi
+            JOIN purchase_orders po ON po.id = poi.po_id
+            JOIN vendors v ON v.id = po.vendor_id
+            LEFT JOIN warehouses w ON w.id = po.ship_to_warehouse_id
+            JOIN products p ON p.id = poi.product_id
+            ORDER BY po.id DESC, poi.id ASC' . importer_limit_clause($limit);
+    $rows = db()->query($sql)->fetchAll();
+    return array_map(fn($r) => [
+        'Order Ref' => $r['po_no'], 'Vendor' => $r['vendor_name'], 'Order Date' => $r['order_date'],
+        'Required By' => $r['required_by'], 'Warehouse' => $r['warehouse_name'], 'Notes' => $r['notes'],
+        'Product' => $r['sku'], 'Quantity' => $r['quantity'], 'Rate' => $r['rate'],
+    ], $rows);
+}
+
+function importer_sample_sales_orders(?int $limit): array
+{
+    $sql = 'SELECT so.order_no, c.name AS customer_name, so.order_date, so.required_delivery_date, w.name AS warehouse_name, so.notes,
+                   p.sku, soi.quantity, soi.unit_price
+            FROM sales_order_items soi
+            JOIN sales_orders so ON so.id = soi.order_id
+            JOIN customers c ON c.id = so.customer_id
+            LEFT JOIN warehouses w ON w.id = so.warehouse_id
+            JOIN products p ON p.id = soi.product_id
+            ORDER BY so.id DESC, soi.id ASC' . importer_limit_clause($limit);
+    $rows = db()->query($sql)->fetchAll();
+    return array_map(fn($r) => [
+        'Order Ref' => $r['order_no'], 'Customer' => $r['customer_name'], 'Order Date' => $r['order_date'],
+        'Required Delivery Date' => $r['required_delivery_date'], 'Warehouse' => $r['warehouse_name'], 'Notes' => $r['notes'],
+        'Product' => $r['sku'], 'Quantity' => $r['quantity'], 'Rate' => $r['unit_price'],
+    ], $rows);
 }
