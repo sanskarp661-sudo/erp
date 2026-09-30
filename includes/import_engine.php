@@ -99,30 +99,63 @@ function import_create_batch(string $entityType, string $fileName, string $store
 }
 
 /**
- * Runs the importer's validate_row over every row of the batch and stores
- * per-row pass/fail, without writing anything to the entity's own tables.
- * Marks the batch 'validated'. Returns the rows with their outcome for the
- * preview page to render.
+ * Splits rows (each ['id'=>batch_row_id,'row_num'=>n,'raw'=>data]) into
+ * groups sharing the same $groupKey column value, preserving row order.
+ * A row with a blank group value is its own single-row group (so ungrouped
+ * documents — one product per order — don't need the column filled in).
+ */
+function import_group_rows(array $rows, string $groupKey): array
+{
+    $groups = [];
+    foreach ($rows as $r) {
+        $ref = trim((string)($r['raw'][$groupKey] ?? ''));
+        $key = $ref !== '' ? 'ref:' . $ref : 'row:' . $r['id'];
+        $groups[$key][] = $r;
+    }
+    return array_values($groups);
+}
+
+/**
+ * Runs the importer's validate_row (or, for a grouped importer, one
+ * validate_group call per group of rows sharing the same group_key value)
+ * over the whole batch and stores per-row pass/fail, without writing
+ * anything to the entity's own tables. Marks the batch 'validated'.
  */
 function import_validate_batch(array $importer, int $batchId): array
 {
     $pdo = db();
     $rowStmt = $pdo->prepare('SELECT * FROM import_batch_rows WHERE import_batch_id = ? ORDER BY row_num');
     $rowStmt->execute([$batchId]);
-    $rows = $rowStmt->fetchAll();
+    $rawRows = $rowStmt->fetchAll();
 
-    $validateFn = $importer['validate_row'];
     $errorCount = 0;
     $results = [];
     $update = $pdo->prepare('UPDATE import_batch_rows SET status = ?, message = ? WHERE id = ?');
-    foreach ($rows as $r) {
-        $data = json_decode($r['raw_data'], true) ?: [];
-        $result = $validateFn($data);
-        $status = $result['ok'] ? 'pending' : 'error';
-        $message = $result['ok'] ? null : implode(' ', $result['errors']);
-        if (!$result['ok']) $errorCount++;
-        $update->execute([$status, $message, $r['id']]);
-        $results[] = ['row_num' => (int)$r['row_num'], 'raw' => $data, 'ok' => $result['ok'], 'errors' => $result['errors']];
+
+    if (!empty($importer['grouped'])) {
+        $rows = array_map(fn($r) => ['id' => $r['id'], 'row_num' => (int)$r['row_num'], 'raw' => json_decode($r['raw_data'], true) ?: []], $rawRows);
+        $validateGroupFn = $importer['validate_group'];
+        foreach (import_group_rows($rows, $importer['group_key']) as $group) {
+            $result = $validateGroupFn($group);
+            $status = $result['ok'] ? 'pending' : 'error';
+            $message = $result['ok'] ? $result['summary'] ?? null : implode(' ', $result['errors']);
+            if (!$result['ok']) $errorCount += count($group);
+            foreach ($group as $r) {
+                $update->execute([$status, $message, $r['id']]);
+                $results[] = ['row_num' => $r['row_num'], 'raw' => $r['raw'], 'ok' => $result['ok'], 'errors' => $result['errors'] ?? []];
+            }
+        }
+    } else {
+        $validateFn = $importer['validate_row'];
+        foreach ($rawRows as $r) {
+            $data = json_decode($r['raw_data'], true) ?: [];
+            $result = $validateFn($data);
+            $status = $result['ok'] ? 'pending' : 'error';
+            $message = $result['ok'] ? null : implode(' ', $result['errors']);
+            if (!$result['ok']) $errorCount++;
+            $update->execute([$status, $message, $r['id']]);
+            $results[] = ['row_num' => (int)$r['row_num'], 'raw' => $data, 'ok' => $result['ok'], 'errors' => $result['errors']];
+        }
     }
 
     $pdo->prepare('UPDATE import_batches SET status = ?, error_count = ? WHERE id = ?')->execute(['validated', $errorCount, $batchId]);
@@ -132,8 +165,18 @@ function import_validate_batch(array $importer, int $batchId): array
 
 /**
  * Re-validates and commits every still-pending row of the batch (rows
- * already marked 'error' at preview time are skipped, not retried). Each
- * row runs in its own transaction so one bad row can't roll back the rest.
+ * already marked 'error' at preview time are skipped, not retried).
+ *
+ * Plain importers: each row runs in its own transaction, so one bad row
+ * can't roll back the rest.
+ *
+ * Grouped importers (multi-line documents like Purchase/Sales Orders):
+ * each GROUP of rows (one document) runs in a single transaction, so a
+ * document is never left half-written with only some of its lines saved —
+ * either the whole document commits or none of it does. Every row in the
+ * group is stamped with the same outcome and the same created_record_id
+ * (the document's id).
+ *
  * Marks the batch 'completed'.
  */
 function import_commit_batch(array $importer, int $batchId): array
@@ -141,41 +184,83 @@ function import_commit_batch(array $importer, int $batchId): array
     $pdo = db();
     $rowStmt = $pdo->prepare("SELECT * FROM import_batch_rows WHERE import_batch_id = ? AND status = 'pending' ORDER BY row_num");
     $rowStmt->execute([$batchId]);
-    $rows = $rowStmt->fetchAll();
+    $rawRows = $rowStmt->fetchAll();
 
-    $validateFn = $importer['validate_row'];
-    $commitFn = $importer['commit_row'];
     $successCount = 0;
     $errorCount = 0;
     $results = [];
     $update = $pdo->prepare('UPDATE import_batch_rows SET status = ?, message = ?, created_record_id = ? WHERE id = ?');
 
-    foreach ($rows as $r) {
-        $data = json_decode($r['raw_data'], true) ?: [];
-        $validated = $validateFn($data);
-        if (!$validated['ok']) {
-            $update->execute(['error', implode(' ', $validated['errors']), null, $r['id']]);
-            $errorCount++;
-            $results[] = ['row_num' => (int)$r['row_num'], 'status' => 'error', 'message' => implode(' ', $validated['errors'])];
-            continue;
-        }
+    if (!empty($importer['grouped'])) {
+        $rows = array_map(fn($r) => ['id' => $r['id'], 'row_num' => (int)$r['row_num'], 'raw' => json_decode($r['raw_data'], true) ?: []], $rawRows);
+        $validateGroupFn = $importer['validate_group'];
+        $commitGroupFn = $importer['commit_group'];
 
-        $pdo->beginTransaction();
-        try {
-            $outcome = $commitFn($validated['data']);
-            $pdo->commit();
-            $update->execute([$outcome['status'], $outcome['message'], $outcome['record_id'] ?? null, $r['id']]);
-            if ($outcome['status'] === 'success') {
-                $successCount++;
-            } else {
-                $errorCount++;
+        foreach (import_group_rows($rows, $importer['group_key']) as $group) {
+            $validated = $validateGroupFn($group);
+            if (!$validated['ok']) {
+                $message = implode(' ', $validated['errors']);
+                foreach ($group as $r) {
+                    $update->execute(['error', $message, null, $r['id']]);
+                    $errorCount++;
+                    $results[] = ['row_num' => $r['row_num'], 'status' => 'error', 'message' => $message];
+                }
+                continue;
             }
-            $results[] = ['row_num' => (int)$r['row_num'], 'status' => $outcome['status'], 'message' => $outcome['message']];
-        } catch (Exception $e) {
-            $pdo->rollBack();
-            $update->execute(['error', 'Could not save this row.', null, $r['id']]);
-            $errorCount++;
-            $results[] = ['row_num' => (int)$r['row_num'], 'status' => 'error', 'message' => 'Could not save this row.'];
+
+            $pdo->beginTransaction();
+            try {
+                $outcome = $commitGroupFn($group, $validated['data']);
+                $pdo->commit();
+                foreach ($group as $r) {
+                    $update->execute([$outcome['status'], $outcome['message'], $outcome['record_id'] ?? null, $r['id']]);
+                    $results[] = ['row_num' => $r['row_num'], 'status' => $outcome['status'], 'message' => $outcome['message']];
+                }
+                if ($outcome['status'] === 'success') {
+                    $successCount += count($group);
+                } else {
+                    $errorCount += count($group);
+                }
+            } catch (Exception $e) {
+                $pdo->rollBack();
+                foreach ($group as $r) {
+                    $update->execute(['error', 'Could not save this document.', null, $r['id']]);
+                    $errorCount++;
+                    $results[] = ['row_num' => $r['row_num'], 'status' => 'error', 'message' => 'Could not save this document.'];
+                }
+            }
+        }
+    } else {
+        $validateFn = $importer['validate_row'];
+        $commitFn = $importer['commit_row'];
+
+        foreach ($rawRows as $r) {
+            $data = json_decode($r['raw_data'], true) ?: [];
+            $validated = $validateFn($data);
+            if (!$validated['ok']) {
+                $update->execute(['error', implode(' ', $validated['errors']), null, $r['id']]);
+                $errorCount++;
+                $results[] = ['row_num' => (int)$r['row_num'], 'status' => 'error', 'message' => implode(' ', $validated['errors'])];
+                continue;
+            }
+
+            $pdo->beginTransaction();
+            try {
+                $outcome = $commitFn($validated['data']);
+                $pdo->commit();
+                $update->execute([$outcome['status'], $outcome['message'], $outcome['record_id'] ?? null, $r['id']]);
+                if ($outcome['status'] === 'success') {
+                    $successCount++;
+                } else {
+                    $errorCount++;
+                }
+                $results[] = ['row_num' => (int)$r['row_num'], 'status' => $outcome['status'], 'message' => $outcome['message']];
+            } catch (Exception $e) {
+                $pdo->rollBack();
+                $update->execute(['error', 'Could not save this row.', null, $r['id']]);
+                $errorCount++;
+                $results[] = ['row_num' => (int)$r['row_num'], 'status' => 'error', 'message' => 'Could not save this row.'];
+            }
         }
     }
 
