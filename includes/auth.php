@@ -15,6 +15,7 @@ require_once __DIR__ . '/permissions.php';
 require_once __DIR__ . '/stock.php';
 require_once __DIR__ . '/cashfree.php';
 require_once __DIR__ . '/pos.php';
+require_once __DIR__ . '/finance.php';
 require_once __DIR__ . '/webhooks.php';
 
 function current_user(): ?array

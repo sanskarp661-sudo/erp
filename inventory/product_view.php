@@ -114,8 +114,8 @@ function product_monthly_trend(PDO $pdo, string $sql, int $productId): array
     $qty = [];
     $amount = [];
     for ($i = 11; $i >= 0; $i--) {
-        $ym = date('Y-m', strtotime("-$i months"));
-        $labels[] = date('M Y', strtotime("-$i months"));
+        $ym = date('Y-m', strtotime("first day of -$i months"));
+        $labels[] = date('M Y', strtotime("first day of -$i months"));
         $qty[] = $byMonth[$ym]['qty'] ?? 0;
         $amount[] = $byMonth[$ym]['amount'] ?? 0;
     }
@@ -239,51 +239,76 @@ $movements = conn_fetch($pdo,
     "SELECT COUNT(*) FROM stock_movements WHERE product_id = ?", $id, 15
 );
 
-$statusBadge = ['pending' => 'secondary', 'confirmed' => 'info', 'shipped' => 'primary', 'completed' => 'success', 'cancelled' => 'danger',
-    'draft' => 'secondary', 'delivered' => 'success', 'received' => 'success', 'ordered' => 'info',
-    'unpaid' => 'secondary', 'partially_paid' => 'warning', 'paid' => 'success', 'overdue' => 'danger'];
+$statusBadge = ['pending' => 'gray', 'confirmed' => 'blue', 'shipped' => 'purple', 'completed' => 'green', 'cancelled' => 'red',
+    'draft' => 'gray', 'delivered' => 'green', 'received' => 'green', 'ordered' => 'blue',
+    'unpaid' => 'gray', 'partially_paid' => 'orange', 'paid' => 'green', 'overdue' => 'red'];
+
+$qtyNow = (int)$product['quantity'];
+$reorderAt = (int)$product['reorder_level'];
+$stockTone = $qtyNow <= 0 ? 'red' : ($qtyNow <= $reorderAt ? 'orange' : 'green');
+$stockLabel = $qtyNow <= 0 ? 'Out of Stock' : ($qtyNow <= $reorderAt ? 'Low Stock' : 'In Stock');
+$stockPct = $qtyNow > 0 ? round(min(100, $qtyNow / max((int)$product['max_stock_level'], $reorderAt * 3, $qtyNow, 1) * 100), 1) : 0;
+$viewMargin = (float)$product['selling_price'] > 0 ? ((float)$product['selling_price'] - (float)$product['cost_price']) / (float)$product['selling_price'] * 100 : null;
 
 $page_title = 'Item Master — ' . $product['name'];
 require __DIR__ . '/../includes/header.php';
 ?>
-<div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+<div class="inv-view">
+<div class="dash-head inv-doc-head">
   <div>
-    <h4 class="mb-1"><?= e($product['name']) ?> <span class="badge text-bg-<?= $product['status'] === 'active' ? 'success' : 'secondary' ?> badge-status"><?= $product['status'] === 'active' ? 'Enabled' : 'Disabled' ?></span></h4>
-    <div class="text-muted"><?= e($product['sku']) ?><?= $product['category_name'] ? ' &middot; ' . e($product['category_name']) : '' ?><?= $product['brand_name'] ? ' &middot; ' . e($product['brand_name']) : '' ?></div>
+    <nav class="inv-crumbs" aria-label="Breadcrumb">
+      <a href="index.php">Inventory</a> <i class="fa-solid fa-chevron-right"></i>
+      <a href="products.php">Products</a> <i class="fa-solid fa-chevron-right"></i>
+      <span><?= e($product['sku']) ?></span>
+    </nav>
+    <h1 class="dash-title"><?= e($product['name']) ?>
+      <span class="dash-pill <?= $product['status'] === 'active' ? 'dash-pill-green' : 'dash-pill-gray' ?>"><?= $product['status'] === 'active' ? 'Enabled' : 'Disabled' ?></span>
+      <span class="dash-pill dash-pill-<?= $stockTone ?>"><?= $stockLabel ?></span>
+    </h1>
+    <p class="dash-sub"><?= e($product['sku']) ?><?= $product['category_name'] ? ' &middot; ' . e($product['category_name']) : '' ?><?= $product['brand_name'] ? ' &middot; ' . e($product['brand_name']) : '' ?></p>
   </div>
-  <div class="page-actions">
-    <?php if ($canEdit): ?><a href="product_form.php?id=<?= $id ?>" class="btn btn-outline-secondary btn-sm"><i class="fa-solid fa-pen"></i> Edit</a><?php endif; ?>
-    <a href="<?= base_url('print.php?doctype=product&id=' . $id) ?>" target="_blank" class="btn btn-outline-brand btn-sm"><i class="fa-solid fa-print"></i> Print</a>
-    <a href="products.php" class="btn btn-outline-secondary btn-sm">Back to list</a>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="products.php" class="btn btn-outline-secondary"><i class="fa-solid fa-arrow-left"></i> Products</a>
+    <a href="<?= base_url('print.php?doctype=product&id=' . $id) ?>" target="_blank" class="btn btn-outline-secondary"><i class="fa-solid fa-print"></i> Print</a>
+    <?php if (can_edit_module('supply-chain')): ?><a href="<?= base_url('supply-chain/stock_entry_form.php') ?>" class="btn btn-outline-brand"><i class="fa-solid fa-dolly"></i> Stock Entry</a><?php endif; ?>
+    <?php if ($canEdit): ?><a href="product_form.php?id=<?= $id ?>" class="btn btn-brand"><i class="fa-solid fa-pen"></i> Edit</a><?php endif; ?>
   </div>
 </div>
 
 <div class="row g-3 mb-3">
   <div class="col-lg-3">
-    <div class="card p-3 text-center">
-      <?php if (!empty($product['image'])): ?>
-        <img src="<?= base_url($product['image']) ?>" alt="" class="mb-2" style="width:100%;max-width:200px;aspect-ratio:1/1;object-fit:cover;border-radius:8px;margin:0 auto">
-      <?php else: ?>
-        <div class="d-flex align-items-center justify-content-center text-muted mb-2 mx-auto" style="width:160px;height:160px;border-radius:8px;background:#f1f3f5"><i class="fa-solid fa-box fa-3x"></i></div>
-      <?php endif; ?>
-      <div class="text-start mt-2">
-        <div class="d-flex justify-content-between"><span class="text-muted">Cost Price</span><strong><?= money($product['cost_price']) ?></strong></div>
-        <div class="d-flex justify-content-between"><span class="text-muted">Selling Price</span><strong><?= money($product['selling_price']) ?></strong></div>
-        <div class="d-flex justify-content-between"><span class="text-muted">Unit</span><strong><?= e($product['unit']) ?></strong></div>
-        <div class="d-flex justify-content-between"><span class="text-muted">Total Qty</span><strong><?= (int)$product['quantity'] ?></strong></div>
-        <div class="d-flex justify-content-between"><span class="text-muted">Reorder Level</span><strong><?= (int)$product['reorder_level'] ?></strong></div>
+    <div class="card p-3">
+      <div class="inv-hero-img">
+        <?php if (!empty($product['image'])): ?>
+          <img src="<?= base_url($product['image']) ?>" alt="">
+        <?php else: ?>
+          <i class="fa-solid fa-box fa-3x"></i>
+        <?php endif; ?>
+      </div>
+      <div class="inv-facts">
+        <div><span>Selling Price</span><strong><?= money($product['selling_price']) ?></strong></div>
+        <div><span>Cost Price</span><strong><?= money($product['cost_price']) ?></strong></div>
+        <div><span>Margin</span><strong><?= $viewMargin === null ? '—' : number_format($viewMargin, 1) . '%' ?></strong></div>
+        <div><span>Stock Value</span><strong><?= money(max(0, (int)$product['quantity']) * (float)$product['cost_price']) ?></strong></div>
+      </div>
+      <div class="mt-3">
+        <div class="d-flex justify-content-between small">
+          <span class="fw-semibold"><?= (int)$product['quantity'] ?> <?= e($product['unit']) ?> in stock</span>
+          <span class="inv-stock-<?= $stockTone ?>">Reorder at <?= (int)$product['reorder_level'] ?></span>
+        </div>
+        <div class="inv-bar inv-bar-<?= $stockTone ?>"><span style="width: <?= $stockPct ?>%"></span></div>
       </div>
     </div>
     <div class="card p-3 mt-3">
       <h6 class="mb-2">Stock by Warehouse</h6>
-      <table class="table table-sm mb-0">
-        <tbody>
-        <?php foreach ($stockByWarehouse as $w): ?>
-          <tr><td><?= e($w['name']) ?></td><td class="text-end fw-bold"><?= (int)$w['quantity'] ?></td></tr>
-        <?php endforeach; ?>
-        <?php if (!$stockByWarehouse): ?><tr><td class="text-muted text-center">No warehouses set up yet.</td></tr><?php endif; ?>
-        </tbody>
-      </table>
+      <?php $whMax = max(1, ...array_map(fn($w) => (int)$w['quantity'], $stockByWarehouse ?: [['quantity' => 0]])); ?>
+      <?php foreach ($stockByWarehouse as $w): ?>
+        <div class="inv-wh-row">
+          <div class="d-flex justify-content-between small"><span><?= e($w['name']) ?></span><strong><?= (int)$w['quantity'] ?> <?= e($product['unit']) ?></strong></div>
+          <div class="inv-bar"><span style="width: <?= max(0, round((int)$w['quantity'] / $whMax * 100, 1)) ?>%"></span></div>
+        </div>
+      <?php endforeach; ?>
+      <?php if (!$stockByWarehouse): ?><div class="text-muted small">No warehouses set up yet.</div><?php endif; ?>
     </div>
     <div class="card p-3 mt-3">
       <h6 class="mb-2">Item Information</h6>
@@ -533,57 +558,59 @@ require __DIR__ . '/../includes/header.php';
   </div>
 
   <div class="col-lg-9">
-    <div class="row g-3 mb-3">
-      <div class="col-sm-6 col-lg-3">
-        <div class="stat-card"><div class="icon bg-green"><i class="fa-solid fa-arrow-trend-up"></i></div>
-          <div><div class="value"><?= (int)$lifetimeSales['qty'] ?></div><div class="label">Units sold (lifetime)</div></div></div>
+    <div class="dash-kpis inv-kpis-4 mb-3">
+      <div class="dash-kpi dash-kpi-green">
+        <span class="dash-kpi-icon"><i class="fa-solid fa-arrow-trend-up"></i></span>
+        <span class="dash-kpi-body"><span class="dash-kpi-label">Units Sold</span><span class="dash-kpi-value"><?= number_format((int)$lifetimeSales['qty']) ?></span><span class="dash-kpi-foot text-muted">lifetime</span></span>
       </div>
-      <div class="col-sm-6 col-lg-3">
-        <div class="stat-card"><div class="icon bg-brand"><i class="fa-solid fa-sack-dollar"></i></div>
-          <div><div class="value"><?= money($lifetimeSales['amount']) ?></div><div class="label">Revenue (lifetime)</div></div></div>
+      <div class="dash-kpi dash-kpi-blue">
+        <span class="dash-kpi-icon"><i class="fa-solid fa-sack-dollar"></i></span>
+        <span class="dash-kpi-body"><span class="dash-kpi-label">Revenue</span><span class="dash-kpi-value"><?= money($lifetimeSales['amount']) ?></span><span class="dash-kpi-foot text-muted">lifetime</span></span>
       </div>
-      <div class="col-sm-6 col-lg-3">
-        <div class="stat-card"><div class="icon bg-orange"><i class="fa-solid fa-arrow-trend-down"></i></div>
-          <div><div class="value"><?= (int)$lifetimePurchases['qty'] ?></div><div class="label">Units purchased (lifetime)</div></div></div>
+      <div class="dash-kpi dash-kpi-orange">
+        <span class="dash-kpi-icon"><i class="fa-solid fa-truck-ramp-box"></i></span>
+        <span class="dash-kpi-body"><span class="dash-kpi-label">Units Purchased</span><span class="dash-kpi-value"><?= number_format((int)$lifetimePurchases['qty']) ?></span><span class="dash-kpi-foot text-muted">lifetime</span></span>
       </div>
-      <div class="col-sm-6 col-lg-3">
-        <div class="stat-card"><div class="icon bg-purple"><i class="fa-solid fa-receipt"></i></div>
-          <div><div class="value"><?= money($lifetimePurchases['amount']) ?></div><div class="label">Spend (lifetime)</div></div></div>
+      <div class="dash-kpi dash-kpi-purple">
+        <span class="dash-kpi-icon"><i class="fa-solid fa-receipt"></i></span>
+        <span class="dash-kpi-body"><span class="dash-kpi-label">Purchase Spend</span><span class="dash-kpi-value"><?= money($lifetimePurchases['amount']) ?></span><span class="dash-kpi-foot text-muted">lifetime</span></span>
       </div>
     </div>
 
     <div class="card p-3 mb-3">
-      <h6 class="mb-2">Sales Trend — units &amp; revenue by month</h6>
-      <canvas id="salesTrendChart" height="90"></canvas>
+      <h6 class="mb-0">Sales Trend</h6>
+      <p class="dash-card-sub mb-2">Units and revenue by month, last 12 months.</p>
+      <div class="inv-trend"><canvas id="salesTrendChart"></canvas></div>
     </div>
     <div class="card p-3">
-      <h6 class="mb-2">Purchase Trend — units &amp; spend by month</h6>
-      <canvas id="purchaseTrendChart" height="90"></canvas>
+      <h6 class="mb-0">Purchase Trend</h6>
+      <p class="dash-card-sub mb-2">Units and spend by month, last 12 months.</p>
+      <div class="inv-trend"><canvas id="purchaseTrendChart"></canvas></div>
     </div>
   </div>
 </div>
 
 <div class="card p-3">
   <h6 class="mb-3">Connections</h6>
-  <ul class="nav nav-tabs" role="tablist">
+  <ul class="nav nav-tabs inv-doc-tabs" role="tablist">
     <?php $first = true; foreach ($connections as $key => $c): ?>
       <li class="nav-item" role="presentation">
         <button class="nav-link <?= $first ? 'active' : '' ?>" data-bs-toggle="tab" data-bs-target="#tab-<?= e($key) ?>" type="button">
-          <i class="<?= e($c['icon']) ?>"></i> <?= e($c['label']) ?> <span class="badge text-bg-light"><?= (int)$c['data']['total'] ?></span>
+          <i class="<?= e($c['icon']) ?>"></i> <?= e($c['label']) ?> <span class="inv-tab-count"><?= (int)$c['data']['total'] ?></span>
         </button>
       </li>
     <?php $first = false; endforeach; ?>
     <li class="nav-item" role="presentation">
       <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-movements" type="button">
-        <i class="fa-solid fa-arrow-right-arrow-left"></i> Stock Movements <span class="badge text-bg-light"><?= (int)$movements['total'] ?></span>
+        <i class="fa-solid fa-arrow-right-arrow-left"></i> Stock Movements <span class="inv-tab-count"><?= (int)$movements['total'] ?></span>
       </button>
     </li>
   </ul>
-  <div class="tab-content border border-top-0 p-3">
+  <div class="tab-content pt-3">
     <?php $first = true; foreach ($connections as $key => $c): ?>
       <div class="tab-pane fade <?= $first ? 'show active' : '' ?>" id="tab-<?= e($key) ?>">
         <div class="table-responsive">
-          <table class="table table-sm">
+          <table class="table dash-table mb-2">
             <thead><tr><th>Doc #</th><th>Party</th><th>Date</th><th class="text-end">Qty</th><th class="text-end">Amount</th><th>Status</th></tr></thead>
             <tbody>
             <?php foreach ($c['data']['rows'] as $r): ?>
@@ -593,7 +620,7 @@ require __DIR__ . '/../includes/header.php';
                 <td><?= e($r['doc_date']) ?></td>
                 <td class="text-end"><?= (int)$r['quantity'] ?></td>
                 <td class="text-end"><?= money($r['amount']) ?></td>
-                <td><span class="badge text-bg-<?= $statusBadge[$r['status']] ?? 'secondary' ?> badge-status"><?= e(str_replace('_', ' ', $r['status'])) ?></span></td>
+                <td><span class="dash-pill dash-pill-<?= $statusBadge[$r['status']] ?? 'gray' ?>"><?= e(ucfirst(str_replace('_', ' ', $r['status']))) ?></span></td>
               </tr>
             <?php endforeach; ?>
             <?php if (!$c['data']['rows']): ?><tr><td colspan="6" class="text-muted text-center">No <?= e(strtolower($c['label'])) ?> for this item yet.</td></tr><?php endif; ?>
@@ -608,16 +635,16 @@ require __DIR__ . '/../includes/header.php';
 
     <div class="tab-pane fade" id="tab-movements">
       <div class="table-responsive">
-        <table class="table table-sm">
+        <table class="table dash-table mb-2">
           <thead><tr><th>Date</th><th>Type</th><th>Warehouse</th><th class="text-end">Qty</th><th>Reference</th></tr></thead>
           <tbody>
-          <?php $moveBadge = ['in' => 'success', 'out' => 'danger', 'adjustment' => 'warning']; ?>
+          <?php $moveBadge = ['in' => 'green', 'out' => 'red', 'adjustment' => 'orange']; ?>
           <?php foreach ($movements['rows'] as $m): ?>
             <tr>
               <td><?= e(date('Y-m-d H:i', strtotime($m['created_at']))) ?></td>
-              <td><span class="badge text-bg-<?= $moveBadge[$m['type']] ?? 'secondary' ?> badge-status"><?= e($m['type']) ?></span></td>
+              <td><span class="dash-pill dash-pill-<?= $moveBadge[$m['type']] ?? 'gray' ?>"><?= e(ucfirst($m['type'])) ?></span></td>
               <td><?= e($m['warehouse_name'] ?? '—') ?></td>
-              <td class="text-end fw-bold"><?= (int)$m['quantity'] ?></td>
+              <td class="text-end fw-bold <?= (int)$m['quantity'] < 0 ? 'text-danger' : 'text-success' ?>"><?= (int)$m['quantity'] > 0 ? '+' : '' ?><?= (int)$m['quantity'] ?></td>
               <td><?= e($m['reference']) ?></td>
             </tr>
           <?php endforeach; ?>
@@ -631,6 +658,7 @@ require __DIR__ . '/../includes/header.php';
     </div>
   </div>
 </div>
+</div>
 <?php
 $extra_js = ['https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js'];
 $extra_js_inline = "
@@ -639,15 +667,19 @@ function trendChart(canvasId, labels, qty, amount, qtyLabel, amountLabel) {
     data: {
       labels: labels,
       datasets: [
-        { type: 'bar', label: qtyLabel, data: qty, backgroundColor: '#2f6fed', yAxisID: 'y' },
-        { type: 'line', label: amountLabel, data: amount, borderColor: '#16a34a', backgroundColor: '#16a34a', tension: 0.3, yAxisID: 'y1' }
+        { type: 'bar', label: qtyLabel, data: qty, backgroundColor: '#2563eb', borderRadius: 4, maxBarThickness: 22, yAxisID: 'y' },
+        { type: 'line', label: amountLabel, data: amount, borderColor: '#16a34a', backgroundColor: '#16a34a', tension: 0.35, pointRadius: 2, yAxisID: 'y1' }
       ]
     },
     options: {
       responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, pointStyle: 'circle', boxWidth: 8, color: '#374151' } } },
       scales: {
-        y: { beginAtZero: true, position: 'left', title: { display: true, text: qtyLabel } },
-        y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: amountLabel } }
+        x: { grid: { display: false }, ticks: { color: '#6b7280' } },
+        y: { beginAtZero: true, position: 'left', grid: { color: '#eef1f6' }, ticks: { precision: 0, color: '#6b7280' } },
+        y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false }, ticks: { color: '#6b7280' } }
       }
     }
   });

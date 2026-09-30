@@ -87,7 +87,10 @@ if (is_post()) {
     $items = $lineItems;
 }
 
-$customers = db()->query('SELECT id, name FROM customers ORDER BY name')->fetchAll();
+// Inactive / blocked customers (CRM) stay pickable only on a quotation that already has them.
+$custStmt = db()->prepare("SELECT id, name FROM customers WHERE status = 'active' OR id = ? ORDER BY name");
+$custStmt->execute([(int)$quotation['customer_id']]);
+$customers = $custStmt->fetchAll();
 $products = db()->query("SELECT id, sku, name, selling_price, quantity, unit FROM products WHERE status='active' ORDER BY name")->fetchAll();
 $productUomsByProduct = [];
 foreach (db()->query('SELECT product_id, uom, conversion_factor FROM product_uoms ORDER BY sort_order, id') as $r) {

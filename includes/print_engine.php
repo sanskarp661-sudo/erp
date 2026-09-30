@@ -264,11 +264,23 @@ function pf_doctypes(): array
                     'address' => nl2br(e($c['address'] ?? '')),
                     'total_orders' => (int)$s['orders'],
                     'total_spent' => money($s['total']),
+                    'customer_code' => e($c['customer_code'] ?? ''),
+                    'customer_group' => e($c['customer_group'] ?? ''),
+                    'territory' => e($c['territory'] ?? ''),
+                    'contact_person' => e($c['contact_person'] ?? ''),
+                    'mobile' => e($c['mobile'] ?? ''),
+                    'gstin' => e($c['gstin'] ?? ''),
+                    'pan' => e($c['pan'] ?? ''),
+                    'credit_limit' => $c['credit_limit'] !== null ? money($c['credit_limit']) : 'No limit',
+                    'outstanding' => money(customer_credit_exposure($id)['outstanding']),
                 ];
             },
             'tokens' => [
                 'name' => 'Customer name', 'customer_company' => "Customer's company", 'email' => 'Email', 'phone' => 'Phone',
                 'address' => 'Address', 'total_orders' => 'Total orders', 'total_spent' => 'Total spent',
+                'customer_code' => 'Customer code', 'customer_group' => 'Customer group', 'territory' => 'Territory',
+                'contact_person' => 'Contact person', 'mobile' => 'Mobile', 'gstin' => 'GSTIN', 'pan' => 'PAN',
+                'credit_limit' => 'Credit limit', 'outstanding' => 'Outstanding balance',
             ],
             'default' => pf_default_party_template('Customer'),
         ],
@@ -635,7 +647,9 @@ function pf_doctypes(): array
                 }
                 $cols = [['key' => 'description', 'label' => 'Component'], ['key' => 'amount', 'label' => 'Amount', 'align' => 'right']];
 
-                $payDays = (int)((strtotime($s['pay_period_end']) - strtotime($s['pay_period_start'])) / 86400) + 1;
+                $payDays = (float)$s['working_days'] > 0
+                    ? rtrim(rtrim(number_format((float)$s['payment_days'], 1), '0'), '.')
+                    : (int)((strtotime($s['pay_period_end']) - strtotime($s['pay_period_start'])) / 86400) + 1;
 
                 $ytd = db()->prepare("
                   SELECT COALESCE(SUM(total_earnings),0) gross, COALESCE(SUM(total_deductions),0) ded, COALESCE(SUM(net_pay),0) net
@@ -670,7 +684,7 @@ function pf_doctypes(): array
             'tokens' => [
                 'slip_no' => 'Slip number', 'employee_name' => 'Employee name', 'employee_code' => 'Employee code',
                 'designation' => 'Designation', 'department_name' => 'Department', 'pay_period' => 'Pay period (range)',
-                'pay_month' => 'Pay period (month name)', 'pay_days' => 'Days in pay period', 'status' => 'Status',
+                'pay_month' => 'Pay period (month name)', 'pay_days' => 'Payment days (days in period for older slips)', 'status' => 'Status',
                 'earnings_table' => 'Earnings table', 'deductions_table' => 'Deductions table',
                 'total_earnings' => 'Total earnings', 'total_deductions' => 'Total deductions', 'net_pay' => 'Net pay',
                 'net_pay_words' => 'Net pay spelled out in words',

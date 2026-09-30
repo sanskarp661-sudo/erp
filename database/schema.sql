@@ -355,6 +355,7 @@ CREATE TABLE IF NOT EXISTS product_serials (
   warehouse_id INT UNSIGNED DEFAULT NULL,
   status ENUM('in_stock','issued','damaged') NOT NULL DEFAULT 'in_stock',
   grn_item_id INT UNSIGNED DEFAULT NULL,
+  stock_entry_item_id INT UNSIGNED DEFAULT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
   FOREIGN KEY (batch_id) REFERENCES product_batches(id) ON DELETE SET NULL,
@@ -401,15 +402,58 @@ CREATE TABLE IF NOT EXISTS stock_movements (
 -- ---------------------------------------------------------------------
 -- Sales / CRM
 -- ---------------------------------------------------------------------
+-- Customer master (CRM). The *_id / default columns are what a new Sales
+-- Order pre-fills from when the customer is picked; credit_hold and
+-- bypass_credit_check drive the Sales Order's credit check. address is
+-- the single free-text address prints read, kept in sync by the Customer
+-- form with the default row in customer_addresses.
 CREATE TABLE IF NOT EXISTS customers (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  customer_code VARCHAR(30) DEFAULT NULL,
   name VARCHAR(150) NOT NULL,
+  customer_type ENUM('company','individual') NOT NULL DEFAULT 'company',
+  customer_group VARCHAR(60) DEFAULT NULL,
   company VARCHAR(150) DEFAULT NULL,
+  territory VARCHAR(100) DEFAULT NULL,
+  industry VARCHAR(100) DEFAULT NULL,
+  website VARCHAR(150) DEFAULT NULL,
+  status ENUM('active','inactive','blocked') NOT NULL DEFAULT 'active',
+  contact_person VARCHAR(120) DEFAULT NULL,
+  designation VARCHAR(100) DEFAULT NULL,
   email VARCHAR(150) DEFAULT NULL,
   phone VARCHAR(40) DEFAULT NULL,
+  mobile VARCHAR(40) DEFAULT NULL,
+  alt_email VARCHAR(150) DEFAULT NULL,
+  preferred_contact ENUM('email','phone','whatsapp','any') NOT NULL DEFAULT 'any',
   address VARCHAR(255) DEFAULT NULL,
   credit_limit DECIMAL(14,2) DEFAULT NULL,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+  gstin VARCHAR(15) DEFAULT NULL,
+  pan VARCHAR(10) DEFAULT NULL,
+  gst_category VARCHAR(30) DEFAULT NULL,
+  place_of_supply VARCHAR(60) DEFAULT NULL,
+  tax_template_id INT UNSIGNED DEFAULT NULL,
+  tax_exempt TINYINT(1) NOT NULL DEFAULT 0,
+  exemption_certificate_no VARCHAR(60) DEFAULT NULL,
+  price_list_id INT UNSIGNED DEFAULT NULL,
+  currency VARCHAR(3) DEFAULT NULL,
+  sales_person_id INT UNSIGNED DEFAULT NULL,
+  sales_channel VARCHAR(40) DEFAULT NULL,
+  market_segment VARCHAR(100) DEFAULT NULL,
+  region VARCHAR(100) DEFAULT NULL,
+  shipping_partner_id INT UNSIGNED DEFAULT NULL,
+  delivery_terms VARCHAR(255) DEFAULT NULL,
+  payment_terms_template_id INT UNSIGNED DEFAULT NULL,
+  payment_method VARCHAR(40) DEFAULT NULL,
+  credit_hold TINYINT(1) NOT NULL DEFAULT 0,
+  bypass_credit_check TINYINT(1) NOT NULL DEFAULT 0,
+  lead_source VARCHAR(60) DEFAULT NULL,
+  referred_by VARCHAR(150) DEFAULT NULL,
+  campaign VARCHAR(150) DEFAULT NULL,
+  customer_since DATE DEFAULT NULL,
+  tags VARCHAR(255) DEFAULT NULL,
+  notes TEXT DEFAULT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uniq_customer_code (customer_code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- A product's rate on a given price list. If a product has no explicit
@@ -478,10 +522,34 @@ CREATE TABLE IF NOT EXISTS customer_addresses (
 -- Tax Summary panel.
 CREATE TABLE IF NOT EXISTS ledger_accounts (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  account_code VARCHAR(20) DEFAULT NULL,
   name VARCHAR(120) NOT NULL UNIQUE,
-  account_type ENUM('tax','income','expense','other') NOT NULL DEFAULT 'other',
+  parent_id INT UNSIGNED DEFAULT NULL,
+  is_group TINYINT(1) NOT NULL DEFAULT 0,
+  root_type ENUM('asset','liability','equity','income','expense') DEFAULT NULL,
+  account_type ENUM('tax','income','expense','other','bank','cash','receivable','payable','current_asset','fixed_asset','stock','current_liability','loan','equity','cost_of_goods_sold') NOT NULL DEFAULT 'other',
+  account_nature ENUM('debit','credit') NOT NULL DEFAULT 'debit',
+  statement_category VARCHAR(40) DEFAULT NULL,
+  description VARCHAR(255) DEFAULT NULL,
+  currency VARCHAR(3) NOT NULL DEFAULT 'INR',
+  opening_balance DECIMAL(14,2) NOT NULL DEFAULT 0,
+  opening_date DATE DEFAULT NULL,
+  cost_center_id INT UNSIGNED DEFAULT NULL,
+  project VARCHAR(100) DEFAULT NULL,
+  is_bank TINYINT(1) NOT NULL DEFAULT 0,
+  is_cash TINYINT(1) NOT NULL DEFAULT 0,
+  bank_account_no VARCHAR(40) DEFAULT NULL,
+  bank_ifsc VARCHAR(11) DEFAULT NULL,
+  tax_applicability VARCHAR(20) DEFAULT NULL,
+  default_tax_template_id INT UNSIGNED DEFAULT NULL,
+  tags VARCHAR(255) DEFAULT NULL,
+  system_key VARCHAR(40) DEFAULT NULL,
   status ENUM('active','inactive') NOT NULL DEFAULT 'active',
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uniq_ledger_code (account_code),
+  UNIQUE KEY uniq_ledger_system_key (system_key),
+  INDEX idx_ledger_parent (parent_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Item Master Tax & Charges tab: default tax/charge rows for this item
@@ -842,10 +910,60 @@ CREATE TABLE IF NOT EXISTS purchase_orders (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   po_no VARCHAR(30) NOT NULL UNIQUE,
   vendor_id INT UNSIGNED NOT NULL,
+  vendor_contact VARCHAR(120) DEFAULT NULL,
+  vendor_address VARCHAR(255) DEFAULT NULL,
   order_date DATE NOT NULL,
+  required_by DATE DEFAULT NULL,
+  purchase_type VARCHAR(60) DEFAULT NULL,
+  buyer_id INT UNSIGNED DEFAULT NULL,
+  price_list_id INT UNSIGNED DEFAULT NULL,
+  currency VARCHAR(3) NOT NULL DEFAULT 'INR',
+  vendor_gstin VARCHAR(20) DEFAULT NULL,
+  vendor_quote_no VARCHAR(60) DEFAULT NULL,
+  material_request_no VARCHAR(60) DEFAULT NULL,
+  project VARCHAR(120) DEFAULT NULL,
   status ENUM('pending','ordered','received','cancelled') NOT NULL DEFAULT 'pending',
   notes VARCHAR(255) DEFAULT NULL,
   total_amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+  net_amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+  tax_template_id INT UNSIGNED DEFAULT NULL,
+  place_of_supply VARCHAR(120) DEFAULT NULL,
+  gst_category ENUM('registered_business','unregistered_business','composition','overseas','sez') DEFAULT NULL,
+  reverse_charge TINYINT(1) NOT NULL DEFAULT 0,
+  tax_remarks VARCHAR(255) DEFAULT NULL,
+  rounding_method ENUM('nearest','up','down') NOT NULL DEFAULT 'nearest',
+  rounding_precision DECIMAL(10,2) NOT NULL DEFAULT 0.01,
+  additional_discount DECIMAL(14,2) NOT NULL DEFAULT 0,
+  additional_charge DECIMAL(14,2) NOT NULL DEFAULT 0,
+  adjustment_type ENUM('none','add','subtract') NOT NULL DEFAULT 'none',
+  adjustment_amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+  adjustment_remarks VARCHAR(255) DEFAULT NULL,
+  ship_to_warehouse_id INT UNSIGNED DEFAULT NULL,
+  expected_delivery_date DATE DEFAULT NULL,
+  expected_dispatch_date DATE DEFAULT NULL,
+  delivery_priority ENUM('low','normal','high','urgent') NOT NULL DEFAULT 'normal',
+  delivery_terms VARCHAR(60) DEFAULT NULL,
+  mode_of_transport VARCHAR(30) DEFAULT NULL,
+  shipping_partner_id INT UNSIGNED DEFAULT NULL,
+  freight_terms VARCHAR(60) DEFAULT NULL,
+  tracking_no VARCHAR(80) DEFAULT NULL,
+  delivery_remarks VARCHAR(255) DEFAULT NULL,
+  allow_partial_receipt TINYINT(1) NOT NULL DEFAULT 1,
+  inspection_required TINYINT(1) NOT NULL DEFAULT 0,
+  payment_terms_template_id INT UNSIGNED DEFAULT NULL,
+  payment_terms VARCHAR(120) DEFAULT NULL,
+  payment_method VARCHAR(60) DEFAULT NULL,
+  payment_due_date_basis ENUM('against_receipt','against_order_date','against_invoice') NOT NULL DEFAULT 'against_invoice',
+  advance_percentage DECIMAL(5,2) NOT NULL DEFAULT 0,
+  vendor_bank_details VARCHAR(255) DEFAULT NULL,
+  payment_instructions TEXT DEFAULT NULL,
+  order_type VARCHAR(40) NOT NULL DEFAULT 'Standard',
+  cost_center VARCHAR(120) DEFAULT NULL,
+  business_unit VARCHAR(120) DEFAULT NULL,
+  approver_id INT UNSIGNED DEFAULT NULL,
+  terms_conditions TEXT DEFAULT NULL,
+  remarks_internal TEXT DEFAULT NULL,
+  tags VARCHAR(255) DEFAULT NULL,
   created_by INT UNSIGNED DEFAULT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (vendor_id) REFERENCES vendors(id) ON DELETE CASCADE,
@@ -856,13 +974,47 @@ CREATE TABLE IF NOT EXISTS purchase_order_items (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   po_id INT UNSIGNED NOT NULL,
   product_id INT UNSIGNED NOT NULL,
+  description VARCHAR(255) DEFAULT NULL,
+  warehouse_id INT UNSIGNED DEFAULT NULL,
   quantity INT NOT NULL,
   uom VARCHAR(30) NOT NULL DEFAULT 'pcs',
   uom_conversion_factor DECIMAL(10,3) NOT NULL DEFAULT 1.000,
+  rate DECIMAL(14,2) NOT NULL DEFAULT 0,
+  discount_percent DECIMAL(5,2) NOT NULL DEFAULT 0,
   unit_cost DECIMAL(14,2) NOT NULL,
   subtotal DECIMAL(14,2) NOT NULL,
+  required_by DATE DEFAULT NULL,
   FOREIGN KEY (po_id) REFERENCES purchase_orders(id) ON DELETE CASCADE,
   FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Purchase Order Taxes & Charges tab rows (mirror of sales_order_taxes).
+CREATE TABLE IF NOT EXISTS purchase_order_taxes (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  po_id INT UNSIGNED NOT NULL,
+  type ENUM('on_item','on_order') NOT NULL DEFAULT 'on_item',
+  account_head_id INT UNSIGNED DEFAULT NULL,
+  description VARCHAR(120) DEFAULT NULL,
+  based_on ENUM('net_amount','actual_amount') NOT NULL DEFAULT 'net_amount',
+  rate_or_amount DECIMAL(14,4) NOT NULL DEFAULT 0,
+  amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+  sort_order INT NOT NULL DEFAULT 0,
+  FOREIGN KEY (po_id) REFERENCES purchase_orders(id) ON DELETE CASCADE,
+  FOREIGN KEY (account_head_id) REFERENCES ledger_accounts(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Purchase Order Payment Terms tab schedule (mirror of sales_order_payment_schedule).
+CREATE TABLE IF NOT EXISTS purchase_order_payment_schedule (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  po_id INT UNSIGNED NOT NULL,
+  due_on ENUM('order_date','on_receipt','on_invoice','fixed_days') NOT NULL DEFAULT 'order_date',
+  days_from INT NOT NULL DEFAULT 0,
+  payment_type ENUM('advance','part_payment','balance') NOT NULL DEFAULT 'balance',
+  percentage DECIMAL(5,2) NOT NULL DEFAULT 0,
+  amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+  remarks VARCHAR(120) DEFAULT NULL,
+  sort_order INT NOT NULL DEFAULT 0,
+  FOREIGN KEY (po_id) REFERENCES purchase_orders(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- A Goods Receipt Note (GRN) is what actually adds stock for a purchase
@@ -1122,13 +1274,28 @@ CREATE TABLE IF NOT EXISTS pos_gateway_payments (
 
 CREATE TABLE IF NOT EXISTS expenses (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  expense_no VARCHAR(30) DEFAULT NULL,
+  vendor_id INT UNSIGNED DEFAULT NULL,
+  payee VARCHAR(150) DEFAULT NULL,
   category VARCHAR(100) NOT NULL,
+  account_id INT UNSIGNED DEFAULT NULL,
   description VARCHAR(255) DEFAULT NULL,
   amount DECIMAL(14,2) NOT NULL,
+  tax_amount DECIMAL(14,2) NOT NULL DEFAULT 0,
   expense_date DATE NOT NULL,
-  payment_method ENUM('cash','bank_transfer','card','cheque','other') NOT NULL DEFAULT 'cash',
+  payment_method ENUM('cash','bank_transfer','card','cheque','other','upi','auto_debit') NOT NULL DEFAULT 'cash',
+  paid_from_account_id INT UNSIGNED DEFAULT NULL,
+  reference VARCHAR(120) DEFAULT NULL,
+  cost_center_id INT UNSIGNED DEFAULT NULL,
+  department_id INT UNSIGNED DEFAULT NULL,
+  project VARCHAR(100) DEFAULT NULL,
+  status ENUM('pending','approved','rejected') NOT NULL DEFAULT 'approved',
+  approved_by INT UNSIGNED DEFAULT NULL,
+  approved_at DATETIME DEFAULT NULL,
+  notes TEXT DEFAULT NULL,
   created_by INT UNSIGNED DEFAULT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uniq_expense_no (expense_no),
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -1138,22 +1305,166 @@ CREATE TABLE IF NOT EXISTS expenses (
 CREATE TABLE IF NOT EXISTS departments (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(120) NOT NULL,
-  description VARCHAR(255) DEFAULT NULL
+  code VARCHAR(20) DEFAULT NULL,
+  parent_id INT UNSIGNED DEFAULT NULL,
+  head_employee_id INT UNSIGNED DEFAULT NULL,
+  cost_center VARCHAR(60) DEFAULT NULL,
+  email VARCHAR(150) DEFAULT NULL,
+  location VARCHAR(120) DEFAULT NULL,
+  default_leave_approver_id INT UNSIGNED DEFAULT NULL,
+  description VARCHAR(255) DEFAULT NULL,
+  status ENUM('active','inactive') NOT NULL DEFAULT 'active',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_departments_parent FOREIGN KEY (parent_id) REFERENCES departments(id) ON DELETE SET NULL,
+  CONSTRAINT fk_departments_leave_approver FOREIGN KEY (default_leave_approver_id) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS employees (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   employee_code VARCHAR(30) NOT NULL UNIQUE,
+  salutation VARCHAR(10) DEFAULT NULL,
   name VARCHAR(150) NOT NULL,
+  gender ENUM('male','female','other') DEFAULT NULL,
+  date_of_birth DATE DEFAULT NULL,
+  marital_status ENUM('single','married','divorced','widowed') DEFAULT NULL,
+  blood_group VARCHAR(5) DEFAULT NULL,
+  nationality VARCHAR(60) DEFAULT NULL,
+  father_or_spouse_name VARCHAR(150) DEFAULT NULL,
   email VARCHAR(150) DEFAULT NULL,
+  personal_email VARCHAR(150) DEFAULT NULL,
   phone VARCHAR(40) DEFAULT NULL,
+  alternate_phone VARCHAR(40) DEFAULT NULL,
+  current_address VARCHAR(255) DEFAULT NULL,
+  permanent_address VARCHAR(255) DEFAULT NULL,
+  city VARCHAR(80) DEFAULT NULL,
+  state VARCHAR(80) DEFAULT NULL,
+  pincode VARCHAR(12) DEFAULT NULL,
+  country VARCHAR(60) DEFAULT NULL,
+  emergency_contact_name VARCHAR(150) DEFAULT NULL,
+  emergency_contact_relation VARCHAR(60) DEFAULT NULL,
+  emergency_contact_phone VARCHAR(40) DEFAULT NULL,
   department_id INT UNSIGNED DEFAULT NULL,
   designation VARCHAR(120) DEFAULT NULL,
+  reports_to_id INT UNSIGNED DEFAULT NULL,
+  employment_type ENUM('full_time','part_time','contract','intern','apprentice') NOT NULL DEFAULT 'full_time',
+  grade VARCHAR(40) DEFAULT NULL,
+  work_location VARCHAR(120) DEFAULT NULL,
+  work_shift VARCHAR(40) DEFAULT NULL,
   salary DECIMAL(14,2) NOT NULL DEFAULT 0,
+  salary_mode ENUM('bank_transfer','cash','cheque') NOT NULL DEFAULT 'bank_transfer',
+  bank_name VARCHAR(120) DEFAULT NULL,
+  bank_account_holder VARCHAR(150) DEFAULT NULL,
+  bank_account_no VARCHAR(40) DEFAULT NULL,
+  bank_ifsc VARCHAR(11) DEFAULT NULL,
+  pan_no VARCHAR(10) DEFAULT NULL,
+  aadhaar_no VARCHAR(12) DEFAULT NULL,
+  uan_no VARCHAR(12) DEFAULT NULL,
+  pf_no VARCHAR(30) DEFAULT NULL,
+  esi_no VARCHAR(20) DEFAULT NULL,
+  monthly_gross DECIMAL(14,2) NOT NULL DEFAULT 0,
+  monthly_deductions DECIMAL(14,2) NOT NULL DEFAULT 0,
+  annual_ctc DECIMAL(14,2) NOT NULL DEFAULT 0,
+  resignation_date DATE DEFAULT NULL,
+  relieving_date DATE DEFAULT NULL,
+  exit_reason VARCHAR(60) DEFAULT NULL,
+  exit_notes TEXT DEFAULT NULL,
+  remarks TEXT DEFAULT NULL,
+  tags VARCHAR(255) DEFAULT NULL,
   hire_date DATE DEFAULT NULL,
-  status ENUM('active','inactive') NOT NULL DEFAULT 'active',
+  probation_end_date DATE DEFAULT NULL,
+  confirmation_date DATE DEFAULT NULL,
+  notice_period_days SMALLINT UNSIGNED NOT NULL DEFAULT 30,
+  leave_approver_id INT UNSIGNED DEFAULT NULL,
+  user_id INT UNSIGNED DEFAULT NULL,
+  biometric_id VARCHAR(40) DEFAULT NULL,
+  status ENUM('active','inactive','left') NOT NULL DEFAULT 'active',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL
+  updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL,
+  CONSTRAINT fk_employees_reports_to FOREIGN KEY (reports_to_id) REFERENCES employees(id) ON DELETE SET NULL,
+  CONSTRAINT fk_employees_leave_approver FOREIGN KEY (leave_approver_id) REFERENCES users(id) ON DELETE SET NULL,
+  CONSTRAINT fk_employees_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- departments.head_employee_id -> employees (added here because employees is created after departments)
+SET @fk := (SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME = 'departments' AND CONSTRAINT_NAME = 'fk_departments_head');
+SET @sql := IF(@fk = 0, 'ALTER TABLE departments ADD CONSTRAINT fk_departments_head FOREIGN KEY (head_employee_id) REFERENCES employees(id) ON DELETE SET NULL', 'DO 0');
+PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+
+CREATE TABLE IF NOT EXISTS employee_salary_components (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  employee_id INT UNSIGNED NOT NULL,
+  component_type ENUM('earning','deduction') NOT NULL,
+  label VARCHAR(100) NOT NULL,
+  amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+  sort_order SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+  FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS employee_education (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  employee_id INT UNSIGNED NOT NULL,
+  qualification VARCHAR(120) NOT NULL,
+  institute VARCHAR(150) DEFAULT NULL,
+  year_of_passing SMALLINT UNSIGNED DEFAULT NULL,
+  grade VARCHAR(20) DEFAULT NULL,
+  sort_order SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+  FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS employee_experience (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  employee_id INT UNSIGNED NOT NULL,
+  company VARCHAR(150) NOT NULL,
+  designation VARCHAR(120) DEFAULT NULL,
+  from_date DATE DEFAULT NULL,
+  to_date DATE DEFAULT NULL,
+  last_salary DECIMAL(14,2) DEFAULT NULL,
+  sort_order SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+  FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS leave_types (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  code VARCHAR(30) NOT NULL UNIQUE,
+  name VARCHAR(80) NOT NULL,
+  annual_allocation DECIMAL(5,1) NOT NULL DEFAULT 0,
+  is_paid TINYINT(1) NOT NULL DEFAULT 1,
+  allow_half_day TINYINT(1) NOT NULL DEFAULT 1,
+  status ENUM('active','inactive') NOT NULL DEFAULT 'active',
+  sort_order SMALLINT UNSIGNED NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+INSERT IGNORE INTO leave_types (code, name, annual_allocation, is_paid, sort_order) VALUES
+  ('casual', 'Casual Leave', 12, 1, 1),
+  ('sick', 'Sick Leave', 12, 1, 2),
+  ('annual', 'Earned / Annual Leave', 18, 1, 3),
+  ('unpaid', 'Leave Without Pay', 0, 0, 4);
+
+CREATE TABLE IF NOT EXISTS leaves (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  application_no VARCHAR(30) DEFAULT NULL,
+  employee_id INT UNSIGNED NOT NULL,
+  leave_type VARCHAR(60) NOT NULL DEFAULT 'casual',
+  start_date DATE NOT NULL,
+  end_date DATE NOT NULL,
+  half_day TINYINT(1) NOT NULL DEFAULT 0,
+  half_day_date DATE DEFAULT NULL,
+  total_days DECIMAL(5,1) NOT NULL DEFAULT 0,
+  reason VARCHAR(255) DEFAULT NULL,
+  contact_during_leave VARCHAR(120) DEFAULT NULL,
+  handover_to_id INT UNSIGNED DEFAULT NULL,
+  leave_approver_id INT UNSIGNED DEFAULT NULL,
+  status ENUM('pending','approved','rejected','cancelled') NOT NULL DEFAULT 'pending',
+  decided_by INT UNSIGNED DEFAULT NULL,
+  decided_at DATETIME DEFAULT NULL,
+  decision_remarks VARCHAR(255) DEFAULT NULL,
+  created_by INT UNSIGNED DEFAULT NULL,
+  applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+  CONSTRAINT fk_leaves_handover FOREIGN KEY (handover_to_id) REFERENCES employees(id) ON DELETE SET NULL,
+  CONSTRAINT fk_leaves_approver FOREIGN KEY (leave_approver_id) REFERENCES users(id) ON DELETE SET NULL,
+  CONSTRAINT fk_leaves_decided_by FOREIGN KEY (decided_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS attendance (
@@ -1161,23 +1472,19 @@ CREATE TABLE IF NOT EXISTS attendance (
   employee_id INT UNSIGNED NOT NULL,
   attendance_date DATE NOT NULL,
   status ENUM('present','absent','half_day','leave') NOT NULL DEFAULT 'present',
+  shift VARCHAR(40) DEFAULT NULL,
   check_in TIME DEFAULT NULL,
   check_out TIME DEFAULT NULL,
+  late_entry TINYINT(1) NOT NULL DEFAULT 0,
+  early_exit TINYINT(1) NOT NULL DEFAULT 0,
+  working_hours DECIMAL(5,2) DEFAULT NULL,
+  leave_id INT UNSIGNED DEFAULT NULL,
   notes VARCHAR(255) DEFAULT NULL,
+  marked_by INT UNSIGNED DEFAULT NULL,
+  updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uniq_emp_date (employee_id, attendance_date),
-  FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-CREATE TABLE IF NOT EXISTS leaves (
-  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  employee_id INT UNSIGNED NOT NULL,
-  leave_type VARCHAR(60) NOT NULL DEFAULT 'casual',
-  start_date DATE NOT NULL,
-  end_date DATE NOT NULL,
-  reason VARCHAR(255) DEFAULT NULL,
-  status ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
-  applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
+  FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+  CONSTRAINT fk_attendance_leave FOREIGN KEY (leave_id) REFERENCES leaves(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS salary_slips (
@@ -1186,15 +1493,28 @@ CREATE TABLE IF NOT EXISTS salary_slips (
   employee_id INT UNSIGNED NOT NULL,
   pay_period_start DATE NOT NULL,
   pay_period_end DATE NOT NULL,
+  posting_date DATE DEFAULT NULL,
+  working_days DECIMAL(5,1) NOT NULL DEFAULT 0,
+  present_days DECIMAL(5,1) NOT NULL DEFAULT 0,
+  paid_leave_days DECIMAL(5,1) NOT NULL DEFAULT 0,
+  lop_days DECIMAL(5,1) NOT NULL DEFAULT 0,
+  payment_days DECIMAL(5,1) NOT NULL DEFAULT 0,
+  prorate_lop TINYINT(1) NOT NULL DEFAULT 1,
   basic_salary DECIMAL(14,2) NOT NULL DEFAULT 0,
+  full_basic_salary DECIMAL(14,2) NOT NULL DEFAULT 0,
   total_earnings DECIMAL(14,2) NOT NULL DEFAULT 0,
   total_deductions DECIMAL(14,2) NOT NULL DEFAULT 0,
   net_pay DECIMAL(14,2) NOT NULL DEFAULT 0,
+  salary_mode ENUM('bank_transfer','cash','cheque') DEFAULT NULL,
+  bank_name VARCHAR(120) DEFAULT NULL,
+  bank_account_no VARCHAR(40) DEFAULT NULL,
+  bank_ifsc VARCHAR(11) DEFAULT NULL,
   status ENUM('draft','paid') NOT NULL DEFAULT 'draft',
   payment_date DATE DEFAULT NULL,
   payment_method ENUM('cash','bank_transfer','cheque','other') DEFAULT NULL,
   expense_id INT UNSIGNED DEFAULT NULL,
   notes VARCHAR(255) DEFAULT NULL,
+  remarks TEXT DEFAULT NULL,
   created_by INT UNSIGNED DEFAULT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY uniq_emp_period (employee_id, pay_period_start, pay_period_end),
@@ -1209,6 +1529,7 @@ CREATE TABLE IF NOT EXISTS salary_slip_items (
   component_type ENUM('earning','deduction') NOT NULL,
   label VARCHAR(100) NOT NULL,
   amount DECIMAL(14,2) NOT NULL,
+  full_amount DECIMAL(14,2) DEFAULT NULL,
   FOREIGN KEY (salary_slip_id) REFERENCES salary_slips(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -1228,6 +1549,103 @@ CREATE TABLE IF NOT EXISTS print_formats (
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- ---------------------------------------------------------------------
+-- Stock Entries (Supply Chain): multi-line stock documents that move
+-- stock only when submitted. See migration 026 for details.
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS stock_entries (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  entry_no VARCHAR(30) NOT NULL UNIQUE,
+  entry_type ENUM('material_receipt','material_issue','material_transfer','stock_adjustment') NOT NULL DEFAULT 'material_receipt',
+  posting_date DATE NOT NULL,
+  posting_time TIME DEFAULT NULL,
+  purpose VARCHAR(120) DEFAULT NULL,
+  source_warehouse_id INT UNSIGNED DEFAULT NULL,
+  target_warehouse_id INT UNSIGNED DEFAULT NULL,
+  vendor_id INT UNSIGNED DEFAULT NULL,
+  reference_no VARCHAR(80) DEFAULT NULL,
+  requested_by INT UNSIGNED DEFAULT NULL,
+  department VARCHAR(120) DEFAULT NULL,
+  project VARCHAR(120) DEFAULT NULL,
+  notes VARCHAR(255) DEFAULT NULL,
+  -- Additional Costs tab
+  distribute_costs_by ENUM('amount','qty') NOT NULL DEFAULT 'amount',
+  total_qty INT NOT NULL DEFAULT 0,
+  total_outgoing_value DECIMAL(14,2) NOT NULL DEFAULT 0,
+  total_incoming_value DECIMAL(14,2) NOT NULL DEFAULT 0,
+  total_additional_costs DECIMAL(14,2) NOT NULL DEFAULT 0,
+  value_difference DECIMAL(14,2) NOT NULL DEFAULT 0,
+  -- Transport tab
+  mode_of_transport VARCHAR(30) DEFAULT NULL,
+  shipping_partner_id INT UNSIGNED DEFAULT NULL,
+  vehicle_no VARCHAR(30) DEFAULT NULL,
+  driver_name VARCHAR(120) DEFAULT NULL,
+  driver_phone VARCHAR(30) DEFAULT NULL,
+  tracking_no VARCHAR(80) DEFAULT NULL,
+  eway_bill_no VARCHAR(30) DEFAULT NULL,
+  dispatch_date DATE DEFAULT NULL,
+  expected_arrival_date DATE DEFAULT NULL,
+  transport_remarks VARCHAR(255) DEFAULT NULL,
+  -- More Info tab
+  cost_center VARCHAR(120) DEFAULT NULL,
+  business_unit VARCHAR(120) DEFAULT NULL,
+  approver_id INT UNSIGNED DEFAULT NULL,
+  inspection_required TINYINT(1) NOT NULL DEFAULT 0,
+  remarks_internal TEXT DEFAULT NULL,
+  tags VARCHAR(255) DEFAULT NULL,
+  status ENUM('draft','submitted','cancelled') NOT NULL DEFAULT 'draft',
+  submitted_at DATETIME DEFAULT NULL,
+  submitted_by INT UNSIGNED DEFAULT NULL,
+  created_by INT UNSIGNED DEFAULT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (source_warehouse_id) REFERENCES warehouses(id) ON DELETE SET NULL,
+  FOREIGN KEY (target_warehouse_id) REFERENCES warehouses(id) ON DELETE SET NULL,
+  FOREIGN KEY (vendor_id) REFERENCES vendors(id) ON DELETE SET NULL,
+  FOREIGN KEY (shipping_partner_id) REFERENCES shipping_partners(id) ON DELETE SET NULL,
+  FOREIGN KEY (requested_by) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (approver_id) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (submitted_by) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS stock_entry_items (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  stock_entry_id INT UNSIGNED NOT NULL,
+  product_id INT UNSIGNED NOT NULL,
+  description VARCHAR(255) DEFAULT NULL,
+  source_warehouse_id INT UNSIGNED DEFAULT NULL,
+  target_warehouse_id INT UNSIGNED DEFAULT NULL,
+  -- Signed only for stock_adjustment lines (negative = reduce stock).
+  quantity INT NOT NULL,
+  uom VARCHAR(30) NOT NULL DEFAULT 'pcs',
+  uom_conversion_factor DECIMAL(14,4) NOT NULL DEFAULT 1,
+  basic_rate DECIMAL(14,2) NOT NULL DEFAULT 0,
+  basic_amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+  additional_cost DECIMAL(14,2) NOT NULL DEFAULT 0,
+  valuation_rate DECIMAL(14,2) NOT NULL DEFAULT 0,
+  amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+  batch_no VARCHAR(60) DEFAULT NULL,
+  manufacturing_date DATE DEFAULT NULL,
+  expiry_date DATE DEFAULT NULL,
+  serial_numbers TEXT DEFAULT NULL,
+  sort_order INT NOT NULL DEFAULT 0,
+  FOREIGN KEY (stock_entry_id) REFERENCES stock_entries(id) ON DELETE CASCADE,
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT,
+  FOREIGN KEY (source_warehouse_id) REFERENCES warehouses(id) ON DELETE SET NULL,
+  FOREIGN KEY (target_warehouse_id) REFERENCES warehouses(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS stock_entry_costs (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  stock_entry_id INT UNSIGNED NOT NULL,
+  account_head_id INT UNSIGNED DEFAULT NULL,
+  description VARCHAR(120) DEFAULT NULL,
+  amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+  sort_order INT NOT NULL DEFAULT 0,
+  FOREIGN KEY (stock_entry_id) REFERENCES stock_entries(id) ON DELETE CASCADE,
+  FOREIGN KEY (account_head_id) REFERENCES ledger_accounts(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- ---------------------------------------------------------------------
@@ -1238,6 +1656,130 @@ SET FOREIGN_KEY_CHECKS = 1;
 -- (password_hash for 'Admin@123' using PHP password_hash/BCRYPT)
 INSERT INTO users (name, first_name, email, password_hash, role, status) VALUES
 ('Administrator', 'Administrator', 'admin@example.com', '$2y$12$FGHd5COVc9dRpxaOLavEBeAt1b4DTscuTkJ78Vpr.oojbAyBxH8za', 'admin', 'active');
+
+-- Finance module (see migration 030): cost centers, journal vouchers,
+-- bank reconciliation, tax filings, budgets and the report log.
+CREATE TABLE IF NOT EXISTS fin_cost_centers (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  code VARCHAR(20) DEFAULT NULL,
+  name VARCHAR(120) NOT NULL UNIQUE,
+  description VARCHAR(255) DEFAULT NULL,
+  status ENUM('active','inactive') NOT NULL DEFAULT 'active',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS fin_journal_entries (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  voucher_no VARCHAR(30) NOT NULL UNIQUE,
+  voucher_type ENUM('journal','bank_payment','bank_receipt','cash_payment','cash_receipt','contra') NOT NULL DEFAULT 'journal',
+  posting_date DATE NOT NULL,
+  reference_no VARCHAR(60) DEFAULT NULL,
+  reference_date DATE DEFAULT NULL,
+  party_name VARCHAR(150) DEFAULT NULL,
+  money_account_id INT UNSIGNED DEFAULT NULL,
+  cost_center_id INT UNSIGNED DEFAULT NULL,
+  project VARCHAR(100) DEFAULT NULL,
+  narration VARCHAR(255) DEFAULT NULL,
+  total_debit DECIMAL(14,2) NOT NULL DEFAULT 0,
+  total_credit DECIMAL(14,2) NOT NULL DEFAULT 0,
+  status ENUM('draft','submitted','cancelled') NOT NULL DEFAULT 'draft',
+  remarks TEXT DEFAULT NULL,
+  created_by INT UNSIGNED DEFAULT NULL,
+  submitted_at DATETIME DEFAULT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_journal_date (posting_date),
+  FOREIGN KEY (cost_center_id) REFERENCES fin_cost_centers(id) ON DELETE SET NULL,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS fin_journal_lines (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  journal_id INT UNSIGNED NOT NULL,
+  account_id INT UNSIGNED NOT NULL,
+  debit DECIMAL(14,2) NOT NULL DEFAULT 0,
+  credit DECIMAL(14,2) NOT NULL DEFAULT 0,
+  cost_center_id INT UNSIGNED DEFAULT NULL,
+  project VARCHAR(100) DEFAULT NULL,
+  line_narration VARCHAR(255) DEFAULT NULL,
+  sort_order INT NOT NULL DEFAULT 0,
+  INDEX idx_journal_line_account (account_id),
+  FOREIGN KEY (journal_id) REFERENCES fin_journal_entries(id) ON DELETE CASCADE,
+  FOREIGN KEY (account_id) REFERENCES ledger_accounts(id),
+  FOREIGN KEY (cost_center_id) REFERENCES fin_cost_centers(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS fin_bank_clearances (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  source_type VARCHAR(20) NOT NULL,
+  source_id INT UNSIGNED NOT NULL,
+  account_id INT UNSIGNED NOT NULL,
+  cleared_on DATE NOT NULL,
+  created_by INT UNSIGNED DEFAULT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uniq_clearance (source_type, source_id, account_id),
+  FOREIGN KEY (account_id) REFERENCES ledger_accounts(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS fin_tax_filings (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  category ENUM('gst','tds','pf','esi','professional_tax','income_tax','other') NOT NULL DEFAULT 'gst',
+  return_type VARCHAR(40) NOT NULL,
+  period_month DATE NOT NULL,
+  due_date DATE NOT NULL,
+  filing_date DATE DEFAULT NULL,
+  status ENUM('pending','filed','paid') NOT NULL DEFAULT 'pending',
+  tax_liability DECIMAL(14,2) NOT NULL DEFAULT 0,
+  tax_paid DECIMAL(14,2) NOT NULL DEFAULT 0,
+  payment_date DATE DEFAULT NULL,
+  challan_no VARCHAR(60) DEFAULT NULL,
+  ack_no VARCHAR(60) DEFAULT NULL,
+  remarks VARCHAR(255) DEFAULT NULL,
+  created_by INT UNSIGNED DEFAULT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uniq_tax_return_period (return_type, period_month),
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS fin_budgets (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(150) NOT NULL,
+  fiscal_year_start DATE NOT NULL,
+  department_id INT UNSIGNED DEFAULT NULL,
+  category VARCHAR(100) DEFAULT NULL,
+  cost_center_id INT UNSIGNED DEFAULT NULL,
+  amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+  distribution ENUM('equal','custom') NOT NULL DEFAULT 'equal',
+  status ENUM('draft','active','closed') NOT NULL DEFAULT 'active',
+  notes VARCHAR(255) DEFAULT NULL,
+  created_by INT UNSIGNED DEFAULT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL,
+  FOREIGN KEY (cost_center_id) REFERENCES fin_cost_centers(id) ON DELETE SET NULL,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS fin_budget_months (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  budget_id INT UNSIGNED NOT NULL,
+  month_index TINYINT UNSIGNED NOT NULL,
+  amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+  UNIQUE KEY uniq_budget_month (budget_id, month_index),
+  FOREIGN KEY (budget_id) REFERENCES fin_budgets(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS fin_report_log (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  report_type VARCHAR(30) NOT NULL,
+  report_name VARCHAR(150) NOT NULL,
+  period_label VARCHAR(80) DEFAULT NULL,
+  query_string VARCHAR(255) DEFAULT NULL,
+  generated_by INT UNSIGNED DEFAULT NULL,
+  generated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (generated_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 INSERT INTO user_roles (user_id, role_key) VALUES (1, 'system_admin');
 
@@ -1251,14 +1793,21 @@ INSERT INTO settings (setting_key, setting_value) VALUES
 ('tax_rate', '0');
 
 INSERT INTO price_lists (name, currency, is_default) VALUES
-('Standard Selling', 'INR', 1);
+('Standard Selling', 'INR', 1),
+('Standard Buying', 'INR', 0);
 
 INSERT INTO ledger_accounts (name, account_type) VALUES
 ('Output CGST', 'tax'),
 ('Output SGST', 'tax'),
 ('Output IGST', 'tax'),
 ('Freight Charges', 'other'),
-('Packaging Charges', 'other');
+('Packaging Charges', 'other'),
+('Input CGST', 'tax'),
+('Input SGST', 'tax'),
+('Input IGST', 'tax'),
+('Freight Inward', 'other'),
+('Handling Charges', 'other'),
+('Loading / Unloading', 'other');
 
 INSERT INTO tax_templates (id, name) VALUES (1, 'GST - Standard (Sales)');
 INSERT INTO tax_template_items (tax_template_id, type, account_head_id, description, based_on, rate_or_amount, sort_order) VALUES
@@ -1282,3 +1831,188 @@ INSERT INTO categories (name, description) VALUES
 INSERT INTO warehouses (id, name, parent_id, is_group) VALUES
 (1, 'All Warehouses', NULL, 1),
 (2, 'Stores', 1, 0);
+
+-- Finance: default cost center, Chart of Accounts groups + system ledgers
+-- the derived General Ledger posts to, and Configuration defaults (same as
+-- migration 030).
+INSERT IGNORE INTO fin_cost_centers (code, name, description) VALUES
+('HO', 'Head Office', 'Default cost center');
+INSERT INTO ledger_accounts (account_code, name, is_group, root_type, account_type, account_nature, statement_category, system_key) VALUES
+('1000', 'Assets',                  1, 'asset',     'current_asset',     'debit',  'balance_sheet', 'grp_assets'),
+('1100', 'Current Assets',          1, 'asset',     'current_asset',     'debit',  'balance_sheet', 'grp_current_assets'),
+('1110', 'Bank Accounts',           1, 'asset',     'bank',              'debit',  'balance_sheet', 'grp_bank'),
+('1200', 'Non-Current Assets',      1, 'asset',     'fixed_asset',       'debit',  'balance_sheet', 'grp_fixed_assets'),
+('2000', 'Liabilities',             1, 'liability', 'current_liability', 'credit', 'balance_sheet', 'grp_liabilities'),
+('2100', 'Current Liabilities',     1, 'liability', 'current_liability', 'credit', 'balance_sheet', 'grp_current_liabilities'),
+('2120', 'Duties & Taxes',          1, 'liability', 'tax',               'credit', 'balance_sheet', 'grp_taxes'),
+('2200', 'Non-Current Liabilities', 1, 'liability', 'loan',              'credit', 'balance_sheet', 'grp_loans'),
+('3000', 'Equity',                  1, 'equity',    'equity',            'credit', 'balance_sheet', 'grp_equity'),
+('4000', 'Income',                  1, 'income',    'income',            'credit', 'profit_loss',   'grp_income'),
+('5000', 'Expenses',                1, 'expense',   'expense',           'debit',  'profit_loss',   'grp_expenses'),
+('5900', 'Indirect Expenses',       1, 'expense',   'expense',           'debit',  'profit_loss',   'grp_indirect_expenses')
+ON DUPLICATE KEY UPDATE
+  account_nature     = IF(ledger_accounts.root_type IS NULL, VALUES(account_nature), ledger_accounts.account_nature),
+  statement_category = COALESCE(ledger_accounts.statement_category, VALUES(statement_category)),
+  root_type          = COALESCE(ledger_accounts.root_type, VALUES(root_type)),
+  account_code       = COALESCE(ledger_accounts.account_code, VALUES(account_code)),
+  system_key         = COALESCE(ledger_accounts.system_key, VALUES(system_key));
+
+INSERT INTO ledger_accounts (account_code, name, is_group, root_type, account_type, account_nature, statement_category, is_bank, is_cash, system_key) VALUES
+('1110-01', 'Primary Bank Account', 0, 'asset',     'bank',               'debit',  'balance_sheet', 1, 0, 'bank'),
+('1120',    'Cash in Hand',         0, 'asset',     'cash',               'debit',  'balance_sheet', 0, 1, 'cash'),
+('1130',    'Accounts Receivable',  0, 'asset',     'receivable',         'debit',  'balance_sheet', 0, 0, 'receivable'),
+('1140',    'Input GST',            0, 'asset',     'tax',                'debit',  'balance_sheet', 0, 0, 'input_tax'),
+('2110',    'Accounts Payable',     0, 'liability', 'payable',            'credit', 'balance_sheet', 0, 0, 'payable'),
+('2121',    'Output GST Payable',   0, 'liability', 'tax',                'credit', 'balance_sheet', 0, 0, 'output_tax'),
+('3100',    'Owner''s Equity',      0, 'equity',    'equity',             'credit', 'balance_sheet', 0, 0, 'equity'),
+('3200',    'Opening Balance Equity', 0, 'equity',  'equity',             'credit', 'balance_sheet', 0, 0, 'opening_equity'),
+('4100',    'Sales Revenue',        0, 'income',    'income',             'credit', 'profit_loss',   0, 0, 'sales'),
+('5100',    'Operating Expenses',   0, 'expense',   'expense',            'debit',  'profit_loss',   0, 0, 'expense'),
+('5200',    'Purchases',            0, 'expense',   'cost_of_goods_sold', 'debit',  'profit_loss',   0, 0, 'purchases'),
+('5300',    'Salaries & Wages',     0, 'expense',   'expense',            'debit',  'profit_loss',   0, 0, 'payroll')
+ON DUPLICATE KEY UPDATE
+  account_nature     = IF(ledger_accounts.root_type IS NULL, VALUES(account_nature), ledger_accounts.account_nature),
+  statement_category = COALESCE(ledger_accounts.statement_category, VALUES(statement_category)),
+  root_type          = COALESCE(ledger_accounts.root_type, VALUES(root_type)),
+  account_code       = COALESCE(ledger_accounts.account_code, VALUES(account_code)),
+  system_key         = COALESCE(ledger_accounts.system_key, VALUES(system_key));
+
+-- Place the groups and system ledgers in the tree (only where unset).
+UPDATE ledger_accounts c JOIN ledger_accounts p ON p.system_key = 'grp_assets'
+   SET c.parent_id = p.id WHERE c.system_key IN ('grp_current_assets','grp_fixed_assets') AND c.parent_id IS NULL;
+UPDATE ledger_accounts c JOIN ledger_accounts p ON p.system_key = 'grp_current_assets'
+   SET c.parent_id = p.id WHERE c.system_key IN ('grp_bank','cash','receivable','input_tax') AND c.parent_id IS NULL;
+UPDATE ledger_accounts c JOIN ledger_accounts p ON p.system_key = 'grp_bank'
+   SET c.parent_id = p.id WHERE c.system_key = 'bank' AND c.parent_id IS NULL;
+UPDATE ledger_accounts c JOIN ledger_accounts p ON p.system_key = 'grp_liabilities'
+   SET c.parent_id = p.id WHERE c.system_key IN ('grp_current_liabilities','grp_loans') AND c.parent_id IS NULL;
+UPDATE ledger_accounts c JOIN ledger_accounts p ON p.system_key = 'grp_current_liabilities'
+   SET c.parent_id = p.id WHERE c.system_key IN ('payable','grp_taxes') AND c.parent_id IS NULL;
+UPDATE ledger_accounts c JOIN ledger_accounts p ON p.system_key = 'grp_taxes'
+   SET c.parent_id = p.id WHERE c.system_key = 'output_tax' AND c.parent_id IS NULL;
+UPDATE ledger_accounts c JOIN ledger_accounts p ON p.system_key = 'grp_equity'
+   SET c.parent_id = p.id WHERE c.system_key IN ('equity','opening_equity') AND c.parent_id IS NULL;
+UPDATE ledger_accounts c JOIN ledger_accounts p ON p.system_key = 'grp_income'
+   SET c.parent_id = p.id WHERE c.system_key = 'sales' AND c.parent_id IS NULL;
+UPDATE ledger_accounts c JOIN ledger_accounts p ON p.system_key = 'grp_expenses'
+   SET c.parent_id = p.id WHERE c.system_key IN ('expense','purchases','payroll','grp_indirect_expenses') AND c.parent_id IS NULL;
+
+-- Existing tax / charge heads from before this migration: file them under
+-- the matching group so the tree has no orphans.
+UPDATE ledger_accounts c JOIN ledger_accounts p ON p.system_key = 'grp_taxes'
+   SET c.parent_id = p.id, c.root_type = 'liability', c.account_nature = 'credit', c.statement_category = 'balance_sheet'
+ WHERE c.system_key IS NULL AND c.root_type IS NULL AND c.account_type = 'tax';
+UPDATE ledger_accounts c JOIN ledger_accounts p ON p.system_key = 'grp_income'
+   SET c.parent_id = p.id, c.root_type = 'income', c.account_nature = 'credit', c.statement_category = 'profit_loss'
+ WHERE c.system_key IS NULL AND c.root_type IS NULL AND c.account_type = 'income';
+UPDATE ledger_accounts c JOIN ledger_accounts p ON p.system_key = 'grp_indirect_expenses'
+   SET c.parent_id = p.id, c.root_type = 'expense', c.account_nature = 'debit', c.statement_category = 'profit_loss'
+ WHERE c.system_key IS NULL AND c.root_type IS NULL AND c.account_type IN ('expense','other');
+
+INSERT IGNORE INTO settings (setting_key, setting_value) VALUES
+('fin_fy_start_month', '4'),
+('fin_tds_applicable', '1'),
+('fin_default_cost_center_id', ''),
+('fin_expense_approval_limit', '0'),
+('fin_prefix_journal', 'JV'),
+('fin_prefix_bank_payment', 'BP'),
+('fin_prefix_bank_receipt', 'BR'),
+('fin_prefix_cash_payment', 'CP'),
+('fin_prefix_cash_receipt', 'CR'),
+('fin_prefix_contra', 'CT'),
+('fin_prefix_expense', 'EXP'),
+('fin_number_padding', '4');
+
+-- ---------------------------------------------------------------------
+-- POS module (same as migration 031_pos_module.sql)
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS pos_profiles (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(60) NOT NULL UNIQUE,
+  warehouse_id INT UNSIGNED DEFAULT NULL,
+  price_list_id INT UNSIGNED DEFAULT NULL,
+  status ENUM('active','inactive') NOT NULL DEFAULT 'active',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (warehouse_id) REFERENCES warehouses(id) ON DELETE SET NULL,
+  FOREIGN KEY (price_list_id) REFERENCES price_lists(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS pos_shifts (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  shift_no VARCHAR(30) NOT NULL UNIQUE,
+  pos_profile_id INT UNSIGNED DEFAULT NULL,
+  warehouse_id INT UNSIGNED DEFAULT NULL,
+  status ENUM('open','closed') NOT NULL DEFAULT 'open',
+  opened_by INT UNSIGNED DEFAULT NULL,
+  opened_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  opening_cash DECIMAL(14,2) NOT NULL DEFAULT 0,
+  closed_by INT UNSIGNED DEFAULT NULL,
+  closed_at DATETIME DEFAULT NULL,
+  expected_cash DECIMAL(14,2) NOT NULL DEFAULT 0,
+  counted_cash DECIMAL(14,2) NOT NULL DEFAULT 0,
+  difference DECIMAL(14,2) NOT NULL DEFAULT 0,
+  total_sales DECIMAL(14,2) NOT NULL DEFAULT 0,
+  total_returns DECIMAL(14,2) NOT NULL DEFAULT 0,
+  opening_remarks VARCHAR(255) DEFAULT NULL,
+  remarks VARCHAR(255) DEFAULT NULL,
+  INDEX idx_pos_shift_status (pos_profile_id, status),
+  FOREIGN KEY (pos_profile_id) REFERENCES pos_profiles(id) ON DELETE SET NULL,
+  FOREIGN KEY (warehouse_id) REFERENCES warehouses(id) ON DELETE SET NULL,
+  FOREIGN KEY (opened_by) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (closed_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS pos_held_orders (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  hold_no VARCHAR(30) NOT NULL UNIQUE,
+  pos_profile_id INT UNSIGNED DEFAULT NULL,
+  warehouse_id INT UNSIGNED DEFAULT NULL,
+  customer_id INT UNSIGNED DEFAULT NULL,
+  cart_json MEDIUMTEXT NOT NULL,
+  items_count INT NOT NULL DEFAULT 0,
+  amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+  note VARCHAR(255) DEFAULT NULL,
+  created_by INT UNSIGNED DEFAULT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (pos_profile_id) REFERENCES pos_profiles(id) ON DELETE SET NULL,
+  FOREIGN KEY (warehouse_id) REFERENCES warehouses(id) ON DELETE SET NULL,
+  FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+ALTER TABLE sales_orders
+  ADD COLUMN IF NOT EXISTS pos_no VARCHAR(30) DEFAULT NULL AFTER channel,
+  ADD COLUMN IF NOT EXISTS pos_profile_id INT UNSIGNED DEFAULT NULL AFTER pos_no,
+  ADD COLUMN IF NOT EXISTS pos_shift_id INT UNSIGNED DEFAULT NULL AFTER pos_profile_id,
+  ADD COLUMN IF NOT EXISTS item_discount DECIMAL(14,2) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS tax_amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS round_off DECIMAL(14,2) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS amount_received DECIMAL(14,2) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS change_amount DECIMAL(14,2) NOT NULL DEFAULT 0;
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_sales_orders_pos_no ON sales_orders (pos_no);
+CREATE INDEX IF NOT EXISTS idx_sales_orders_pos_shift ON sales_orders (pos_shift_id);
+
+ALTER TABLE sales_order_items
+  ADD COLUMN IF NOT EXISTS discount_amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS tax_rate DECIMAL(6,2) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS tax_amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS line_total DECIMAL(14,2) NOT NULL DEFAULT 0;
+
+ALTER TABLE payments MODIFY COLUMN method ENUM('cash','bank_transfer','card','cheque','other','credit_note','upi','wallet','store_credit') NOT NULL DEFAULT 'cash';
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS pos_shift_id INT UNSIGNED DEFAULT NULL;
+CREATE INDEX IF NOT EXISTS idx_payments_pos_shift ON payments (pos_shift_id);
+
+ALTER TABLE sales_returns
+  ADD COLUMN IF NOT EXISTS pos_shift_id INT UNSIGNED DEFAULT NULL,
+  ADD COLUMN IF NOT EXISTS refund_method VARCHAR(20) DEFAULT NULL,
+  ADD COLUMN IF NOT EXISTS exchange_status ENUM('none','open','used','refunded') NOT NULL DEFAULT 'none',
+  ADD COLUMN IF NOT EXISTS exchange_amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS exchange_order_id INT UNSIGNED DEFAULT NULL;
+
+-- One default terminal on the first active store, so POS works right away.
+INSERT INTO pos_profiles (name, warehouse_id, price_list_id)
+SELECT 'POS-01',
+       (SELECT id FROM warehouses WHERE is_group = 0 AND status = 'active' ORDER BY id LIMIT 1),
+       (SELECT id FROM price_lists WHERE is_default = 1 ORDER BY id LIMIT 1)
+FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM pos_profiles);

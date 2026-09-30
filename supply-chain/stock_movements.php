@@ -30,7 +30,7 @@ require __DIR__ . '/../includes/header.php';
 <?php endif; ?>
 <div class="d-flex justify-content-between align-items-center mb-3">
   <input type="text" class="form-control" style="max-width:280px" placeholder="Search movements..." data-table-search="#moveTable">
-  <?php if ($canEdit): ?><a href="stock_adjust.php" class="btn btn-brand"><i class="fa-solid fa-plus"></i> New Stock Movement</a><?php endif; ?>
+  <?php if ($canEdit): ?><a href="stock_entry_form.php" class="btn btn-brand"><i class="fa-solid fa-plus"></i> New Stock Entry</a><?php endif; ?>
 </div>
 <div class="card p-3">
   <div class="table-responsive">
