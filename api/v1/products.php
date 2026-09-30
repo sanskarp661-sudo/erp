@@ -33,7 +33,22 @@ foreach (db()->query($reservedSql) as $row) {
     $reserved[(int)$row['product_id']] = (int)$row['qty'];
 }
 
-function api_product_row(array $p, array $reserved): array
+function api_product_images_map(array $productIds): array
+{
+    if (!$productIds) {
+        return [];
+    }
+    $placeholders = implode(',', array_fill(0, count($productIds), '?'));
+    $stmt = db()->prepare("SELECT product_id, image FROM product_images WHERE product_id IN ($placeholders) ORDER BY sort_order, id");
+    $stmt->execute($productIds);
+    $map = [];
+    foreach ($stmt->fetchAll() as $row) {
+        $map[(int)$row['product_id']][] = api_product_image_url($row['image']);
+    }
+    return $map;
+}
+
+function api_product_row(array $p, array $reserved, array $images = []): array
 {
     $available = (int)$p['quantity'] - ($reserved[(int)$p['id']] ?? 0);
     return [
@@ -44,6 +59,7 @@ function api_product_row(array $p, array $reserved): array
         'category' => $p['category_name'],
         'brand' => $p['brand_name'],
         'image_url' => api_product_image_url($p['image']),
+        'images' => $images,
         'unit' => $p['unit'],
         'price' => (float)$p['selling_price'],
         'currency' => 'INR',
@@ -67,7 +83,8 @@ if (input('sku') !== '') {
     if (!$product) {
         api_error('Product not found.', 404);
     }
-    api_respond(['product' => api_product_row($product, $reserved)]);
+    $images = api_product_images_map([(int)$product['id']]);
+    api_respond(['product' => api_product_row($product, $reserved, $images[(int)$product['id']] ?? [])]);
 }
 
 $where = "WHERE p.status = 'active'";
@@ -91,7 +108,9 @@ $total = (int)$countStmt->fetchColumn();
 
 $stmt = db()->prepare("$baseSelect $where ORDER BY p.id ASC LIMIT $perPage OFFSET $offset");
 $stmt->execute($params);
-$products = array_map(fn($p) => api_product_row($p, $reserved), $stmt->fetchAll());
+$rows = $stmt->fetchAll();
+$imagesMap = api_product_images_map(array_column($rows, 'id'));
+$products = array_map(fn($p) => api_product_row($p, $reserved, $imagesMap[(int)$p['id']] ?? []), $rows);
 
 api_respond([
     'products' => $products,

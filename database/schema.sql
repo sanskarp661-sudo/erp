@@ -329,6 +329,22 @@ CREATE TABLE IF NOT EXISTS product_barcodes (
   FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Up to 10 photos per item (enforced in inventory/product_form.php, not
+-- here). products.image always mirrors whichever row here has
+-- is_default = 1, so every existing reader of that single column (the
+-- products list thumbnail, the print engine's image token, the website
+-- sync API's image_url) keeps working unchanged — this table is purely
+-- the gallery behind it.
+CREATE TABLE IF NOT EXISTS product_images (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  product_id INT UNSIGNED NOT NULL,
+  image VARCHAR(255) NOT NULL,
+  is_default TINYINT(1) NOT NULL DEFAULT 0,
+  sort_order INT NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- The real per-item alternate-UOM list: every UOM a line item can be
 -- transacted in for this product, and how many stock-UOM units one of
 -- it equals. Distinct from products.purchase_uom/sales_uom, which just

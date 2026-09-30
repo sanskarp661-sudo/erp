@@ -51,6 +51,7 @@ $product = [
     'status' => 'active',
 ];
 $barcodes = [];
+$productImages = [];
 $stockByWarehouse = [];
 $priceListRates = [];
 $customerPrices = [];
@@ -70,6 +71,9 @@ if ($id) {
     $stmt = db()->prepare('SELECT * FROM product_barcodes WHERE product_id = ? ORDER BY sort_order, id');
     $stmt->execute([$id]);
     $barcodes = $stmt->fetchAll();
+    $stmt = db()->prepare('SELECT * FROM product_images WHERE product_id = ? ORDER BY sort_order, id');
+    $stmt->execute([$id]);
+    $productImages = $stmt->fetchAll();
     $stmt = db()->prepare("
       SELECT w.id, w.name, COALESCE(SUM(sb.quantity), 0) quantity
       FROM warehouses w
@@ -128,13 +132,11 @@ if ($id) {
     $countStmt->execute([$id]);
     $productSerialsTotalCount = (int)$countStmt->fetchColumn();
 }
-// Captured before any POST handling touches $product — quantity and the
-// current image are never taken from client input on an edit; quantity
-// only ever changes via Stock Movements (which keeps stock_bins and the
-// products.quantity aggregate consistent), and the image only changes
-// via a new upload or the explicit "remove" checkbox below.
+// Captured before any POST handling touches $product — quantity is never
+// taken from client input on an edit; it only ever changes via Stock
+// Movements, which keep stock_bins and the products.quantity aggregate
+// consistent.
 $existingQuantity = $id ? (int)$product['quantity'] : 0;
-$existingImage = $id ? $product['image'] : null;
 
 $activeTab = in_array(input('tab'), ['inventory', 'uom', 'batch', 'pricing', 'accounting', 'tax', 'sales', 'purchase'], true) ? input('tab') : 'details';
 $error = '';
@@ -143,38 +145,82 @@ $mimeToExt = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp
 
 if (is_post()) {
     csrf_verify();
-    $imagePath = $existingImage;
 
-    if (!empty($_FILES['image']['name']) && ($_FILES['image']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
-        $file = $_FILES['image'];
-        if ($file['error'] !== UPLOAD_ERR_OK) {
-            $error = 'Image upload failed. Please try again.';
-        } elseif ($file['size'] > $maxImageBytes) {
-            $error = 'Image must be smaller than 3 MB.';
-        } else {
-            $info = @getimagesize($file['tmp_name']);
+    // Existing images the user didn't check "Remove" for are kept as-is;
+    // newly uploaded files are appended. $imagesToSave ends up as the full,
+    // final, ordered gallery — mirrors how $barcodesToSave/$productUomsToSave
+    // are built below, and is replaced wholesale into product_images on save.
+    $removeIds = array_map('intval', $_POST['remove_image_ids'] ?? []);
+    $imagesToSave = [];
+    foreach ($productImages as $img) {
+        if (!in_array((int)$img['id'], $removeIds, true)) {
+            $imagesToSave[] = ['id' => (int)$img['id'], 'image' => $img['image']];
+        }
+    }
+
+    $newFiles = $_FILES['new_images'] ?? null;
+    $savedNewFiles = [];
+    if ($newFiles && !empty($newFiles['name'])) {
+        foreach ($newFiles['name'] as $i => $name) {
+            if ($name === '' || ($newFiles['error'][$i] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+                continue;
+            }
+            if ($newFiles['error'][$i] !== UPLOAD_ERR_OK) {
+                $error = 'One of the images failed to upload. Please try again.';
+                break;
+            }
+            if ($newFiles['size'][$i] > $maxImageBytes) {
+                $error = 'Each image must be smaller than 3 MB.';
+                break;
+            }
+            $info = @getimagesize($newFiles['tmp_name'][$i]);
             if (!$info || !isset($mimeToExt[$info['mime']])) {
-                $error = 'Please upload a valid JPG, PNG, WEBP, or GIF image.';
+                $error = 'Please upload only JPG, PNG, WEBP, or GIF images.';
+                break;
+            }
+            $destDir = __DIR__ . '/../uploads/products/';
+            if (!is_dir($destDir)) mkdir($destDir, 0755, true);
+            $filename = bin2hex(random_bytes(16)) . '.' . $mimeToExt[$info['mime']];
+            if (move_uploaded_file($newFiles['tmp_name'][$i], $destDir . $filename)) {
+                $savedNewFiles[] = 'uploads/products/' . $filename;
+                $imagesToSave[] = ['id' => null, 'image' => 'uploads/products/' . $filename];
             } else {
-                $destDir = __DIR__ . '/../uploads/products/';
-                if (!is_dir($destDir)) mkdir($destDir, 0755, true);
-                $filename = bin2hex(random_bytes(16)) . '.' . $mimeToExt[$info['mime']];
-                if (move_uploaded_file($file['tmp_name'], $destDir . $filename)) {
-                    if ($existingImage && is_file(__DIR__ . '/../' . $existingImage)) {
-                        @unlink(__DIR__ . '/../' . $existingImage);
-                    }
-                    $imagePath = 'uploads/products/' . $filename;
-                } else {
-                    $error = 'Could not save the uploaded image.';
+                $error = 'Could not save one of the uploaded images.';
+                break;
+            }
+        }
+    }
+
+    if (!$error && count($imagesToSave) > 10) {
+        $error = 'You can upload up to 10 images per item.';
+    }
+
+    if ($error) {
+        // Roll back any files this request just saved — they didn't make it
+        // into the final gallery, so don't leave them orphaned on disk.
+        foreach ($savedNewFiles as $f) {
+            @unlink(__DIR__ . '/../' . $f);
+        }
+    } else {
+        foreach ($removeIds as $rid) {
+            foreach ($productImages as $img) {
+                if ((int)$img['id'] === $rid && $img['image'] && is_file(__DIR__ . '/../' . $img['image'])) {
+                    @unlink(__DIR__ . '/../' . $img['image']);
                 }
             }
         }
-    } elseif (input('remove_image') === '1') {
-        if ($existingImage && is_file(__DIR__ . '/../' . $existingImage)) {
-            @unlink(__DIR__ . '/../' . $existingImage);
-        }
-        $imagePath = null;
     }
+
+    $defaultImageIndex = (int)input('default_image_index');
+    if (!isset($imagesToSave[$defaultImageIndex])) {
+        $defaultImageIndex = 0;
+    }
+    foreach ($imagesToSave as $ii => &$img) {
+        $img['is_default'] = ($ii === $defaultImageIndex) ? 1 : 0;
+        $img['sort_order'] = $ii;
+    }
+    unset($img);
+    $imagePath = $imagesToSave ? $imagesToSave[$defaultImageIndex]['image'] : null;
 
     $openingQty = $id ? $existingQuantity : (int)input('opening_quantity');
     $openingWarehouseId = (int)input('opening_warehouse_id') ?: null;
@@ -547,6 +593,12 @@ if (is_post()) {
                 $bcStmt->execute([$newId, $bc['barcode'], $bc['barcode_type'], $bc['uom'], $bc['is_default'], $bc['sort_order']]);
             }
 
+            $pdo->prepare('DELETE FROM product_images WHERE product_id=?')->execute([$newId]);
+            $imgStmt = $pdo->prepare('INSERT INTO product_images (product_id, image, is_default, sort_order) VALUES (?,?,?,?)');
+            foreach ($imagesToSave as $img) {
+                $imgStmt->execute([$newId, $img['image'], $img['is_default'], $img['sort_order']]);
+            }
+
             $pdo->prepare('DELETE FROM price_list_items WHERE product_id=?')->execute([$newId]);
             $plStmt = $pdo->prepare('INSERT INTO price_list_items (price_list_id, product_id, rate) VALUES (?,?,?)');
             foreach ($ratesToSave as $plId => $rate) {
@@ -607,6 +659,7 @@ if (is_post()) {
     }
 
     $barcodes = $barcodesToSave;
+    $productImages = $imagesToSave;
     $priceListRates = $ratesToSave;
     $customerPrices = $customerPricesToSave;
     $productTaxes = $productTaxesToSave;
@@ -868,18 +921,30 @@ require __DIR__ . '/../includes/header.php';
 
           <div class="col-lg-4">
             <div class="card p-3 mb-3">
-              <h6 class="mb-3">Item Image</h6>
-              <?php if (!empty($existingImage)): ?>
-                <div class="d-flex align-items-center gap-3 mb-2">
-                  <img src="<?= base_url($existingImage) ?>" alt="" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid #dee2e6">
-                  <div class="form-check">
-                    <input type="checkbox" class="form-check-input" id="removeImage" name="remove_image" value="1">
-                    <label class="form-check-label" for="removeImage">Remove current photo</label>
-                  </div>
+              <h6 class="mb-3">Item Images</h6>
+              <?php if ($productImages): ?>
+                <div class="row g-2 mb-2">
+                  <?php foreach ($productImages as $pi => $img): ?>
+                    <div class="col-4">
+                      <div class="border rounded p-1 text-center h-100">
+                        <img src="<?= base_url($img['image']) ?>" alt="" style="width:100%;height:80px;object-fit:cover;border-radius:6px;display:block">
+                        <div class="form-check form-check-inline mt-1 mb-0">
+                          <input type="radio" class="form-check-input" name="default_image_index" id="defImg<?= (int)$pi ?>" value="<?= (int)$pi ?>" <?= !empty($img['is_default']) ? 'checked' : '' ?>>
+                          <label class="form-check-label small" for="defImg<?= (int)$pi ?>">Cover</label>
+                        </div>
+                        <?php if (!empty($img['id'])): ?>
+                          <div class="form-check form-check-inline mt-1 mb-0">
+                            <input type="checkbox" class="form-check-input" name="remove_image_ids[]" id="rmImg<?= (int)$pi ?>" value="<?= (int)$img['id'] ?>">
+                            <label class="form-check-label small text-danger" for="rmImg<?= (int)$pi ?>">Remove</label>
+                          </div>
+                        <?php endif; ?>
+                      </div>
+                    </div>
+                  <?php endforeach; ?>
                 </div>
               <?php endif; ?>
-              <input type="file" name="image" class="form-control" accept="image/jpeg,image/png,image/webp,image/gif">
-              <div class="form-text">JPG, PNG, WEBP or GIF, up to 3 MB.</div>
+              <input type="file" name="new_images[]" class="form-control" accept="image/jpeg,image/png,image/webp,image/gif" multiple>
+              <div class="form-text">JPG, PNG, WEBP or GIF, up to 3 MB each — up to 10 images total (<?= count($productImages) ?> currently).</div>
             </div>
 
             <div class="card p-3 mb-3">

@@ -27,6 +27,10 @@ $barcodes = db()->prepare('SELECT * FROM product_barcodes WHERE product_id = ? O
 $barcodes->execute([$id]);
 $barcodes = $barcodes->fetchAll();
 
+$productImages = db()->prepare('SELECT * FROM product_images WHERE product_id = ? ORDER BY sort_order, id');
+$productImages->execute([$id]);
+$productImages = $productImages->fetchAll();
+
 $productUoms = db()->prepare('SELECT * FROM product_uoms WHERE product_id = ? ORDER BY sort_order, id');
 $productUoms->execute([$id]);
 $productUoms = $productUoms->fetchAll();
@@ -280,11 +284,19 @@ require __DIR__ . '/../includes/header.php';
     <div class="card p-3">
       <div class="inv-hero-img">
         <?php if (!empty($product['image'])): ?>
-          <img src="<?= base_url($product['image']) ?>" alt="">
+          <img id="heroImg" src="<?= base_url($product['image']) ?>" alt="">
         <?php else: ?>
           <i class="fa-solid fa-box fa-3x"></i>
         <?php endif; ?>
       </div>
+      <?php if (count($productImages) > 1): ?>
+        <div class="d-flex gap-2 flex-wrap mt-2">
+          <?php foreach ($productImages as $img): ?>
+            <img src="<?= base_url($img['image']) ?>" alt="" onclick="document.getElementById('heroImg').src=this.src"
+                 style="width:48px;height:48px;object-fit:cover;border-radius:6px;border:1px solid var(--card-border);cursor:pointer">
+          <?php endforeach; ?>
+        </div>
+      <?php endif; ?>
       <div class="inv-facts">
         <div><span>Selling Price</span><strong><?= money($product['selling_price']) ?></strong></div>
         <div><span>Cost Price</span><strong><?= money($product['cost_price']) ?></strong></div>
