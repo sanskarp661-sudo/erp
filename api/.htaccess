@@ -1,0 +1,4 @@
+# The api/ directory serves JSON only, never directory listings, and every
+# endpoint enforces its own API-key check in PHP — this just adds a second,
+# server-level layer against anything ever being misconfigured to skip that.
+Options -Indexes

@@ -40,3 +40,18 @@ define('CASHFREE_ENV', 'production');
 // product that needs explicit enabling by Cashfree support — switch to
 // this only once care@cashfree.com has turned it on for your account).
 define('CASHFREE_PRODUCT', 'orders');
+
+// --- Website integration API (api/v1/*.php) ---
+// Shared secret the website's backend sends as the X-API-Key header on
+// every request. Generate one with:
+//   php -r "echo bin2hex(random_bytes(32));"
+// Leave blank to disable the entire integration API (every endpoint
+// returns 401 while this is empty).
+// Do NOT commit a real value here — set it directly on the live server
+// via File Manager, same as the Cashfree secrets above.
+define('WEBSITE_API_KEY', '');
+// Where the ERP POSTs order-status webhooks (order.status_changed,
+// order.delivered) for orders placed via the website
+// (sales_orders.sales_channel = 'Online Store'). Leave blank to disable
+// outgoing webhooks — the website can still poll api/v1/order_status.php.
+define('WEBSITE_WEBHOOK_URL', '');

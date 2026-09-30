@@ -53,6 +53,12 @@ if (is_post() && input('action') === 'transition') {
     try {
         db()->prepare('UPDATE sales_orders SET status = ? WHERE id = ?')->execute([$newStatus, $id]);
         log_activity('sales_order', $id, 'field_changed', null, 'Status', $order['status'], $newStatus);
+        if ($order['sales_channel'] === 'Online Store') {
+            notify_website('order.status_changed', [
+                'order_no' => $order['order_no'], 'website_order_id' => $order['customer_po_no'],
+                'status' => $newStatus, 'previous_status' => $order['status'],
+            ]);
+        }
         flash('success', 'Order status updated to "' . $newStatus . '".');
     } catch (Exception $e) {
         flash('danger', 'Could not update order status.');

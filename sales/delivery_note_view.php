@@ -52,6 +52,17 @@ if (is_post() && input('action') === 'transition') {
         }
         $pdo->prepare('UPDATE delivery_notes SET status = ? WHERE id = ?')->execute([$newStatus, $id]);
         $pdo->commit();
+        if ($newStatus === 'delivered' && $dn['sales_order_id']) {
+            $soStmt = $pdo->prepare('SELECT order_no, sales_channel, customer_po_no FROM sales_orders WHERE id = ?');
+            $soStmt->execute([$dn['sales_order_id']]);
+            $so = $soStmt->fetch();
+            if ($so && $so['sales_channel'] === 'Online Store') {
+                notify_website('order.delivered', [
+                    'order_no' => $so['order_no'], 'website_order_id' => $so['customer_po_no'],
+                    'dn_no' => $dn['dn_no'], 'delivered_at' => date('c'),
+                ]);
+            }
+        }
         flash('success', 'Delivery note status updated to "' . $newStatus . '".');
     } catch (Exception $e) {
         $pdo->rollBack();
