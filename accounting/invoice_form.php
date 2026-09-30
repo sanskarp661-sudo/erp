@@ -1,6 +1,6 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
-require_module_edit('finance');
+require_invoice_edit();
 
 $id = (int)input('id');
 $fromOrder = (int)input('from_order');
@@ -14,11 +14,11 @@ if ($id) {
     $invoice = $stmt->fetch();
     if (!$invoice) {
         flash('danger', 'Invoice not found.');
-        redirect('/accounting/invoices.php');
+        redirect(invoice_url('invoices.php'));
     }
     if ($invoice['amount_paid'] > 0 || $invoice['status'] !== 'unpaid') {
         flash('danger', 'This invoice already has activity and can no longer be edited.');
-        redirect('/accounting/invoice_view.php?id=' . $id);
+        redirect(invoice_url('invoice_view.php?id=' . $id));
     }
     $stmt = db()->prepare('SELECT * FROM invoice_items WHERE invoice_id = ?');
     $stmt->execute([$id]);
@@ -106,7 +106,7 @@ if (is_post()) {
             }
             $pdo->commit();
             flash('success', $id ? 'Invoice updated.' : 'Invoice created.');
-            redirect('/accounting/invoice_view.php?id=' . $invId);
+            redirect(invoice_url('invoice_view.php?id=' . $invId));
         } catch (Exception $e) {
             $pdo->rollBack();
             $error = 'Could not save invoice.';

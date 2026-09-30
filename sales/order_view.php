@@ -246,7 +246,7 @@ require __DIR__ . '/../includes/header.php';
     <div style="min-width:150px">
       <div class="small text-muted">Sales Invoice</div>
       <?php if ($existingInvoice): ?>
-        <div class="fw-bold"><a href="<?= base_url('accounting/invoice_view.php?id=' . (int)$existingInvoice['id']) ?>"><?= e($existingInvoice['invoice_no']) ?></a></div>
+        <div class="fw-bold"><a href="<?= base_url('sales/invoice_view.php?id=' . (int)$existingInvoice['id']) ?>"><?= e($existingInvoice['invoice_no']) ?></a></div>
         <span class="badge text-bg-<?= $invBadge[$existingInvoice['status']] ?? 'secondary' ?> badge-status"><?= e(str_replace('_', ' ', $existingInvoice['status'])) ?></span>
       <?php else: ?>
         <div class="text-muted">Not created<?= (!$existingDn || $existingDn['status'] !== 'delivered') ? ' (needs a delivered Delivery Note)' : '' ?></div>
@@ -457,7 +457,7 @@ require __DIR__ . '/../includes/header.php';
     </li>
     <li class="mb-1"><i class="fa-solid fa-file-invoice-dollar text-muted me-1"></i> Sales Invoice:
       <?php if ($existingInvoice): ?>
-        <a href="<?= base_url('accounting/invoice_view.php?id=' . (int)$existingInvoice['id']) ?>"><?= e($existingInvoice['invoice_no']) ?></a>
+        <a href="<?= base_url('sales/invoice_view.php?id=' . (int)$existingInvoice['id']) ?>"><?= e($existingInvoice['invoice_no']) ?></a>
       <?php else: ?><span class="text-muted">Not created</span><?php endif; ?>
     </li>
     <?php foreach ($returns as $r): ?>

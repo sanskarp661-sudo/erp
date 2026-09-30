@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/stock_entry.php';
 require_login();
+stock_entry_require_schema();
 $canEdit = can_edit_module('supply-chain');
 
 $types = stock_entry_types();

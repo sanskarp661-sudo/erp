@@ -1,6 +1,6 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
-require_module_edit('finance');
+require_invoice_edit();
 
 $id = (int)input('id');
 $fromOrder = (int)input('from_order');
@@ -14,11 +14,11 @@ if ($id) {
     $invoice = $stmt->fetch();
     if (!$invoice) {
         flash('danger', 'Purchase invoice not found.');
-        redirect('/accounting/purchase_invoices.php');
+        redirect(invoice_url('purchase_invoices.php'));
     }
     if ($invoice['amount_paid'] > 0 || $invoice['status'] !== 'unpaid') {
         flash('danger', 'This purchase invoice already has activity and can no longer be edited.');
-        redirect('/accounting/purchase_invoice_view.php?id=' . $id);
+        redirect(invoice_url('purchase_invoice_view.php?id=' . $id));
     }
     $stmt = db()->prepare('SELECT * FROM purchase_invoice_items WHERE purchase_invoice_id = ?');
     $stmt->execute([$id]);
@@ -106,7 +106,7 @@ if (is_post()) {
             }
             $pdo->commit();
             flash('success', $id ? 'Purchase invoice updated.' : 'Purchase invoice created.');
-            redirect('/accounting/purchase_invoice_view.php?id=' . $piId);
+            redirect(invoice_url('purchase_invoice_view.php?id=' . $piId));
         } catch (Exception $e) {
             $pdo->rollBack();
             $error = 'Could not save purchase invoice.';

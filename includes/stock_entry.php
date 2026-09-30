@@ -9,6 +9,44 @@
 
 require_once __DIR__ . '/stock.php';
 
+/**
+ * Called by every Stock Entry page before it touches the database. If the
+ * Stock Entry tables are missing (migration 026 never ran, or stopped
+ * part-way), shows how to fix it instead of a blank 500. Any other error
+ * on these pages is shown to admins so it can be reported.
+ */
+function stock_entry_require_schema(): void
+{
+    set_exception_handler(function (Throwable $e) {
+        error_log('Stock Entry: ' . $e);
+        if (!headers_sent()) http_response_code(500);
+        $detail = can_edit_admin_section() || (defined('APP_DEBUG') && APP_DEBUG)
+            ? '<pre class="small mb-0" style="white-space:pre-wrap">' . e($e->getMessage() . ' (' . basename($e->getFile()) . ':' . $e->getLine() . ')') . '</pre>'
+            : '<p class="mb-0">Please ask an administrator to check this page.</p>';
+        echo '<div class="card p-4 m-3" style="max-width:820px"><h5 class="mb-2">This Stock Entry page hit an error</h5>' . $detail . '</div>';
+    });
+    $ready = true;
+    foreach (['stock_entries', 'stock_entry_items', 'stock_entry_costs'] as $table) {
+        if (!db()->query('SHOW TABLES LIKE ' . db()->quote($table))->fetchColumn()) {
+            $ready = false;
+        }
+    }
+    if ($ready) {
+        return;
+    }
+    global $page_title;
+    $page_title = $page_title ?? 'Stock Entries';
+    require __DIR__ . '/header.php';
+    echo '<div class="card p-4" style="max-width:720px">'
+        . '<h5 class="mb-2"><i class="fa-solid fa-database text-warning"></i> Stock Entry needs a database update</h5>'
+        . '<p class="mb-2">The Stock Entry tables are missing from this database. Run migration <code>database/migrations/032_stock_entry_repair.sql</code> to add them.</p>'
+        . '<ol class="mb-0"><li>Open <strong>phpMyAdmin</strong> in hPanel and select the ERP database.</li>'
+        . '<li>Go to <strong>Import</strong> and upload <code>032_stock_entry_repair.sql</code>.</li>'
+        . '<li>Reload this page.</li></ol></div>';
+    require __DIR__ . '/footer.php';
+    exit;
+}
+
 function stock_entry_types(): array
 {
     return [

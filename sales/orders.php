@@ -62,7 +62,7 @@ require __DIR__ . '/../includes/header.php';
           </td>
           <td>
             <?php if ($o['invoice_id']): ?>
-              <a href="<?= base_url('accounting/invoice_view.php?id=' . (int)$o['invoice_id']) ?>"><span class="badge text-bg-<?= $invBadge[$o['invoice_status']] ?? 'secondary' ?> badge-status"><?= e(str_replace('_', ' ', $o['invoice_status'])) ?></span></a>
+              <a href="<?= base_url('sales/invoice_view.php?id=' . (int)$o['invoice_id']) ?>"><span class="badge text-bg-<?= $invBadge[$o['invoice_status']] ?? 'secondary' ?> badge-status"><?= e(str_replace('_', ' ', $o['invoice_status'])) ?></span></a>
             <?php else: ?>
               <span class="text-muted small">Not created</span>
             <?php endif; ?>

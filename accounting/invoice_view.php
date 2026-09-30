@@ -1,7 +1,9 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
 require_login();
-$canEdit = can_edit_module('finance');
+$canEdit = can_edit_invoice();
+// Payments stay with Finance, even when the invoice is opened from Sales or Procurement.
+$canPay = can_edit_module('finance');
 
 $id = (int)input('id');
 
@@ -13,7 +15,7 @@ $invoice = $stmt->fetch();
 
 if (!$invoice) {
     flash('danger', 'Invoice not found.');
-    redirect('/accounting/invoices.php');
+    redirect(invoice_url('invoices.php'));
 }
 
 if (is_post() && input('action') === 'record_payment') {
@@ -46,7 +48,7 @@ if (is_post() && input('action') === 'record_payment') {
             flash('danger', 'Could not record payment.');
         }
     }
-    redirect('/accounting/invoice_view.php?id=' . $id);
+    redirect(invoice_url('invoice_view.php?id=' . $id));
 }
 
 $items = db()->prepare('SELECT * FROM invoice_items WHERE invoice_id = ?');
@@ -128,7 +130,7 @@ require __DIR__ . '/../includes/header.php';
   </div>
 
   <div class="col-lg-4">
-    <?php if ($canEdit && $balance > 0.009 && $invoice['status'] !== 'cancelled'): ?>
+    <?php if ($canPay && $balance > 0.009 && $invoice['status'] !== 'cancelled'): ?>
     <div class="card p-3">
       <h6 class="mb-3">Record Payment</h6>
       <form method="post">
@@ -163,7 +165,7 @@ require __DIR__ . '/../includes/header.php';
         <button type="submit" class="btn btn-brand w-100">Record Payment</button>
       </form>
     </div>
-    <?php elseif (!$canEdit && $balance > 0.009 && $invoice['status'] !== 'cancelled'): ?>
+    <?php elseif (!$canPay && $balance > 0.009 && $invoice['status'] !== 'cancelled'): ?>
     <div class="card p-3 text-center text-muted">You don't have permission to record payments.</div>
     <?php else: ?>
     <div class="card p-3 text-center text-muted"><i class="fa-solid fa-circle-check fa-2x text-success mb-2"></i><br>This invoice is fully settled.</div>

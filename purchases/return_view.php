@@ -182,6 +182,6 @@ require __DIR__ . '/../includes/header.php';
   </div>
   <?php if ($ret['reason']): ?><div class="mt-2"><strong>Reason:</strong> <?= e($ret['reason']) ?></div><?php endif; ?>
   <div class="mt-2"><strong>Purchase Order:</strong> <a href="<?= base_url('purchases/order_view.php?id=' . (int)$ret['purchase_order_id']) ?>"><?= e($ret['po_no']) ?></a></div>
-  <?php if ($linkedInvoice): ?><div class="mt-2"><strong>Debit applied to Bill:</strong> <a href="<?= base_url('accounting/purchase_invoice_view.php?id=' . (int)$linkedInvoice['id']) ?>"><?= e($linkedInvoice['pi_no']) ?></a></div><?php endif; ?>
+  <?php if ($linkedInvoice): ?><div class="mt-2"><strong>Debit applied to Bill:</strong> <a href="<?= base_url('purchases/purchase_invoice_view.php?id=' . (int)$linkedInvoice['id']) ?>"><?= e($linkedInvoice['pi_no']) ?></a></div><?php endif; ?>
 </div>
 <?php require __DIR__ . '/../includes/footer.php'; ?>

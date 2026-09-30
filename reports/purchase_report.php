@@ -1,6 +1,8 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
 require_login();
+// Shared report folder: keep the Procurement sidebar.
+$sidebar_module = 'procurement';
 
 $start = input('start') ?: date('Y-m-01');
 $end = input('end') ?: date('Y-m-d');

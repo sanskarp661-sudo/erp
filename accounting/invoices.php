@@ -1,7 +1,7 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
 require_login();
-$canEdit = can_edit_module('finance');
+$canEdit = can_edit_invoice();
 
 // Lazily flag invoices whose due date has passed as overdue.
 db()->exec("UPDATE invoices SET status='overdue' WHERE due_date IS NOT NULL AND due_date < CURDATE() AND status IN ('unpaid','partially_paid')");
