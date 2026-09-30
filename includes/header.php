@@ -184,6 +184,7 @@ function nav_active($needle, string $current): string
           <li><a class="dropdown-item" href="<?= base_url('users/users.php') ?>"><i class="fa-solid fa-users-gear"></i> Users</a></li>
           <li><a class="dropdown-item" href="<?= base_url('users/settings.php') ?>"><i class="fa-solid fa-gear"></i> Settings</a></li>
           <li><a class="dropdown-item" href="<?= base_url('print_formats/index.php') ?>"><i class="fa-solid fa-palette"></i> Print Formats</a></li>
+          <li><a class="dropdown-item" href="<?= base_url('imports/index.php') ?>"><i class="fa-solid fa-file-import"></i> Data Import</a></li>
           <li><hr class="dropdown-divider"></li>
           <?php endif; ?>
           <li><a class="dropdown-item" href="<?= base_url('logout.php') ?>"><i class="fa-solid fa-right-from-bracket"></i> Logout</a></li>

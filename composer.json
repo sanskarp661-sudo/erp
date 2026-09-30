@@ -1,0 +1,10 @@
+{
+    "name": "erp/imports",
+    "description": "Vendored dependencies for the ERP's data import feature. No autoload of application code here — the app itself stays plain PHP/no-framework; this only brings in PhpSpreadsheet for reading uploaded .xlsx files.",
+    "require": {
+        "phpoffice/phpspreadsheet": "^2.0"
+    },
+    "config": {
+        "optimize-autoloader": true
+    }
+}

@@ -5,3 +5,5 @@
 !/uploads/products/.gitkeep
 /uploads/sales_orders/*
 !/uploads/sales_orders/.gitkeep
+/uploads/imports/*
+!/uploads/imports/.gitkeep
