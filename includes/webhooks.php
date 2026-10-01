@@ -14,15 +14,17 @@
  */
 function notify_website(string $event, array $data): void
 {
-    if (!defined('WEBSITE_WEBHOOK_URL') || WEBSITE_WEBHOOK_URL === '') {
+    require_once __DIR__ . '/integration_settings.php';
+    $url = integration_setting('WEBSITE_WEBHOOK_URL');
+    if ($url === '') {
         return;
     }
 
     $body = json_encode(['event' => $event, 'data' => $data, 'sent_at' => date('c')]);
-    $secret = defined('WEBSITE_API_KEY') ? WEBSITE_API_KEY : '';
+    $secret = integration_setting('WEBSITE_API_KEY');
     $signature = hash_hmac('sha256', $body, $secret);
 
-    $ch = curl_init(WEBSITE_WEBHOOK_URL);
+    $ch = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_POST => true,
         CURLOPT_POSTFIELDS => $body,

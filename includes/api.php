@@ -14,6 +14,7 @@ require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/functions.php';
 require_once __DIR__ . '/stock.php';
+require_once __DIR__ . '/integration_settings.php';
 require_once __DIR__ . '/webhooks.php';
 
 header('Content-Type: application/json');
@@ -22,7 +23,16 @@ header('Content-Type: application/json');
 function api_require_key(): void
 {
     $key = $_SERVER['HTTP_X_API_KEY'] ?? '';
-    if (!defined('WEBSITE_API_KEY') || WEBSITE_API_KEY === '' || !hash_equals(WEBSITE_API_KEY, (string)$key)) {
+    $expected = integration_setting('WEBSITE_API_KEY');
+    if ($expected === '') {
+        // Says only where the ERP looked (never what a key is), so the website owner can tell
+        // "not configured on the ERP" apart from "the two sides' keys differ".
+        $file = integration_settings_source()['file'];
+        api_error($file === null
+            ? 'Website API key is not configured on the ERP: no config/integration.local.php file was found.'
+            : "Website API key is not configured on the ERP: found $file but it has no WEBSITE_API_KEY value.", 401);
+    }
+    if (!hash_equals($expected, (string)$key)) {
         api_error('Invalid or missing API key.', 401);
     }
 }
