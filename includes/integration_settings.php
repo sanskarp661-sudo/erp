@@ -74,7 +74,10 @@ function integration_setting(string $name): string
  */
 function primary_api_key(): string
 {
-    $stmt = db()->query("SELECT api_key FROM api_clients WHERE status = 'active' ORDER BY id LIMIT 1");
-    $key = $stmt->fetchColumn();
+    try {
+        $key = db()->query("SELECT api_key FROM api_clients WHERE status = 'active' ORDER BY id LIMIT 1")->fetchColumn();
+    } catch (PDOException $e) {
+        $key = false; // table not created yet: use the legacy key
+    }
     return $key !== false ? $key : integration_setting('WEBSITE_API_KEY');
 }

@@ -29,7 +29,11 @@ function api_require_key(): void
 {
     $key = (string)($_SERVER['HTTP_X_API_KEY'] ?? '');
 
-    $clients = db()->query("SELECT id, api_key FROM api_clients WHERE status = 'active'")->fetchAll();
+    try {
+        $clients = db()->query("SELECT id, api_key FROM api_clients WHERE status = 'active'")->fetchAll();
+    } catch (PDOException $e) {
+        $clients = []; // table not created yet: fall back to the legacy key below
+    }
     foreach ($clients as $client) {
         if ($key !== '' && hash_equals($client['api_key'], $key)) {
             db()->prepare('UPDATE api_clients SET last_used_at = NOW() WHERE id = ?')->execute([$client['id']]);
