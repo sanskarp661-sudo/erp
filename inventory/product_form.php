@@ -2387,6 +2387,21 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   });
 });
+
+// Some fields are intentionally shown on two tabs (e.g. Selling Price /
+// Standard Rate, Lead Time) so they're both named the same — without this,
+// editing one on save silently loses to whichever duplicate-named input
+// sits later in the form's HTML, since a browser submits both and PHP
+// keeps only the last value for a repeated field name.
+['selling_price', 'lead_time_days'].forEach(function (name) {
+  var fields = document.getElementsByName(name);
+  if (fields.length < 2) return;
+  fields.forEach(function (f) {
+    f.addEventListener('input', function () {
+      fields.forEach(function (other) { if (other !== f) other.value = f.value; });
+    });
+  });
+});
 " . "\ninitItemForm();";
 $extra_js = [asset_url('assets/js/inventory.js')];
 require __DIR__ . '/../includes/footer.php';
