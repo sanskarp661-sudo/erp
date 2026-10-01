@@ -15,8 +15,10 @@ if ($isNew) {
 $defaults = [
     'id' => 0, 'name' => '', 'first_name' => '', 'middle_name' => '', 'last_name' => '',
     'username' => '', 'language' => 'en', 'time_zone' => 'UTC', 'mobile_no' => '', 'phone' => '',
-    'address' => '', 'bio' => '', 'must_change_password' => 0, 'email' => '', 'status' => 'active',
+    'address' => '', 'bio' => '', 'image' => null, 'must_change_password' => 0, 'email' => '', 'status' => 'active',
 ];
+$maxImageBytes = 3 * 1024 * 1024;
+$mimeToExt = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp', 'image/gif' => 'gif'];
 
 // Named $editUser (not $user) because includes/header.php sets $user =
 // current_user() for the logged-in viewer — reusing $user here would get
@@ -142,6 +144,61 @@ if (is_post() && input('form_action') === 'save_details' && !$isNew) {
             $error = str_contains($e->getMessage(), 'Duplicate') ? 'A user with this email or username already exists.' : 'Could not save user details.';
         }
     }
+}
+
+if (is_post() && input('form_action') === 'save_image' && !$isNew) {
+    require_manage_users();
+    csrf_verify();
+    $destDir = __DIR__ . '/../uploads/users/';
+    $imagePath = $editUser['image'];
+    $imgError = '';
+
+    $file = $_FILES['image'] ?? null;
+    $url = trim(input('image_url'));
+    if ($file && ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
+        if ($file['error'] !== UPLOAD_ERR_OK) {
+            $imgError = 'Image upload failed. Please try again.';
+        } elseif ($file['size'] > $maxImageBytes) {
+            $imgError = 'Image must be smaller than 3 MB.';
+        } else {
+            $info = @getimagesize($file['tmp_name']);
+            if (!$info || !isset($mimeToExt[$info['mime']])) {
+                $imgError = 'Please upload a valid JPG, PNG, WEBP, or GIF image.';
+            } else {
+                if (!is_dir($destDir)) mkdir($destDir, 0755, true);
+                $filename = bin2hex(random_bytes(16)) . '.' . $mimeToExt[$info['mime']];
+                if (move_uploaded_file($file['tmp_name'], $destDir . $filename)) {
+                    $imagePath = 'uploads/users/' . $filename;
+                } else {
+                    $imgError = 'Could not save the uploaded image.';
+                }
+            }
+        }
+    } elseif ($url !== '') {
+        $result = fetch_image_from_url($url, $destDir, $maxImageBytes);
+        if (isset($result['error'])) {
+            $imgError = $result['error'];
+        } else {
+            $imagePath = 'uploads/users/' . $result['filename'];
+        }
+    } elseif (input('remove_image') === '1') {
+        $imagePath = null;
+    }
+
+    if ($imgError) {
+        flash('danger', $imgError);
+    } else {
+        if ($editUser['image'] && $editUser['image'] !== $imagePath && is_file(__DIR__ . '/../' . $editUser['image'])) {
+            @unlink(__DIR__ . '/../' . $editUser['image']);
+        }
+        db()->prepare('UPDATE users SET image=?, updated_at=NOW() WHERE id=?')->execute([$imagePath, $id]);
+        log_activity('user', $id, 'edited', 'Profile photo updated');
+        if ($isSelf) {
+            $_SESSION['user']['image'] = $imagePath;
+        }
+        flash('success', 'Profile photo updated.');
+    }
+    redirect('/users/user_form.php?id=' . $id . '&tab=details');
 }
 
 if (is_post() && input('form_action') === 'save_roles' && !$isNew) {
@@ -388,6 +445,35 @@ function render_role_checkboxes(array $selected, bool $disabled, string $emptyNo
 
   <!-- ---- User Details ---- -->
   <div class="tab-pane fade <?= $activeTab === 'details' ? 'show active' : '' ?>" id="pane-details">
+    <div class="row g-3">
+    <div class="col-lg-3">
+      <div class="card p-3">
+        <h6 class="mb-3">Profile Photo</h6>
+        <?php if (!empty($editUser['image'])): ?>
+          <img src="<?= base_url($editUser['image']) ?>" alt="" class="rounded mb-2" style="width:100%;aspect-ratio:1/1;object-fit:cover">
+        <?php else: ?>
+          <div class="rounded-circle bg-secondary-subtle text-secondary d-flex align-items-center justify-content-center mx-auto mb-2" style="width:100px;height:100px;font-size:1.5rem;font-weight:700"><?= e(initials($editUser['name'] ?: 'New User')) ?></div>
+        <?php endif; ?>
+        <?php if ($canManage): ?>
+        <form method="post" enctype="multipart/form-data">
+          <?= csrf_field() ?>
+          <input type="hidden" name="form_action" value="save_image">
+          <?php if (!empty($editUser['image'])): ?>
+            <div class="form-check mb-2">
+              <input type="checkbox" class="form-check-input" id="removeUserImage" name="remove_image" value="1">
+              <label class="form-check-label small" for="removeUserImage">Remove current photo</label>
+            </div>
+          <?php endif; ?>
+          <input type="file" name="image" class="form-control form-control-sm mb-2" accept="image/jpeg,image/png,image/webp,image/gif">
+          <label class="form-label small mb-1">Or paste an image URL</label>
+          <input type="url" name="image_url" class="form-control form-control-sm mb-2" placeholder="https://example.com/photo.jpg">
+          <div class="form-text mb-2">JPG, PNG, WEBP or GIF, up to 3 MB.</div>
+          <button type="submit" class="btn btn-sm btn-outline-brand w-100">Save Photo</button>
+        </form>
+        <?php endif; ?>
+      </div>
+    </div>
+    <div class="col-lg-9">
     <form method="post" class="card p-4">
       <?= csrf_field() ?>
       <input type="hidden" name="form_action" value="save_details">
@@ -422,6 +508,8 @@ function render_role_checkboxes(array $selected, bool $disabled, string $emptyNo
       </div>
       <?php if ($canManage): ?><div class="page-actions mt-4"><button type="submit" class="btn btn-brand">Save</button></div><?php endif; ?>
     </form>
+    </div>
+    </div>
   </div>
 
   <!-- ---- Roles & Permissions ---- -->

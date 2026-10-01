@@ -168,7 +168,7 @@ function nav_active($needle, string $current): string
       <div class="topbar-user dropdown">
         <?php if (!empty($dashboard_topbar) || !empty($pos_topbar)): ?>
         <button class="topbar-profile dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-          <span class="topbar-avatar"><?= e(strtoupper(mb_substr(trim($user['name']), 0, 1))) ?></span>
+          <span class="topbar-avatar"><?php if (!empty($user['image'])): ?><img src="<?= base_url($user['image']) ?>" alt=""><?php else: ?><?= e(strtoupper(mb_substr(trim($user['name']), 0, 1))) ?><?php endif; ?></span>
           <span class="topbar-profile-text">
             <strong><?= e($user['name']) ?></strong>
             <small><?= e(implode(', ', array_map('role_label', $user['roles'] ?? []))) ?: 'No roles' ?></small>
@@ -181,6 +181,7 @@ function nav_active($needle, string $current): string
         <?php endif; ?>
         <ul class="dropdown-menu dropdown-menu-end">
           <?php if (can_view_admin_section()): ?>
+          <li><a class="dropdown-item" href="<?= base_url('users/user_form.php?id=' . (int)$user['id']) ?>"><i class="fa-solid fa-id-card"></i> My Profile</a></li>
           <li><a class="dropdown-item" href="<?= base_url('users/users.php') ?>"><i class="fa-solid fa-users-gear"></i> Users</a></li>
           <li><a class="dropdown-item" href="<?= base_url('users/settings.php') ?>"><i class="fa-solid fa-gear"></i> Settings</a></li>
           <li><a class="dropdown-item" href="<?= base_url('print_formats/index.php') ?>"><i class="fa-solid fa-palette"></i> Print Formats</a></li>

@@ -7,3 +7,5 @@
 !/uploads/sales_orders/.gitkeep
 /uploads/imports/*
 !/uploads/imports/.gitkeep
+/uploads/users/*
+!/uploads/users/.gitkeep

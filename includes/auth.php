@@ -77,6 +77,7 @@ function attempt_login(string $email, string $password): bool
         'id'                   => $user['id'],
         'name'                 => $user['name'],
         'email'                => $user['email'],
+        'image'                => $user['image'],
         'roles'                => $roles,
         'must_change_password' => (bool)$user['must_change_password'],
     ];

@@ -191,6 +191,20 @@ if (is_post()) {
         }
     }
 
+    if (!$error) {
+        $destDir = __DIR__ . '/../uploads/products/';
+        $urls = array_filter(array_map('trim', explode("\n", input('new_image_urls'))));
+        foreach ($urls as $url) {
+            $result = fetch_image_from_url($url, $destDir, $maxImageBytes);
+            if (isset($result['error'])) {
+                $error = $result['error'];
+                break;
+            }
+            $savedNewFiles[] = 'uploads/products/' . $result['filename'];
+            $imagesToSave[] = ['id' => null, 'image' => 'uploads/products/' . $result['filename']];
+        }
+    }
+
     if (!$error && count($imagesToSave) > 10) {
         $error = 'You can upload up to 10 images per item.';
     }
@@ -944,7 +958,10 @@ require __DIR__ . '/../includes/header.php';
                 </div>
               <?php endif; ?>
               <input type="file" name="new_images[]" class="form-control" accept="image/jpeg,image/png,image/webp,image/gif" multiple>
-              <div class="form-text">JPG, PNG, WEBP or GIF, up to 3 MB each — up to 10 images total (<?= count($productImages) ?> currently).</div>
+              <div class="form-text mb-2">JPG, PNG, WEBP or GIF, up to 3 MB each — up to 10 images total (<?= count($productImages) ?> currently).</div>
+              <label class="form-label small mb-1">Or add from image URL(s)</label>
+              <textarea name="new_image_urls" class="form-control" rows="2" placeholder="https://example.com/photo.jpg&#10;One URL per line"></textarea>
+              <div class="form-text">The ERP will fetch and save a copy of each image.</div>
             </div>
 
             <div class="card p-3 mb-3">

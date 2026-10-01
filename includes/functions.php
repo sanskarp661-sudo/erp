@@ -259,6 +259,90 @@ function get_attachments(string $entityType, int $entityId): array
     return $stmt->fetchAll();
 }
 
+/**
+ * Downloads an image from a remote URL into $destDir, the same way a
+ * direct file upload is handled elsewhere (validated with getimagesize(),
+ * capped at $maxBytes, saved under a random filename). Used wherever an
+ * image field offers "paste a link" as an alternative to picking a file.
+ *
+ * Blocks URLs that resolve to a private/loopback/link-local address, so a
+ * pasted link can't be used to make the server fetch something on its own
+ * internal network (SSRF).
+ *
+ * @return array{filename?: string, ext?: string, error?: string}
+ */
+function fetch_image_from_url(string $url, string $destDir, int $maxBytes = 3145728): array
+{
+    $mimeToExt = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp', 'image/gif' => 'gif'];
+
+    $parts = parse_url($url);
+    if (!$parts || !in_array($parts['scheme'] ?? '', ['http', 'https'], true) || empty($parts['host'])) {
+        return ['error' => 'Please enter a valid image URL (starting with http:// or https://).'];
+    }
+
+    $host = $parts['host'];
+    $ip = filter_var($host, FILTER_VALIDATE_IP) ? $host : gethostbyname($host);
+    if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+        return ['error' => 'That URL points to a private or internal address, which is not allowed.'];
+    }
+
+    $tmpFile = tempnam(sys_get_temp_dir(), 'imgurl_');
+    $fh = fopen($tmpFile, 'wb');
+    if (!$fh) {
+        @unlink($tmpFile);
+        return ['error' => 'Could not create a temporary file to download the image.'];
+    }
+
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_FILE => $fh,
+        CURLOPT_FOLLOWLOCATION => false,
+        CURLOPT_CONNECTTIMEOUT => 8,
+        CURLOPT_TIMEOUT => 15,
+        CURLOPT_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
+        CURLOPT_USERAGENT => 'Mozilla/5.0 (compatible; ERP-ImageFetch/1.0)',
+        CURLOPT_NOPROGRESS => false,
+        CURLOPT_PROGRESSFUNCTION => function ($res, $dlSize, $dl) use ($maxBytes) {
+            return $dl > $maxBytes ? 1 : 0;
+        },
+    ]);
+    $ok = curl_exec($ch);
+    $errno = curl_errno($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    fclose($fh);
+
+    if (!$ok || $errno !== 0) {
+        @unlink($tmpFile);
+        return ['error' => 'Could not download the image from that URL.'];
+    }
+    if ($httpCode < 200 || $httpCode >= 300) {
+        @unlink($tmpFile);
+        return ['error' => 'That URL returned an error (HTTP ' . $httpCode . ').'];
+    }
+    if (filesize($tmpFile) > $maxBytes) {
+        @unlink($tmpFile);
+        return ['error' => 'The image at that URL is larger than 3 MB.'];
+    }
+
+    $info = @getimagesize($tmpFile);
+    if (!$info || !isset($mimeToExt[$info['mime']])) {
+        @unlink($tmpFile);
+        return ['error' => 'That URL does not point to a valid JPG, PNG, WEBP, or GIF image.'];
+    }
+
+    if (!is_dir($destDir)) {
+        mkdir($destDir, 0755, true);
+    }
+    $filename = bin2hex(random_bytes(16)) . '.' . $mimeToExt[$info['mime']];
+    if (!rename($tmpFile, $destDir . $filename)) {
+        @unlink($tmpFile);
+        return ['error' => 'Could not save the downloaded image.'];
+    }
+
+    return ['filename' => $filename, 'ext' => $mimeToExt[$info['mime']]];
+}
+
 function initials(string $name): string
 {
     $parts = preg_split('/\s+/', trim($name));
