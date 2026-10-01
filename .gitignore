@@ -10,3 +10,4 @@
 
 # Website-integration secrets live outside version control (see includes/integration_settings.php).
 /config/integration.local.php
+/integration.local.php

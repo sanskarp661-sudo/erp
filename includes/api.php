@@ -25,9 +25,12 @@ function api_require_key(): void
     $key = $_SERVER['HTTP_X_API_KEY'] ?? '';
     $expected = integration_setting('WEBSITE_API_KEY');
     if ($expected === '') {
-        // Says only that no key is set up here (never what a key is), so the website owner can tell
+        // Says only where the ERP looked (never what a key is), so the website owner can tell
         // "not configured on the ERP" apart from "the two sides' keys differ".
-        api_error('Website API key is not configured on the ERP (add it to config/integration.local.php).', 401);
+        $file = integration_settings_source()['file'];
+        api_error($file === null
+            ? 'Website API key is not configured on the ERP: no config/integration.local.php file was found.'
+            : "Website API key is not configured on the ERP: found $file but it has no WEBSITE_API_KEY value.", 401);
     }
     if (!hash_equals($expected, (string)$key)) {
         api_error('Invalid or missing API key.', 401);
