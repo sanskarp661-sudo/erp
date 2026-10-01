@@ -14,6 +14,7 @@ require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/functions.php';
 require_once __DIR__ . '/stock.php';
+require_once __DIR__ . '/integration_settings.php';
 require_once __DIR__ . '/webhooks.php';
 
 header('Content-Type: application/json');
@@ -22,7 +23,8 @@ header('Content-Type: application/json');
 function api_require_key(): void
 {
     $key = $_SERVER['HTTP_X_API_KEY'] ?? '';
-    if (!defined('WEBSITE_API_KEY') || WEBSITE_API_KEY === '' || !hash_equals(WEBSITE_API_KEY, (string)$key)) {
+    $expected = integration_setting('WEBSITE_API_KEY');
+    if ($expected === '' || !hash_equals($expected, (string)$key)) {
         api_error('Invalid or missing API key.', 401);
     }
 }

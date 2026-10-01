@@ -7,3 +7,6 @@
 !/uploads/sales_orders/.gitkeep
 /uploads/imports/*
 !/uploads/imports/.gitkeep
+
+# Website-integration secrets live outside version control (see includes/integration_settings.php).
+/config/integration.local.php
