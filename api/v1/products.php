@@ -76,8 +76,11 @@ $baseSelect = "SELECT p.id, p.sku, p.name, p.description, p.image, p.unit, p.sel
   LEFT JOIN categories c ON c.id = p.category_id
   LEFT JOIN brands b ON b.id = p.brand_id";
 
+// Only products with the "Show in Website" toggle on (inventory/product_form.php's
+// Sales tab) are exposed here — that checkbox is the single source of truth for
+// what the storefront can see, for every endpoint below.
 if (input('sku') !== '') {
-    $stmt = db()->prepare($baseSelect . " WHERE p.sku = ? AND p.status = 'active'");
+    $stmt = db()->prepare($baseSelect . " WHERE p.sku = ? AND p.status = 'active' AND p.show_in_website = 1");
     $stmt->execute([input('sku')]);
     $product = $stmt->fetch();
     if (!$product) {
@@ -87,7 +90,7 @@ if (input('sku') !== '') {
     api_respond(['product' => api_product_row($product, $reserved, $images[(int)$product['id']] ?? [])]);
 }
 
-$where = "WHERE p.status = 'active'";
+$where = "WHERE p.status = 'active' AND p.show_in_website = 1";
 $params = [];
 if (input('since') !== '') {
     $since = strtotime(input('since'));

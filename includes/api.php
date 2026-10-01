@@ -19,22 +19,33 @@ require_once __DIR__ . '/webhooks.php';
 
 header('Content-Type: application/json');
 
-/** Rejects the request with 401 unless a valid X-API-Key header is present. */
+/**
+ * Rejects the request with 401 unless a valid X-API-Key header is present.
+ * Checks every active row in api_clients (Settings > Integrations) first,
+ * then falls back to the legacy single WEBSITE_API_KEY (config.php or the
+ * untracked integration file) so an existing setup keeps working.
+ */
 function api_require_key(): void
 {
-    $key = $_SERVER['HTTP_X_API_KEY'] ?? '';
-    $expected = integration_setting('WEBSITE_API_KEY');
-    if ($expected === '') {
-        // Says only where the ERP looked (never what a key is), so the website owner can tell
-        // "not configured on the ERP" apart from "the two sides' keys differ".
-        $file = integration_settings_source()['file'];
-        api_error($file === null
-            ? 'Website API key is not configured on the ERP: no config/integration.local.php file was found.'
-            : "Website API key is not configured on the ERP: found $file but it has no WEBSITE_API_KEY value.", 401);
+    $key = (string)($_SERVER['HTTP_X_API_KEY'] ?? '');
+
+    $clients = db()->query("SELECT id, api_key FROM api_clients WHERE status = 'active'")->fetchAll();
+    foreach ($clients as $client) {
+        if ($key !== '' && hash_equals($client['api_key'], $key)) {
+            db()->prepare('UPDATE api_clients SET last_used_at = NOW() WHERE id = ?')->execute([$client['id']]);
+            return;
+        }
     }
-    if (!hash_equals($expected, (string)$key)) {
-        api_error('Invalid or missing API key.', 401);
+
+    $legacy = integration_setting('WEBSITE_API_KEY');
+    if ($legacy !== '' && $key !== '' && hash_equals($legacy, $key)) {
+        return;
     }
+
+    if (!$clients && $legacy === '') {
+        api_error('No API key is configured on the ERP yet. Add one from Settings > Integrations to let a system call this API.', 401);
+    }
+    api_error('Invalid or missing API key.', 401);
 }
 
 /** Parses the request body as JSON into an array ([] if absent/invalid). */

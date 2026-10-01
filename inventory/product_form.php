@@ -63,6 +63,11 @@ $productUoms = [];
 $productBatches = [];
 $productSerials = [];
 $productSerialsTotalCount = 0;
+$customFieldValues = [];
+
+$customFields = db()->prepare("SELECT * FROM custom_field_defs WHERE entity_type = 'product' AND status = 'active' ORDER BY sort_order, id");
+$customFields->execute();
+$customFields = $customFields->fetchAll();
 
 if ($id) {
     $stmt = db()->prepare('SELECT * FROM products WHERE id = ?');
@@ -74,6 +79,11 @@ if ($id) {
     $stmt = db()->prepare('SELECT * FROM product_images WHERE product_id = ? ORDER BY sort_order, id');
     $stmt->execute([$id]);
     $productImages = $stmt->fetchAll();
+    $stmt = db()->prepare("SELECT field_key, value FROM custom_field_values WHERE entity_type = 'product' AND entity_id = ?");
+    $stmt->execute([$id]);
+    foreach ($stmt->fetchAll() as $r) {
+        $customFieldValues[$r['field_key']] = $r['value'];
+    }
     $stmt = db()->prepare("
       SELECT w.id, w.name, COALESCE(SUM(sb.quantity), 0) quantity
       FROM warehouses w
@@ -138,7 +148,7 @@ if ($id) {
 // consistent.
 $existingQuantity = $id ? (int)$product['quantity'] : 0;
 
-$activeTab = in_array(input('tab'), ['inventory', 'uom', 'batch', 'pricing', 'accounting', 'tax', 'sales', 'purchase'], true) ? input('tab') : 'details';
+$activeTab = in_array(input('tab'), ['inventory', 'uom', 'batch', 'pricing', 'accounting', 'tax', 'sales', 'purchase', 'custom'], true) ? input('tab') : 'details';
 $error = '';
 $maxImageBytes = 3 * 1024 * 1024;
 $mimeToExt = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp', 'image/gif' => 'gif'];
@@ -238,6 +248,18 @@ if (is_post()) {
 
     $openingQty = $id ? $existingQuantity : (int)input('opening_quantity');
     $openingWarehouseId = (int)input('opening_warehouse_id') ?: null;
+
+    $customFieldValuesToSave = [];
+    $customPost = $_POST['custom'] ?? [];
+    foreach ($customFields as $cf) {
+        $val = trim((string)($customPost[$cf['field_key']] ?? ''));
+        if ($cf['is_required'] && $val === '' && !$error) {
+            $error = $cf['label'] . ' is required.';
+        }
+        if ($val !== '') {
+            $customFieldValuesToSave[$cf['field_key']] = $val;
+        }
+    }
 
     $product = [
         'id' => $id,
@@ -613,6 +635,12 @@ if (is_post()) {
                 $imgStmt->execute([$newId, $img['image'], $img['is_default'], $img['sort_order']]);
             }
 
+            $pdo->prepare("DELETE FROM custom_field_values WHERE entity_type='product' AND entity_id=?")->execute([$newId]);
+            $cfStmt = $pdo->prepare("INSERT INTO custom_field_values (entity_type, entity_id, field_key, value) VALUES ('product',?,?,?)");
+            foreach ($customFieldValuesToSave as $key => $val) {
+                $cfStmt->execute([$newId, $key, $val]);
+            }
+
             $pdo->prepare('DELETE FROM price_list_items WHERE product_id=?')->execute([$newId]);
             $plStmt = $pdo->prepare('INSERT INTO price_list_items (price_list_id, product_id, rate) VALUES (?,?,?)');
             foreach ($ratesToSave as $plId => $rate) {
@@ -681,6 +709,7 @@ if (is_post()) {
     $productSuppliers = $productSuppliersToSave;
     $productCustomerRules = $productCustomerRulesToSave;
     $productUoms = $productUomsToSave;
+    $customFieldValues = $customFieldValuesToSave;
 }
 
 $categories = db()->query('SELECT id, name FROM categories ORDER BY name')->fetchAll();
@@ -736,6 +765,7 @@ require __DIR__ . '/../includes/header.php';
     <li class="nav-item"><button class="nav-link <?= $activeTab === 'tax' ? 'active' : '' ?>" id="tab-tax" data-bs-toggle="tab" data-bs-target="#pane-tax" data-tab="tax" type="button"><i class="fa-solid fa-percent"></i> Tax &amp; Charges</button></li>
     <li class="nav-item"><button class="nav-link <?= $activeTab === 'sales' ? 'active' : '' ?>" id="tab-sales" data-bs-toggle="tab" data-bs-target="#pane-sales" data-tab="sales" type="button"><i class="fa-solid fa-cart-shopping"></i> Sales</button></li>
     <li class="nav-item"><button class="nav-link <?= $activeTab === 'purchase' ? 'active' : '' ?>" id="tab-purchase" data-bs-toggle="tab" data-bs-target="#pane-purchase" data-tab="purchase" type="button"><i class="fa-solid fa-truck"></i> Purchase</button></li>
+    <li class="nav-item"><button class="nav-link <?= $activeTab === 'custom' ? 'active' : '' ?>" id="tab-custom" data-bs-toggle="tab" data-bs-target="#pane-custom" data-tab="custom" type="button"><i class="fa-solid fa-sliders"></i> Custom Fields</button></li>
   </ul>
 
   <form method="post" enctype="multipart/form-data" id="itemForm">
@@ -2114,6 +2144,54 @@ require __DIR__ . '/../includes/header.php';
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- ---- Custom Fields ---- -->
+      <div class="tab-pane fade <?= $activeTab === 'custom' ? 'show active' : '' ?>" id="pane-custom">
+        <div class="card p-4">
+          <div class="d-flex justify-content-between align-items-start mb-3">
+            <div>
+              <h6 class="mb-1">Custom Fields</h6>
+              <p class="text-muted small mb-0">Defined from Inventory &gt; Custom Fields — add, remove, or reorder them any time without needing a code change.</p>
+            </div>
+            <?php if (can_edit_module('inventory')): ?><a href="custom_fields.php" class="btn btn-sm btn-outline-brand text-nowrap"><i class="fa-solid fa-sliders"></i> Manage Fields</a><?php endif; ?>
+          </div>
+          <?php if (!$customFields): ?>
+            <div class="empty-state">
+              <i class="fa-solid fa-sliders"></i>
+              <div>No custom fields defined yet.</div>
+              <?php if (can_edit_module('inventory')): ?><a href="custom_fields.php" class="btn btn-brand btn-sm mt-2"><i class="fa-solid fa-plus"></i> Add a Field</a><?php endif; ?>
+            </div>
+          <?php else: ?>
+            <div class="row g-3">
+              <?php foreach ($customFields as $cf): $val = $customFieldValues[$cf['field_key']] ?? ''; ?>
+                <div class="col-sm-6">
+                  <label class="form-label"><?= e($cf['label']) ?><?= $cf['is_required'] ? ' <span class="text-danger">*</span>' : '' ?></label>
+                  <?php if ($cf['field_type'] === 'textarea'): ?>
+                    <textarea name="custom[<?= e($cf['field_key']) ?>]" class="form-control" rows="2" <?= $cf['is_required'] ? 'required' : '' ?>><?= e($val) ?></textarea>
+                  <?php elseif ($cf['field_type'] === 'select'): ?>
+                    <select name="custom[<?= e($cf['field_key']) ?>]" class="form-select" <?= $cf['is_required'] ? 'required' : '' ?>>
+                      <option value="">— Select —</option>
+                      <?php foreach (preg_split('/\r?\n/', trim((string)$cf['options'])) as $opt): $opt = trim($opt); if ($opt === '') continue; ?>
+                        <option value="<?= e($opt) ?>" <?= $val === $opt ? 'selected' : '' ?>><?= e($opt) ?></option>
+                      <?php endforeach; ?>
+                    </select>
+                  <?php elseif ($cf['field_type'] === 'checkbox'): ?>
+                    <div class="form-check mt-2">
+                      <input type="checkbox" class="form-check-input" name="custom[<?= e($cf['field_key']) ?>]" value="1" <?= $val === '1' ? 'checked' : '' ?>>
+                    </div>
+                  <?php elseif ($cf['field_type'] === 'number'): ?>
+                    <input type="number" step="any" name="custom[<?= e($cf['field_key']) ?>]" class="form-control" value="<?= e($val) ?>" <?= $cf['is_required'] ? 'required' : '' ?>>
+                  <?php elseif ($cf['field_type'] === 'date'): ?>
+                    <input type="date" name="custom[<?= e($cf['field_key']) ?>]" class="form-control" value="<?= e($val) ?>" <?= $cf['is_required'] ? 'required' : '' ?>>
+                  <?php else: ?>
+                    <input type="text" name="custom[<?= e($cf['field_key']) ?>]" class="form-control" value="<?= e($val) ?>" <?= $cf['is_required'] ? 'required' : '' ?>>
+                  <?php endif; ?>
+                </div>
+              <?php endforeach; ?>
+            </div>
+          <?php endif; ?>
         </div>
       </div>
     </div>

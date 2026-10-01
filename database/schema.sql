@@ -2062,3 +2062,48 @@ SELECT 'POS-01',
        (SELECT id FROM warehouses WHERE is_group = 0 AND status = 'active' ORDER BY id LIMIT 1),
        (SELECT id FROM price_lists WHERE is_default = 1 ORDER BY id LIMIT 1)
 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM pos_profiles);
+
+-- Configurable custom fields, defined entirely from the UI (no code
+-- changes needed to add one). entity_type scopes a field definition to a
+-- doctype — only 'product' (Item Master) is wired up today, but the
+-- design is generic so another doctype can reuse the same two tables
+-- later. Values are stored as plain text regardless of field_type; the
+-- UI is responsible for formatting/validating per type.
+CREATE TABLE IF NOT EXISTS custom_field_defs (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  entity_type VARCHAR(40) NOT NULL DEFAULT 'product',
+  field_key VARCHAR(60) NOT NULL,
+  label VARCHAR(120) NOT NULL,
+  field_type ENUM('text','number','date','select','checkbox','textarea') NOT NULL DEFAULT 'text',
+  options TEXT DEFAULT NULL,
+  is_required TINYINT(1) NOT NULL DEFAULT 0,
+  sort_order INT NOT NULL DEFAULT 0,
+  status ENUM('active','inactive') NOT NULL DEFAULT 'active',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_custom_field_defs (entity_type, field_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS custom_field_values (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  entity_type VARCHAR(40) NOT NULL,
+  entity_id INT UNSIGNED NOT NULL,
+  field_key VARCHAR(60) NOT NULL,
+  value TEXT,
+  UNIQUE KEY uq_custom_field_values (entity_type, entity_id, field_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Named API keys for systems calling api/v1/*.php (the website, and any
+-- other system an admin adds from Settings > Integrations). Replaces a
+-- single shared WEBSITE_API_KEY with a manageable list — each client can
+-- be revoked (status) without affecting the others. includes/api.php
+-- still falls back to the legacy WEBSITE_API_KEY (config.php or the
+-- untracked integration file) if no row here matches, so an existing
+-- setup keeps working unchanged until the admin adds a client here.
+CREATE TABLE IF NOT EXISTS api_clients (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  api_key VARCHAR(64) NOT NULL UNIQUE,
+  status ENUM('active','inactive') NOT NULL DEFAULT 'active',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_used_at DATETIME DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

@@ -122,6 +122,7 @@ $quickActions = [
     ['label' => 'Stock Balance',   'icon' => 'fa-solid fa-scale-balanced',    'tone' => 'tone-purple', 'url' => 'reports/stock_balance_report.php',  'module' => null],
     ['label' => 'Categories',      'icon' => 'fa-solid fa-tags',              'tone' => 'tone-teal',   'url' => 'inventory/categories.php',          'module' => null],
     ['label' => 'Inventory Report','icon' => 'fa-solid fa-chart-line',        'tone' => 'tone-red',    'url' => 'reports/inventory_report.php',      'module' => null],
+    ['label' => 'Custom Fields',   'icon' => 'fa-solid fa-sliders',           'tone' => 'tone-purple', 'url' => 'inventory/custom_fields.php',       'module' => 'inventory'],
 ];
 $quickActions = array_values(array_filter($quickActions, fn($a) => $a['module'] === null || can_edit_module($a['module'])));
 

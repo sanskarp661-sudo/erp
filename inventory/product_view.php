@@ -35,6 +35,13 @@ $productUoms = db()->prepare('SELECT * FROM product_uoms WHERE product_id = ? OR
 $productUoms->execute([$id]);
 $productUoms = $productUoms->fetchAll();
 
+$customFields = db()->prepare("SELECT d.label, d.field_type, v.value FROM custom_field_defs d
+  LEFT JOIN custom_field_values v ON v.entity_type = 'product' AND v.field_key = d.field_key AND v.entity_id = ?
+  WHERE d.entity_type = 'product' AND d.status = 'active' AND v.value IS NOT NULL AND v.value <> ''
+  ORDER BY d.sort_order, d.id");
+$customFields->execute([$id]);
+$customFields = $customFields->fetchAll();
+
 $productBatches = db()->prepare('
   SELECT pb.*, COALESCE(SUM(sb.quantity), 0) qty_in_stock
   FROM product_batches pb
@@ -347,6 +354,16 @@ require __DIR__ . '/../includes/header.php';
       </div>
       <?php if ($product['tags']): ?><div class="mt-2 small text-muted"><?= e($product['tags']) ?></div><?php endif; ?>
     </div>
+    <?php if ($customFields): ?>
+    <div class="card p-3 mt-3">
+      <h6 class="mb-2">Custom Fields</h6>
+      <div class="small">
+        <?php foreach ($customFields as $cf): ?>
+          <div class="d-flex justify-content-between"><span class="text-muted"><?= e($cf['label']) ?></span><span><?= $cf['field_type'] === 'checkbox' ? ($cf['value'] === '1' ? 'Yes' : 'No') : e($cf['value']) ?></span></div>
+        <?php endforeach; ?>
+      </div>
+    </div>
+    <?php endif; ?>
     <div class="card p-3 mt-3">
       <h6 class="mb-2">Inventory Settings</h6>
       <div class="small">

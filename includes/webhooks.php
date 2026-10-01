@@ -15,13 +15,15 @@
 function notify_website(string $event, array $data): void
 {
     require_once __DIR__ . '/integration_settings.php';
-    $url = integration_setting('WEBSITE_WEBHOOK_URL');
-    if ($url === '') {
+    // A webhook URL saved from Settings > Integrations overrides the legacy
+    // WEBSITE_WEBHOOK_URL (config.php or the untracked integration file).
+    $url = setting('website_webhook_url') ?: integration_setting('WEBSITE_WEBHOOK_URL');
+    if (!$url) {
         return;
     }
 
     $body = json_encode(['event' => $event, 'data' => $data, 'sent_at' => date('c')]);
-    $secret = integration_setting('WEBSITE_API_KEY');
+    $secret = primary_api_key();
     $signature = hash_hmac('sha256', $body, $secret);
 
     $ch = curl_init($url);

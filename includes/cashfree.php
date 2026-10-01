@@ -13,15 +13,33 @@
 
 require_once __DIR__ . '/functions.php';
 
+/**
+ * Cashfree credentials, preferring the values saved from Settings >
+ * Integrations (the `settings` table — survives deploys, unlike
+ * config.php) over the config.php constants of the same name.
+ */
+function cashfree_setting(string $name): string
+{
+    $map = [
+        'CLIENT_ID' => 'cashfree_client_id', 'CLIENT_SECRET' => 'cashfree_client_secret',
+        'ENV' => 'cashfree_env', 'PRODUCT' => 'cashfree_product',
+    ];
+    $dbValue = setting($map[$name] ?? '');
+    if ($dbValue !== null && $dbValue !== '') {
+        return $dbValue;
+    }
+    $constant = 'CASHFREE_' . $name;
+    return defined($constant) ? trim((string)constant($constant)) : '';
+}
+
 function cashfree_configured(): bool
 {
-    return defined('CASHFREE_CLIENT_ID') && CASHFREE_CLIENT_ID !== ''
-        && defined('CASHFREE_CLIENT_SECRET') && CASHFREE_CLIENT_SECRET !== '';
+    return cashfree_setting('CLIENT_ID') !== '' && cashfree_setting('CLIENT_SECRET') !== '';
 }
 
 function cashfree_api_base(): string
 {
-    $env = defined('CASHFREE_ENV') ? CASHFREE_ENV : 'sandbox';
+    $env = cashfree_setting('ENV') ?: 'sandbox';
     return $env === 'production' ? 'https://api.cashfree.com/pg' : 'https://sandbox.cashfree.com/pg';
 }
 
@@ -36,7 +54,7 @@ function cashfree_api_base(): string
  */
 function cashfree_product(): string
 {
-    return defined('CASHFREE_PRODUCT') && CASHFREE_PRODUCT === 'payment_link' ? 'payment_link' : 'orders';
+    return cashfree_setting('PRODUCT') === 'payment_link' ? 'payment_link' : 'orders';
 }
 
 /**
@@ -50,7 +68,7 @@ function cashfree_product(): string
 function cashfree_create_order(array $params): array
 {
     if (!cashfree_configured()) {
-        throw new RuntimeException('Cashfree is not configured. Add CASHFREE_CLIENT_ID / CASHFREE_CLIENT_SECRET in config/config.php.');
+        throw new RuntimeException('Cashfree is not configured. Add your Client ID / Secret from Settings > Integrations.');
     }
 
     $body = [
@@ -91,7 +109,7 @@ function cashfree_create_order(array $params): array
 function cashfree_create_payment_link(array $params): array
 {
     if (!cashfree_configured()) {
-        throw new RuntimeException('Cashfree is not configured. Add CASHFREE_CLIENT_ID / CASHFREE_CLIENT_SECRET in config/config.php.');
+        throw new RuntimeException('Cashfree is not configured. Add your Client ID / Secret from Settings > Integrations.');
     }
 
     $body = [
@@ -137,8 +155,8 @@ function cashfree_request(string $method, string $path, ?array $body = null, str
         CURLOPT_HTTPHEADER => [
             'Content-Type: application/json',
             'Accept: application/json',
-            'x-client-id: ' . CASHFREE_CLIENT_ID,
-            'x-client-secret: ' . CASHFREE_CLIENT_SECRET,
+            'x-client-id: ' . cashfree_setting('CLIENT_ID'),
+            'x-client-secret: ' . cashfree_setting('CLIENT_SECRET'),
             'x-api-version: ' . $apiVersion,
         ],
     ]);
@@ -182,6 +200,6 @@ function cashfree_verify_webhook_signature(string $signature, string $rawBody, s
     if (!cashfree_configured() || $signature === '' || $timestamp === '') {
         return false;
     }
-    $expected = base64_encode(hash_hmac('sha256', $timestamp . $rawBody, CASHFREE_CLIENT_SECRET, true));
+    $expected = base64_encode(hash_hmac('sha256', $timestamp . $rawBody, cashfree_setting('CLIENT_SECRET'), true));
     return hash_equals($expected, $signature);
 }

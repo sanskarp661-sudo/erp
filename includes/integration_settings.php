@@ -64,3 +64,17 @@ function integration_setting(string $name): string
     }
     return defined($name) ? trim((string)constant($name)) : '';
 }
+
+/**
+ * The key used both to authenticate incoming api/v1/*.php calls (see
+ * includes/api.php's api_require_key()) and to sign outgoing webhooks
+ * (includes/webhooks.php): the oldest active row in api_clients (Settings
+ * > Integrations) if any exist, else the legacy WEBSITE_API_KEY. Empty
+ * string means nothing is configured yet.
+ */
+function primary_api_key(): string
+{
+    $stmt = db()->query("SELECT api_key FROM api_clients WHERE status = 'active' ORDER BY id LIMIT 1");
+    $key = $stmt->fetchColumn();
+    return $key !== false ? $key : integration_setting('WEBSITE_API_KEY');
+}
