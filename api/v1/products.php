@@ -57,6 +57,8 @@ function api_product_row(array $p, array $reserved, array $images = []): array
         'name' => $p['name'],
         'description' => $p['description'],
         'category' => $p['category_name'],
+        // Item Category (Shirt, T-Shirt, Trouser…): the storefront shows it as a sub-category of "category".
+        'sub_category' => $p['item_category_name'],
         'brand' => $p['brand_name'],
         'image_url' => api_product_image_url($p['image']),
         'images' => $images,
@@ -71,9 +73,10 @@ function api_product_row(array $p, array $reserved, array $images = []): array
 }
 
 $baseSelect = "SELECT p.id, p.sku, p.name, p.description, p.image, p.unit, p.selling_price, p.quantity, p.status, p.updated_at,
-    c.name category_name, b.name brand_name
+    c.name category_name, ic.name item_category_name, b.name brand_name
   FROM products p
   LEFT JOIN categories c ON c.id = p.category_id
+  LEFT JOIN item_categories ic ON ic.id = p.item_category_id
   LEFT JOIN brands b ON b.id = p.brand_id";
 
 // Only products with the "Show in Website" toggle on (inventory/product_form.php's
