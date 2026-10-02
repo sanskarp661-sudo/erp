@@ -413,3 +413,40 @@ function sync_customer_address(int $customerId): void
     $text = implode(', ', array_filter([$a['address_line'], $a['city'], trim($a['state'] . ' ' . $a['pincode']), $a['country']]));
     db()->prepare('UPDATE customers SET address = ? WHERE id = ?')->execute([mb_substr($text, 0, 255), $customerId]);
 }
+
+/**
+ * Sales Invoices and Purchase Invoices are one doctype each, but they are
+ * reached from two modules: Finance (accounting/) and Sales (sales/) or
+ * Procurement (purchases/). The pages live in accounting/; the copies in
+ * sales/ and purchases/ set $doc_module and require them, so the sidebar,
+ * links and redirects stay inside the module the user came from.
+ *
+ * Returns [module key, folder] of the module serving the current page.
+ */
+function invoice_host(): array
+{
+    global $doc_module;
+    return match ($doc_module ?? 'finance') {
+        'sales'       => ['sales', 'sales'],
+        'procurement' => ['procurement', 'purchases'],
+        default       => ['finance', 'accounting'],
+    };
+}
+
+/** URL path of an invoice page ("invoice_view.php?id=1") in the module serving the current page. */
+function invoice_url(string $page): string
+{
+    return invoice_host()[1] . '/' . $page;
+}
+
+/** Can create/edit invoices here: Finance editors, or editors of the module serving the page. */
+function can_edit_invoice(): bool
+{
+    return can_edit_module('finance') || can_edit_module(invoice_host()[0]);
+}
+
+function require_invoice_edit(): void
+{
+    require_login();
+    if (!can_edit_invoice()) deny_access();
+}

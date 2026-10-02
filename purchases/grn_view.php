@@ -139,9 +139,9 @@ require __DIR__ . '/../includes/header.php';
 
     <?php if ($grn['status'] === 'received'): ?>
       <?php if ($existingPi): ?>
-        <a href="<?= base_url('accounting/purchase_invoice_view.php?id=' . $existingPi['id']) ?>" class="btn btn-outline-brand btn-sm"><i class="fa-solid fa-file-invoice-dollar"></i> View Bill <?= e($existingPi['pi_no']) ?></a>
-      <?php elseif (can_edit_module('finance')): ?>
-        <a href="<?= base_url('accounting/purchase_invoice_form.php?from_grn=' . $id) ?>" class="btn btn-outline-brand btn-sm"><i class="fa-solid fa-file-invoice-dollar"></i> Create Bill</a>
+        <a href="<?= base_url('purchases/purchase_invoice_view.php?id=' . $existingPi['id']) ?>" class="btn btn-outline-brand btn-sm"><i class="fa-solid fa-file-invoice-dollar"></i> View Bill <?= e($existingPi['pi_no']) ?></a>
+      <?php elseif (can_edit_module('finance') || can_edit_module('procurement')): ?>
+        <a href="<?= base_url('purchases/purchase_invoice_form.php?from_grn=' . $id) ?>" class="btn btn-outline-brand btn-sm"><i class="fa-solid fa-file-invoice-dollar"></i> Create Bill</a>
       <?php endif; ?>
     <?php endif; ?>
     <a href="<?= base_url('print.php?doctype=grn&id=' . $id) ?>" target="_blank" class="btn btn-outline-brand btn-sm"><i class="fa-solid fa-print"></i> Print</a>

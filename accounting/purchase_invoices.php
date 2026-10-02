@@ -1,7 +1,7 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
 require_login();
-$canEdit = can_edit_module('finance');
+$canEdit = can_edit_invoice();
 
 // Lazily flag purchase invoices whose due date has passed... purchase
 // bills don't track "overdue" separately, unpaid/partially_paid already

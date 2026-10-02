@@ -1,6 +1,8 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
 require_login();
+// Shared report folder: keep the Finance sidebar.
+$sidebar_module = 'finance';
 
 $start = input('start') ?: date('Y-01-01');
 $end = input('end') ?: date('Y-m-d');

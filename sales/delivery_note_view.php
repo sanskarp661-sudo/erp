@@ -118,9 +118,9 @@ require __DIR__ . '/../includes/header.php';
 
     <?php if ($dn['status'] === 'delivered'): ?>
       <?php if ($existingInvoice): ?>
-        <a href="<?= base_url('accounting/invoice_view.php?id=' . $existingInvoice['id']) ?>" class="btn btn-outline-brand btn-sm"><i class="fa-solid fa-file-invoice-dollar"></i> View Invoice <?= e($existingInvoice['invoice_no']) ?></a>
-      <?php elseif (can_edit_module('finance')): ?>
-        <a href="<?= base_url('accounting/invoice_form.php?from_dn=' . $id) ?>" class="btn btn-outline-brand btn-sm"><i class="fa-solid fa-file-invoice-dollar"></i> Create Invoice</a>
+        <a href="<?= base_url('sales/invoice_view.php?id=' . $existingInvoice['id']) ?>" class="btn btn-outline-brand btn-sm"><i class="fa-solid fa-file-invoice-dollar"></i> View Invoice <?= e($existingInvoice['invoice_no']) ?></a>
+      <?php elseif (can_edit_module('finance') || can_edit_module('sales')): ?>
+        <a href="<?= base_url('sales/invoice_form.php?from_dn=' . $id) ?>" class="btn btn-outline-brand btn-sm"><i class="fa-solid fa-file-invoice-dollar"></i> Create Invoice</a>
       <?php endif; ?>
     <?php endif; ?>
     <a href="<?= base_url('print.php?doctype=delivery_note&id=' . $id) ?>" target="_blank" class="btn btn-outline-brand btn-sm"><i class="fa-solid fa-print"></i> Print</a>
